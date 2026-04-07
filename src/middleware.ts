@@ -3,6 +3,16 @@ import { isAuthed } from '@/lib/auth';
 
 const PUBLIC_FILE = /\.(.*)$/;
 
+function getRequestOrigin(request: NextRequest) {
+  const proto = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '');
+  const host =
+    request.headers.get('x-forwarded-host') ||
+    request.headers.get('host') ||
+    request.nextUrl.host;
+
+  return `${proto}://${host}`;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -16,7 +26,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname === '/') {
-    return NextResponse.redirect(new URL('/watch', request.url));
+    return NextResponse.redirect(new URL('/watch', getRequestOrigin(request)));
   }
 
   if (isAuthed(request)) {
@@ -27,7 +37,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const loginUrl = new URL('/login', request.url);
+  const loginUrl = new URL('/login', getRequestOrigin(request));
   loginUrl.searchParams.set('redirect', pathname);
   return NextResponse.redirect(loginUrl);
 }
