@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: 'CLAWNUX Watch',
   description: '🛰️ Private monitoring dashboard',
   icons: {
-    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-    shortcut: '/favicon.svg',
+    icon: [{ url: '/watch-favicon-v2.svg', type: 'image/svg+xml' }],
+    shortcut: '/watch-favicon-v2.svg',
   },
   manifest: '/site.webmanifest',
 };

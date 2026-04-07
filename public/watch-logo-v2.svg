@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" fill="none">
+  <defs>
+    <linearGradient id="shellV2" x1="15" y1="14" x2="84" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11261B"/>
+      <stop offset="1" stop-color="#061009"/>
+    </linearGradient>
+    <linearGradient id="signalV2" x1="27" y1="25" x2="67" y2="71" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D7FF71"/>
+      <stop offset="1" stop-color="#4ADE80"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="96" rx="20" fill="#040704"/>
+  <rect x="14" y="14" width="68" height="68" rx="18" fill="url(#shellV2)" stroke="#5BE38D" stroke-width="2"/>
+  <path d="M30 56c4.268-9.61 13.878-16 25-16 3.504 0 6.859.635 9.957 1.797" stroke="#D7FF71" stroke-width="4" stroke-linecap="round"/>
+  <path d="M29 36c5.45-7.615 14.38-12 24-12 3.195 0 6.314.484 9.257 1.382" stroke="#1D7A4E" stroke-width="4" stroke-linecap="round"/>
+  <path d="M24 69h48" stroke="#1D7A4E" stroke-width="4" stroke-linecap="round"/>
+  <path d="M51 31v17" stroke="#5BE38D" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="51" cy="52" r="13" fill="url(#signalV2)"/>
+  <circle cx="51" cy="52" r="4" fill="#082313"/>
+  <path d="m51 52 12-12" stroke="#082313" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="63" cy="40" r="4" fill="#082313"/>
+  <text x="104" y="36" fill="#E8FFF1" font-family="JetBrains Mono, monospace" font-size="28" font-weight="700" letter-spacing="2">WATCH</text>
+  <text x="104" y="60" fill="#5BE38D" font-family="JetBrains Mono, monospace" font-size="15" letter-spacing="1.5">PRIVATE MONITORING DASHBOARD</text>
+  <text x="104" y="78" fill="#89B39A" font-family="JetBrains Mono, monospace" font-size="11" letter-spacing="1.8">PRIORITY VIEW / LIVE STATUS / CONTROL SURFACE</text>
+</svg>

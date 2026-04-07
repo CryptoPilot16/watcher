@@ -6,12 +6,17 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const key = String(body?.key || '');
+  const secret = getWatchSecret();
   const redirectTo =
     typeof body?.redirectTo === 'string' && body.redirectTo.startsWith('/')
       ? body.redirectTo
       : '/watch';
 
-  if (key !== getWatchSecret()) {
+  if (!secret) {
+    return NextResponse.json({ ok: false, error: 'Watch password is not configured' }, { status: 500 });
+  }
+
+  if (key !== secret) {
     return NextResponse.json({ ok: false, error: 'Invalid password' }, { status: 401 });
   }
 
@@ -19,7 +24,7 @@ export async function POST(request: NextRequest) {
   const secure = proto === 'https';
 
   const response = NextResponse.json({ ok: true, redirectTo });
-  response.cookies.set(WATCH_COOKIE_NAME, getWatchSecret(), {
+  response.cookies.set(WATCH_COOKIE_NAME, secret, {
     httpOnly: true,
     secure,
     sameSite: 'lax',

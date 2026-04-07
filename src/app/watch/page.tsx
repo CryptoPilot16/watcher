@@ -83,7 +83,7 @@ export default function WatchPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <img
-                  src="/watch-logo.svg"
+                  src="/watch-logo-v2.svg"
                   alt="CLAWNUX Watch"
                   className="h-12 w-auto sm:h-14"
                 />

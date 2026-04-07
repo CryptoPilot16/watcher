@@ -50,7 +50,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] shadow-[0_0_70px_rgba(34,197,94,0.08)]">
         <div className="flex flex-col gap-6 p-5 sm:p-6">
           <div className="flex items-center gap-3">
-            <img src="/watch-logo.svg" alt="CLAWNUX Watch" className="h-11 w-auto sm:h-12" />
+            <img src="/watch-logo-v2.svg" alt="CLAWNUX Watch" className="h-11 w-auto sm:h-12" />
             <div>
               <h1 className="text-lg font-semibold text-[var(--watch-text)] sm:text-xl">
                 CLAWNUX Watch

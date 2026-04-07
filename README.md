@@ -10,9 +10,11 @@ It provides:
 
 - password-gated access with `WATCH_PASSWORD`
 - a mobile-friendly `/watch` dashboard
+- a task-first primary panel for the current monitored item
 - a live `/api/watch` snapshot endpoint
 - a Telegram updater that edits a single tracked status message
 - PM2 processes for the web app and Telegram loop
+- custom watcher branding with versioned logo and favicon assets
 
 ## Environment
 
@@ -23,6 +25,11 @@ Create `.env.local` from `.env.example` and set:
 - `WATCH_TELEGRAM_CHAT_ID`
 - `WATCH_URL`
 - `WATCH_TELEGRAM_INTERVAL_MS`
+
+Notes:
+
+- `WATCH_PASSWORD` is required in the environment
+- the app no longer relies on a hardcoded password fallback in repo code
 
 ## Local Development
 
@@ -66,3 +73,4 @@ Deploy flow:
 - `src/lib/watch-telegram.ts` for Telegram formatting and sync
 - `scripts/watch-telegram-loop.mjs` for the periodic Telegram updater
 - `ecosystem.config.cjs` for PM2 process definitions
+- `public/watch-logo-v2.svg` and `public/watch-favicon-v2.svg` for the current branding
