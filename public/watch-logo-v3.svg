@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 104" fill="none">
+  <defs>
+    <linearGradient id="frameV3" x1="16" y1="14" x2="92" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#231d12"/>
+      <stop offset="1" stop-color="#120f0b"/>
+    </linearGradient>
+    <linearGradient id="glyphV3" x1="36" y1="24" x2="73" y2="71" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1DE97"/>
+      <stop offset="1" stop-color="#CCB15B"/>
+    </linearGradient>
+  </defs>
+  <rect width="420" height="104" rx="24" fill="#0F0D09"/>
+  <rect x="14" y="14" width="80" height="76" rx="20" fill="url(#frameV3)" stroke="#C9B063" stroke-width="2"/>
+  <path d="M33 34h42" stroke="#4B3E21" stroke-width="4" stroke-linecap="round"/>
+  <path d="M33 52h28" stroke="#4B3E21" stroke-width="4" stroke-linecap="round"/>
+  <path d="M33 70h34" stroke="#4B3E21" stroke-width="4" stroke-linecap="round"/>
+  <path d="M54 28v42" stroke="url(#glyphV3)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m54 49 14-14" stroke="url(#glyphV3)" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="68" cy="35" r="5" fill="#F1DE97"/>
+  <circle cx="54" cy="49" r="7" fill="#CCB15B"/>
+  <rect x="112" y="27" width="82" height="8" rx="4" fill="#251F15"/>
+  <rect x="112" y="59" width="214" height="8" rx="4" fill="#251F15"/>
+  <text x="112" y="39" fill="#F3E7BE" font-family="'IBM Plex Mono', monospace" font-size="30" font-weight="700" letter-spacing="2">WATCH</text>
+  <text x="112" y="63" fill="#D7BD6B" font-family="'IBM Plex Mono', monospace" font-size="15" font-weight="600" letter-spacing="2.1">PRIVATE MONITORING DASHBOARD</text>
+  <text x="112" y="84" fill="#A49464" font-family="'IBM Plex Mono', monospace" font-size="11" letter-spacing="2.2">TERMINAL UI / TASK VIEW / TELEGRAM RELAY</text>
+</svg>

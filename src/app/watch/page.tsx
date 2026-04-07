@@ -81,33 +81,6 @@ export default function WatchPage() {
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
         <WatchShellHeader activeTab="watch" />
 
-        <section className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-              status
-            </div>
-            <div className="mt-2 text-base font-semibold text-[var(--watch-accent)]">
-              {data?.status || 'loading'}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-              summary
-            </div>
-            <div className="mt-2 text-sm text-[var(--watch-text)]">
-              {data?.summary || 'collecting runtime state'}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-              updated
-            </div>
-            <div className="mt-2 text-sm text-[var(--watch-text)]">
-              {data?.now || 'pending'}
-            </div>
-          </div>
-        </section>
-
         {error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-[var(--watch-danger)]">
             {error}
@@ -115,22 +88,68 @@ export default function WatchPage() {
         ) : null}
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <article className="overflow-hidden rounded-2xl border border-[var(--watch-accent)] bg-[linear-gradient(135deg,rgba(18,28,19,0.96),rgba(12,18,14,0.92))] shadow-[0_0_80px_rgba(74,222,128,0.12)] xl:col-span-2">
-            <div className="border-b border-[var(--watch-accent)]/30 px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-accent)]">
-              current snapmolt task
+          <article className="overflow-hidden rounded-[28px] border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(36,29,18,0.96),rgba(18,15,11,0.96))] shadow-[0_24px_80px_rgba(0,0,0,0.24)] xl:col-span-2">
+            <div className="border-b border-[var(--watch-panel-border)] px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-accent-strong)]">
+              snapmolt mirror
             </div>
-            <div className="p-4 sm:p-6">
-              <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-7 text-[var(--watch-text)] sm:text-base">
+            <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1.4fr_0.6fr]">
+              <pre className="min-h-[280px] rounded-[24px] border border-[var(--watch-panel-border-strong)] bg-[rgba(0,0,0,0.24)] p-5 text-base leading-8 text-[var(--watch-text)] sm:text-[1.05rem]">
                 {primaryTask}
               </pre>
+
+              <div className="grid gap-3">
+                <div className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.26em] text-[var(--watch-text-muted)]">
+                    priority view
+                  </div>
+                  <div className="mt-2 text-sm leading-7 text-[var(--watch-text)]">
+                    Snapmolt mirror is the main surface and stays above every other signal on the page.
+                  </div>
+                </div>
+                <div className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.26em] text-[var(--watch-text-muted)]">
+                    latest sync
+                  </div>
+                  <div className="mt-2 text-sm leading-7 text-[var(--watch-text)]">
+                    This page refreshes every 5 seconds and mirrors the same watcher state used by the Telegram relay.
+                  </div>
+                </div>
+              </div>
             </div>
           </article>
+
+          <section className="grid gap-3 sm:grid-cols-3 xl:col-span-2">
+            <div className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+                status
+              </div>
+              <div className="mt-2 text-base font-semibold text-[var(--watch-accent)]">
+                {data?.status || 'loading'}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+                summary
+              </div>
+              <div className="mt-2 text-sm text-[var(--watch-text)]">
+                {data?.summary || 'collecting runtime state'}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+                updated
+              </div>
+              <div className="mt-2 text-sm text-[var(--watch-text)]">
+                {data?.now || 'pending'}
+              </div>
+            </div>
+          </section>
 
           {data
             ? secondarySections.map(([key, value]) => (
                 <article
                   key={key}
-                  className="overflow-hidden rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)]"
+                  className="overflow-hidden rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
                 >
                   <div className="border-b border-[var(--watch-panel-border)] px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-text-muted)]">
                     {key}
@@ -143,7 +162,7 @@ export default function WatchPage() {
             : Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={index}
-                  className="h-40 animate-pulse rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)]"
+                  className="h-40 animate-pulse rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)]"
                 />
               ))}
         </section>

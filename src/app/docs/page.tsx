@@ -42,12 +42,12 @@ export default function DocsPage() {
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <WatchShellHeader activeTab="docs" />
 
-        <section className="overflow-hidden rounded-2xl border border-[var(--watch-accent)] bg-[linear-gradient(135deg,rgba(18,28,19,0.96),rgba(12,18,14,0.92))] shadow-[0_0_80px_rgba(74,222,128,0.12)]">
-          <div className="border-b border-[var(--watch-accent)]/30 px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-accent)]">
+        <section className="overflow-hidden rounded-[28px] border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(34,28,18,0.96),rgba(18,15,11,0.96))] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+          <div className="border-b border-[var(--watch-panel-border)] px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-accent-strong)]">
             documentation
           </div>
           <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2">
-            <article className="rounded-2xl border border-[var(--watch-panel-border)] bg-black/20 p-5">
+            <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-5">
               <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
                 app flow
               </div>
@@ -63,7 +63,7 @@ export default function DocsPage() {
               </div>
             </article>
 
-            <article className="rounded-2xl border border-[var(--watch-panel-border)] bg-black/20 p-5">
+            <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-5">
               <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
                 telegram flow
               </div>
@@ -81,8 +81,8 @@ export default function DocsPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          <article className="rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
             <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
               routes
             </div>
@@ -94,7 +94,7 @@ export default function DocsPage() {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
             <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
               auth
             </div>
@@ -105,7 +105,7 @@ export default function DocsPage() {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] md:col-span-2 xl:col-span-1">
             <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
               operations
             </div>
