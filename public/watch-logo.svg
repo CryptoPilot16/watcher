@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" fill="none">
+  <defs>
+    <linearGradient id="watch-shell" x1="18" y1="14" x2="82" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#163225"/>
+      <stop offset="1" stop-color="#09110c"/>
+    </linearGradient>
+    <linearGradient id="watch-core" x1="38" y1="28" x2="62" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9BFFB7"/>
+      <stop offset="1" stop-color="#4ADE80"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="96" rx="20" fill="#040704"/>
+  <rect x="14" y="14" width="68" height="68" rx="18" fill="url(#watch-shell)" stroke="#4ADE80" stroke-width="2"/>
+  <path d="M48 24c-10.182 0-19.18 5.078-24.606 12.844" stroke="#1F8F59" stroke-width="4" stroke-linecap="round"/>
+  <path d="M48 24c10.182 0 19.18 5.078 24.606 12.844" stroke="#D6FF6B" stroke-width="4" stroke-linecap="round"/>
+  <path d="M23 59c5.92 8.803 15.979 14 27 14s21.08-5.197 27-14" stroke="#1F8F59" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="48" cy="48" r="12" fill="url(#watch-core)"/>
+  <circle cx="48" cy="48" r="4" fill="#06220F"/>
+  <path d="m48 48 16-16" stroke="#D6FF6B" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="32" r="5" fill="#D6FF6B"/>
+  <path d="M106 38h74" stroke="#1D3B29" stroke-width="6" stroke-linecap="round"/>
+  <path d="M106 58h146" stroke="#1D3B29" stroke-width="6" stroke-linecap="round"/>
+  <text x="106" y="36" fill="#E8FFF1" font-family="JetBrains Mono, monospace" font-size="28" font-weight="700" letter-spacing="2">WATCH</text>
+  <text x="106" y="62" fill="#4ADE80" font-family="JetBrains Mono, monospace" font-size="16" letter-spacing="1.4">SNAPMOLT PRIORITY CONSOLE</text>
+  <text x="106" y="79" fill="#8FB8A0" font-family="JetBrains Mono, monospace" font-size="11" letter-spacing="1.8">TASK FOCUS / LIVE OPS / TELEGRAM TRACE</text>
+</svg>
