@@ -1,4 +1,4 @@
-const WATCH_URL = process.env.WATCH_URL || 'http://127.0.0.1:3000';
+const WATCH_URL = process.env.WATCH_URL || 'http://127.0.0.1:3012';
 const WATCH_PASSWORD = process.env.WATCH_PASSWORD || process.env.WATCH_API_KEY || '';
 const INTERVAL_MS = Number(process.env.WATCH_TELEGRAM_INTERVAL_MS || 60_000);
 

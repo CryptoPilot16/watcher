@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { WatchShellHeader } from '@/components/watch-shell-header';
 
 type WatchData = {
   ok: boolean;
@@ -78,71 +79,40 @@ export default function WatchPage() {
   return (
     <main className="min-h-dvh px-4 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
-        <header className="overflow-hidden rounded-2xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] shadow-[0_0_60px_rgba(34,197,94,0.08)] backdrop-blur">
-          <div className="flex flex-col gap-4 p-4 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <img
-                  src="/watch-logo-v2.svg"
-                  alt="CLAWNUX Watch"
-                  className="h-12 w-auto sm:h-14"
-                />
-                <div className="min-w-0">
-                  <div className="truncate text-lg font-semibold text-[var(--watch-text)] sm:text-2xl">
-                    watch.clawnux.com
-                  </div>
-                  <div className="text-xs uppercase tracking-[0.22em] text-[var(--watch-text-muted)] sm:text-sm">
-                    standalone live watcher
-                  </div>
-                </div>
-              </div>
+        <WatchShellHeader activeTab="watch" />
 
-              <button
-                type="button"
-                className="rounded-xl border border-[var(--watch-panel-border)] px-3 py-2 text-sm text-[var(--watch-text)] transition hover:bg-white/5"
-                onClick={() => {
-                  document.cookie = 'watch_access=; Max-Age=0; Path=/; SameSite=Lax';
-                  window.location.replace('/login?redirect=/watch');
-                }}
-              >
-                logout
-              </button>
+        <section className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+              status
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-[var(--watch-panel-border)] bg-black/20 p-3">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-                  status
-                </div>
-                <div className="mt-2 text-base font-semibold text-[var(--watch-accent)]">
-                  {data?.status || 'loading'}
-                </div>
-              </div>
-              <div className="rounded-xl border border-[var(--watch-panel-border)] bg-black/20 p-3">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-                  summary
-                </div>
-                <div className="mt-2 text-sm text-[var(--watch-text)]">
-                  {data?.summary || 'collecting runtime state'}
-                </div>
-              </div>
-              <div className="rounded-xl border border-[var(--watch-panel-border)] bg-black/20 p-3">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
-                  updated
-                </div>
-                <div className="mt-2 text-sm text-[var(--watch-text)]">
-                  {data?.now || 'pending'}
-                </div>
-              </div>
+            <div className="mt-2 text-base font-semibold text-[var(--watch-accent)]">
+              {data?.status || 'loading'}
             </div>
-
-            {error ? (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-[var(--watch-danger)]">
-                {error}
-              </div>
-            ) : null}
           </div>
-        </header>
+          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+              summary
+            </div>
+            <div className="mt-2 text-sm text-[var(--watch-text)]">
+              {data?.summary || 'collecting runtime state'}
+            </div>
+          </div>
+          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-3">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
+              updated
+            </div>
+            <div className="mt-2 text-sm text-[var(--watch-text)]">
+              {data?.now || 'pending'}
+            </div>
+          </div>
+        </section>
+
+        {error ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-[var(--watch-danger)]">
+            {error}
+          </div>
+        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-2">
           <article className="overflow-hidden rounded-2xl border border-[var(--watch-accent)] bg-[linear-gradient(135deg,rgba(18,28,19,0.96),rgba(12,18,14,0.92))] shadow-[0_0_80px_rgba(74,222,128,0.12)] xl:col-span-2">

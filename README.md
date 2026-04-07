@@ -10,9 +10,10 @@ It provides:
 
 - password-gated access with `WATCH_PASSWORD`
 - a mobile-friendly `/watch` dashboard
+- an in-app `/docs` tab that explains the dashboard and Telegram behavior
 - a task-first primary panel for the current monitored item
 - a live `/api/watch` snapshot endpoint
-- a Telegram updater that edits a single tracked status message
+- a Telegram updater with draft-style teleprompter support for private chats
 - PM2 processes for the web app and Telegram loop
 - custom watcher branding with versioned logo and favicon assets
 
@@ -61,16 +62,20 @@ Deploy flow:
 
 ## Telegram Behavior
 
-- `POST /api/watch-telegram/init` creates a fresh tracked message
-- `POST /api/watch-telegram` updates the existing tracked message
+- `POST /api/watch-telegram` triggers a Telegram sync
+- in private chats the bot uses Telegram draft streaming to keep a single teleprompter-style draft updated
+- if draft streaming is unavailable, the bot falls back to the standard tracked-message flow
+- `POST /api/watch-telegram/init` forces a fresh tracking cycle
 - local state is stored in `.watch-telegram-state.json`
 - if `WATCH_TELEGRAM_CHAT_ID` is empty, the bot uses the latest chat that messaged it
 
 ## Key Files
 
 - `src/app/watch/page.tsx` for the main watcher UI
+- `src/app/docs/page.tsx` for the built-in product and integration documentation
 - `src/lib/watch-data.ts` for runtime data collection
 - `src/lib/watch-telegram.ts` for Telegram formatting and sync
 - `scripts/watch-telegram-loop.mjs` for the periodic Telegram updater
+- `src/components/watch-shell-header.tsx` for the shared Watch and Docs tab header
 - `ecosystem.config.cjs` for PM2 process definitions
 - `public/watch-logo-v2.svg` and `public/watch-favicon-v2.svg` for the current branding

@@ -4,7 +4,9 @@ import { getWatchSnapshot, type WatchSnapshot } from '@/lib/watch-data';
 
 type TelegramState = {
   chatId?: string;
+  draftId?: number;
   messageId?: number;
+  mode?: 'draft' | 'message';
   lastText?: string;
   updatedAt?: string;
 };
@@ -33,6 +35,7 @@ type TelegramUpdate = {
 
 const STATE_FILE = path.join(process.cwd(), '.watch-telegram-state.json');
 const MAX_MESSAGE_LENGTH = 4096;
+const DEFAULT_DRAFT_ID = 1;
 
 function getBotToken() {
   return process.env.WATCH_TELEGRAM_BOT_TOKEN || '';
@@ -114,6 +117,78 @@ function block(title: string, body: string) {
   return `${title}\n${'='.repeat(title.length)}\n${body.trim() || '(empty)'}`;
 }
 
+function getLines(value?: string) {
+  return (value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getLatestVisibleLine(value?: string) {
+  const lines = getLines(value);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line || line === '(empty)') continue;
+    if (line.startsWith('at ')) continue;
+    return line;
+  }
+
+  return '';
+}
+
+function getRecentLines(value?: string, limit = 4) {
+  const lines = getLines(value);
+  const picked: string[] = [];
+
+  for (let index = lines.length - 1; index >= 0 && picked.length < limit; index -= 1) {
+    const line = lines[index];
+    if (!line || line === '(empty)' || line.startsWith('at ')) continue;
+    if (picked.includes(line)) continue;
+    picked.push(line);
+  }
+
+  return picked.reverse();
+}
+
+function getPrimaryTask(snapshot: WatchSnapshot) {
+  const updateResult = snapshot.sections.updateResult?.trim();
+  if (updateResult) return updateResult;
+
+  return getLatestVisibleLine(snapshot.sections.snapmoltOut) || 'No active task text available';
+}
+
+function formatTeleprompterText(snapshot: WatchSnapshot) {
+  const currentTask = getPrimaryTask(snapshot);
+  const latestActivity = getLatestVisibleLine(snapshot.sections.snapmoltOut) || 'No recent activity';
+  const latestError = getLatestVisibleLine(snapshot.sections.snapmoltErr);
+  const recentActivity = getRecentLines(snapshot.sections.snapmoltOut, 3);
+
+  const lines = [
+    'SNAPMOLT TELEPROMPTER',
+    `updated: ${snapshot.now}`,
+    '',
+    'current task',
+    '------------',
+    currentTask,
+    '',
+    'latest activity',
+    '---------------',
+    latestActivity,
+  ];
+
+  if (latestError) {
+    lines.push('', 'latest error', '------------', latestError);
+  }
+
+  if (recentActivity.length > 0) {
+    lines.push('', 'recent activity', '---------------', ...recentActivity.map((line) => `- ${line}`));
+  }
+
+  const text = lines.join('\n');
+  return text.length > MAX_MESSAGE_LENGTH ? `${text.slice(0, MAX_MESSAGE_LENGTH - 4)}...` : text;
+}
+
 export function formatWatchTelegramText(snapshot: WatchSnapshot) {
   const text = [
     'CLAWNUX WATCH',
@@ -135,15 +210,20 @@ export function formatWatchTelegramText(snapshot: WatchSnapshot) {
 
 export async function syncWatchTelegramMessage(options?: { forceNewMessage?: boolean }) {
   const snapshot = getWatchSnapshot();
-  const text = formatWatchTelegramText(snapshot);
+  const text = formatTeleprompterText(snapshot);
   const state = options?.forceNewMessage ? {} : await readState();
   const chatId = await resolveChatId(state);
+  const draftId =
+    options?.forceNewMessage
+      ? (state.draftId || DEFAULT_DRAFT_ID) + 1
+      : state.draftId || DEFAULT_DRAFT_ID;
 
-  if (!options?.forceNewMessage && state.messageId && state.lastText === text) {
+  if (!options?.forceNewMessage && state.lastText === text) {
     return {
       ok: true,
       action: 'unchanged',
       chatId,
+      draftId,
       messageId: state.messageId,
       snapshot,
     };
@@ -152,9 +232,41 @@ export async function syncWatchTelegramMessage(options?: { forceNewMessage?: boo
   const nextState: TelegramState = {
     ...state,
     chatId,
+    draftId,
     lastText: text,
+    mode: 'draft',
     updatedAt: snapshot.now,
   };
+
+  try {
+    await telegram('sendMessageDraft', {
+      chat_id: Number(chatId),
+      draft_id: draftId,
+      text,
+    });
+
+    delete nextState.messageId;
+    await writeState(nextState);
+
+    return {
+      ok: true,
+      action: options?.forceNewMessage ? 'redrafted' : 'drafted',
+      chatId,
+      draftId,
+      snapshot,
+    };
+  } catch (error: any) {
+    const message = String(error?.message || '');
+    const draftUnsupported =
+      message.includes('private chat') ||
+      message.includes('chat not found') ||
+      message.includes('method not found') ||
+      message.includes('Bad Request');
+
+    if (!draftUnsupported) {
+      throw error;
+    }
+  }
 
   if (!options?.forceNewMessage && state.messageId) {
     try {
@@ -166,6 +278,7 @@ export async function syncWatchTelegramMessage(options?: { forceNewMessage?: boo
       });
 
       nextState.messageId = state.messageId;
+      nextState.mode = 'message';
       await writeState(nextState);
 
       return {
@@ -196,6 +309,7 @@ export async function syncWatchTelegramMessage(options?: { forceNewMessage?: boo
   });
 
   nextState.messageId = created.message_id;
+  nextState.mode = 'message';
   await writeState(nextState);
 
   return {

@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "telegram:loop": "node scripts/watch-telegram-loop.mjs"
+    "telegram:loop": "node --env-file=.env.local scripts/watch-telegram-loop.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
