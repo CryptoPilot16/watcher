@@ -4,17 +4,17 @@ const appSections = [
   {
     title: 'What the dashboard does',
     body:
-      'The Watch tab is the live operations surface. It keeps the current Snapmolt task in the primary panel, then shows the surrounding runtime context below it so the operator can see status, logs, and failure signals without leaving the page.',
+      'The Watch tab is the live operations surface. It keeps the current Snapmolt task in the primary position and reduces the surrounding chrome so the operator sees the tracked work first.',
   },
   {
-    title: 'Primary task panel',
+    title: 'Snapmolt mirror',
     body:
-      'The large top panel is reserved for current Snapmolt activity. It prefers meaningful live Snapmolt output and ignores generic updater noise and boilerplate startup lines.',
+      'The main panel is a Snapmolt mirror. It prefers meaningful live Snapmolt output, filters updater noise and startup boilerplate, and avoids letting generic lines replace real activity.',
   },
   {
-    title: 'Secondary runtime panels',
+    title: 'Interface shape',
     body:
-      'The lower panels expose supporting runtime details such as PM2 process state, Snapmolt stdout and stderr, and selected backend logs. They are intentionally secondary so the current task stays first.',
+      'The project shell is intentionally simple: logo, title, subtitle, tabs, and the task-first tracker. Supporting detail stays secondary so desktop and mobile views remain easy to scan.',
   },
 ];
 
@@ -27,7 +27,7 @@ const telegramSections = [
   {
     title: 'Teleprompter mode',
     body:
-      'For private chats, the bot now uses Telegram draft streaming through sendMessageDraft. That produces a single teleprompter-style message draft focused on the current Snapmolt task, the latest activity line, the latest error, and a short recent activity list.',
+      'For private chats, the bot uses Telegram draft streaming through sendMessageDraft. That keeps one teleprompter-style draft focused on the current Snapmolt task, the latest activity line, the latest error, and a short recent activity list.',
   },
   {
     title: 'Fallback behavior',
@@ -90,7 +90,7 @@ export default function DocsPage() {
               <div>`/watch` is the live dashboard.</div>
               <div>`/docs` explains the product and integration behavior.</div>
               <div>`/api/watch` exposes the current runtime snapshot.</div>
-              <div>`/api/watch-telegram` triggers a Telegram sync.</div>
+              <div>`/api/watch-telegram` triggers a Telegram teleprompter sync.</div>
             </div>
           </article>
 
@@ -113,6 +113,7 @@ export default function DocsPage() {
               <div>The web app listens on `127.0.0.1:3012`.</div>
               <div>Caddy serves `watch.clawnux.com`.</div>
               <div>PM2 manages both the web surface and the Telegram loop.</div>
+              <div>The Telegram loop refreshes the single tracked draft on a timer.</div>
             </div>
           </article>
         </section>
