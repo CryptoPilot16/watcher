@@ -9,7 +9,7 @@ const appSections = [
   {
     title: 'Snapmolt mirror',
     body:
-      'The main panel is a Snapmolt mirror. It prefers meaningful live Snapmolt output, filters updater noise and startup boilerplate, and avoids letting generic lines replace real activity.',
+      'The main panel is a Snapmolt mirror. It prefers meaningful live Snapmolt output, filters updater noise and startup boilerplate, reads across recent PM2 log rotation, and avoids letting generic lines replace real activity.',
   },
   {
     title: 'Interface shape',
@@ -27,7 +27,7 @@ const telegramSections = [
   {
     title: 'Teleprompter mode',
     body:
-      'For private chats, the bot uses Telegram draft streaming through sendMessageDraft. That keeps one teleprompter-style draft focused on the current Snapmolt task, the latest activity line, the latest error, and a short recent activity list.',
+      'For private chats, the bot uses Telegram draft streaming through sendMessageDraft. That keeps one teleprompter-style draft focused on the current Snapmolt task, the latest activity line, the latest error, and a short recent activity list drawn from the same merged Snapmolt activity feed as the web dashboard.',
   },
   {
     title: 'Fallback behavior',
@@ -113,6 +113,7 @@ export default function DocsPage() {
               <div>The web app listens on `127.0.0.1:3012`.</div>
               <div>Caddy serves `watch.clawnux.com`.</div>
               <div>PM2 manages both the web surface and the Telegram loop.</div>
+              <div>The watcher merges active and rotated Snapmolt PM2 logs before rendering activity.</div>
               <div>The Telegram loop refreshes the single tracked draft on a timer.</div>
             </div>
           </article>

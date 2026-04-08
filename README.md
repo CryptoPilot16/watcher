@@ -13,6 +13,8 @@ It provides:
 - an in-app `/docs` tab that explains the dashboard and Telegram behavior
 - a simplified project shell with logo, title, subtitle, tabs, and the Snapmolt tracker
 - a task-first Snapmolt mirror that filters updater noise from the primary panel
+- merged recent Snapmolt PM2 log reading so restarts and log rotation do not hide recent background activity
+- plain-language call activity rendering for Twilio status events
 - a live `/api/watch` snapshot endpoint
 - a Telegram updater with draft-style teleprompter support for private chats
 - PM2 processes for the web app and Telegram loop
@@ -66,6 +68,7 @@ Deploy flow:
 - `POST /api/watch-telegram` triggers a Telegram sync
 - in private chats the bot uses Telegram draft streaming to keep a single teleprompter-style draft updated
 - the teleprompter text is built from filtered Snapmolt activity, latest error, and a short recent-activity list
+- recent Snapmolt activity is read from both the active and rotated PM2 logs so completed background actions still appear after a restart
 - if draft streaming is unavailable, the bot falls back to the standard tracked-message flow
 - `POST /api/watch-telegram/init` forces a fresh tracking cycle
 - local state is stored in `.watch-telegram-state.json`

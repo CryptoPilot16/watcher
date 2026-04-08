@@ -20,6 +20,12 @@ function run(command: string) {
   }
 }
 
+function readMergedLog(glob: string, perFileLines: number, totalLines: number) {
+  const command = `files=$(ls -1t ${glob} 2>/dev/null | head -n 2); if [ -z "$files" ]; then exit 0; fi; for file in $files; do tail -n ${perFileLines} "$file" 2>/dev/null; done | tail -n ${totalLines}`;
+
+  return run(`/bin/bash -lc '${command}'`);
+}
+
 export function getWatchSnapshot(): WatchSnapshot {
   return {
     ok: true,
@@ -29,8 +35,8 @@ export function getWatchSnapshot(): WatchSnapshot {
     sections: {
       pm2: run('pm2 list'),
       updateResult: run('cat /root/.openclaw/tasks/update-command.result 2>/dev/null || true'),
-      snapmoltOut: run('tail -n 60 /root/.pm2/logs/snapmolt-out.log'),
-      snapmoltErr: run('tail -n 60 /root/.pm2/logs/snapmolt-error.log'),
+      snapmoltOut: readMergedLog('/root/.pm2/logs/snapmolt-out*.log', 120, 160),
+      snapmoltErr: readMergedLog('/root/.pm2/logs/snapmolt-error*.log', 80, 120),
       echoesOut: run('tail -n 40 /root/.pm2/logs/echoes-backend-out.log'),
       echoesErr: run('tail -n 40 /root/.pm2/logs/echoes-backend-error.log'),
     },

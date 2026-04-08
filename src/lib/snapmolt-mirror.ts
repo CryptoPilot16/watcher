@@ -5,6 +5,40 @@ function getLines(value?: string) {
     .filter(Boolean);
 }
 
+function extractTwilioPayload(line: string) {
+  if (!line.startsWith('[twilio-status]')) return null;
+
+  try {
+    return JSON.parse(line.replace(/^\[twilio-status\]\s*/, ''));
+  } catch {
+    return null;
+  }
+}
+
+function formatPhone(value: string) {
+  if (!value) return 'unknown number';
+  return value.replace(/\s+/g, '');
+}
+
+function formatDuration(seconds?: string) {
+  if (!seconds) return '';
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return ` (${value}s)`;
+}
+
+function formatLine(line: string) {
+  const twilio = extractTwilioPayload(line);
+  if (twilio) {
+    const target = formatPhone(String(twilio.To || twilio.Called || ''));
+    const status = String(twilio.CallStatus || 'updated').replace(/-/g, ' ');
+    const duration = formatDuration(String(twilio.CallDuration || twilio.Duration || ''));
+    return `Outbound call to ${target} ${status}${duration}`;
+  }
+
+  return line;
+}
+
 function isNoiseLine(line: string) {
   return (
     !line ||
@@ -17,21 +51,21 @@ function isNoiseLine(line: string) {
 }
 
 function isSecondaryLine(line: string) {
-  return line.startsWith('[twilio-status]');
+  return false;
 }
 
 function pickLatest(lines: string[]) {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (!isNoiseLine(line) && !isSecondaryLine(line)) {
-      return line;
+      return formatLine(line);
     }
   }
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (!isNoiseLine(line)) {
-      return line;
+      return formatLine(line);
     }
   }
 
@@ -59,8 +93,10 @@ export function getRecentSnapmoltActivity(snapmoltOut?: string, limit = 3) {
   for (let index = lines.length - 1; index >= 0 && picked.length < limit; index -= 1) {
     const line = lines[index];
     if (isNoiseLine(line)) continue;
-    if (picked.includes(line)) continue;
-    picked.push(line);
+    const formatted = formatLine(line);
+    if (!formatted) continue;
+    if (picked.includes(formatted)) continue;
+    picked.push(formatted);
   }
 
   return picked.reverse();
