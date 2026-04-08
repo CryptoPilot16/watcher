@@ -110,7 +110,7 @@ function isNoiseLine(line: string) {
   );
 }
 
-function isSecondaryLine(line: string) {
+function isSecondaryLine(_line: string) {
   return false;
 }
 
