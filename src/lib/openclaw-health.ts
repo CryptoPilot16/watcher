@@ -184,7 +184,7 @@ export function computeHealth(
   const level: HealthLevel = hasError ? 'error' : hasWarn ? 'warn' : 'ok';
 
   const labels: Record<HealthLevel, string> = {
-    ok:    'NOMINAL',
+    ok:    'GREEN',
     warn:  'DEGRADED',
     error: 'FAULT',
   };

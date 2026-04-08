@@ -25,10 +25,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          key: password,
-          redirectTo,
-        }),
+        body: JSON.stringify({ key: password, redirectTo }),
       });
 
       const json = await res.json();
@@ -47,20 +44,23 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-6 sm:px-6">
-      <section className="w-full max-w-md overflow-hidden rounded-[28px] border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(180deg,rgba(27,22,15,0.96),rgba(18,15,11,0.96))] shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-        <div className="flex flex-col gap-6 p-5 sm:p-7">
-          <div className="flex justify-center">
-            <img src="/watch-logo-v4.svg" alt="CLAWNUX Watch" className="h-16 w-auto sm:h-20" />
+      <section className="w-full max-w-sm overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(180deg,rgba(27,22,15,0.97),rgba(18,15,11,0.97))] shadow-[0_8px_32px_rgba(0,0,0,0.32)]">
+        {/* Header bar */}
+        <div className="border-b border-[var(--watch-panel-border)] px-5 py-3 flex items-center gap-3">
+          <img src="/watch-logo-v4.svg" alt="WATCHER" className="h-8 w-8 rounded" />
+          <div>
+            <div className="text-[9px] uppercase tracking-[0.3em] text-[var(--watch-text-muted)]">CLAWNUX</div>
+            <div className="text-sm font-semibold tracking-[0.12em] uppercase text-[var(--watch-text)]">WATCHER</div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-5 p-5">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-[var(--watch-accent-strong)]">
+            authentication
           </div>
 
-          <div className="text-center">
-            <h1 className="text-xl font-semibold uppercase tracking-[0.18em] text-[var(--watch-text)]">
-              Authentication
-            </h1>
-          </div>
-
-          <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            <label className="text-sm text-[var(--watch-text)]">
+          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5 text-[10px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">
               password
               <input
                 type="password"
@@ -71,13 +71,13 @@ export default function LoginPage() {
                 autoCorrect="off"
                 inputMode="text"
                 spellCheck={false}
-                className="mt-2 w-full rounded-2xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] px-4 py-3 text-base text-[var(--watch-text)] outline-none transition focus:border-[var(--watch-accent)] focus:bg-[rgba(255,255,255,0.02)]"
-                placeholder="password"
+                className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] px-3 py-2.5 text-sm text-[var(--watch-text)] outline-none transition focus:border-[var(--watch-accent)] focus:bg-[rgba(255,255,255,0.02)] font-mono"
+                placeholder="enter password"
               />
             </label>
 
             {error ? (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-[var(--watch-danger)]">
+              <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-[var(--watch-danger)]">
                 {error}
               </div>
             ) : null}
@@ -85,7 +85,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-2xl border border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] px-4 py-3 text-base font-medium text-[var(--watch-text)] transition hover:bg-[rgba(212,186,104,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded border border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] px-4 py-2.5 text-xs font-medium uppercase tracking-[0.15em] text-[var(--watch-text)] transition hover:bg-[rgba(212,186,104,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'authenticating...' : 'authenticate'}
             </button>

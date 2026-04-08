@@ -16,13 +16,15 @@ export function WatchShellHeader({ activeTab }: WatchShellHeaderProps) {
     <header className="overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(180deg,rgba(27,22,15,0.97),rgba(18,15,11,0.97))] shadow-[0_8px_32px_rgba(0,0,0,0.32)] backdrop-blur">
       <div className="flex flex-col gap-3 p-4 sm:p-5">
         <div className="flex min-w-0 items-center gap-3">
-          <img src="/watch-logo-v4.svg" alt="CLAWNUX Watch" className="h-10 w-auto shrink-0 sm:h-12" />
+          <Link href="/watch" className="shrink-0">
+            <img src="/watch-logo-v4.svg" alt="WATCHER" className="h-10 w-10 sm:h-12 sm:w-12 rounded" />
+          </Link>
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.3em] text-[var(--watch-text-muted)]">
-              CLAWNUX WATCH
+              CLAWNUX
             </div>
-            <div className="mt-0.5 text-base font-semibold tracking-tight text-[var(--watch-text)] sm:text-xl">
-              Private monitoring dashboard
+            <div className="mt-0.5 text-xl font-semibold tracking-[0.08em] uppercase text-[var(--watch-text)] sm:text-2xl">
+              WATCHER
             </div>
           </div>
         </div>
