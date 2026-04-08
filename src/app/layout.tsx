@@ -3,10 +3,11 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'CLAWNUX Watch',
-  description: '🛰️ Private monitoring dashboard',
+  description: 'Private monitoring dashboard',
   icons: {
-    icon: [{ url: '/watch-favicon-v3.svg', type: 'image/svg+xml' }],
-    shortcut: '/watch-favicon-v3.svg',
+    icon: [{ url: '/watch-favicon-v4.svg', type: 'image/svg+xml' }],
+    shortcut: '/watch-favicon-v4.svg',
+    apple: '/apple-touch-icon.png',
   },
   manifest: '/site.webmanifest',
 };

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { WatchShellHeader } from '@/components/watch-shell-header';
+import { getPrimarySnapmoltText } from '@/lib/snapmolt-mirror';
 
 type WatchData = {
   ok: boolean;
@@ -11,27 +12,9 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-function cleanBlock(value?: string) {
-  return value?.trim() || '';
-}
-
 function getPrimaryTask(data: WatchData | null) {
   if (!data) return 'loading current Snapmolt task';
-
-  const updateResult = cleanBlock(data.sections.updateResult);
-  if (updateResult) return updateResult;
-
-  const snapmoltOut = cleanBlock(data.sections.snapmoltOut);
-  if (snapmoltOut) {
-    const lines = snapmoltOut
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    return lines.at(-1) || 'Snapmolt is running but has not emitted a task summary yet';
-  }
-
-  return 'No Snapmolt task text available yet';
+  return getPrimarySnapmoltText(data.sections.snapmoltOut, data.sections.snapmoltErr);
 }
 
 export default function WatchPage() {

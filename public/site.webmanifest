@@ -1,10 +1,10 @@
 {
   "name": "CLAWNUX Watch",
   "short_name": "Watch",
-  "description": "🛰️ Private monitoring dashboard",
+  "description": "Private monitoring dashboard",
   "icons": [
     {
-      "src": "/watch-favicon-v3.svg",
+      "src": "/watch-favicon-v4.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }

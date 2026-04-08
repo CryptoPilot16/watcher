@@ -1,6 +1,6 @@
 {
   "name": "clawnux-watcher",
-  "description": "🛰️ Private monitoring dashboard",
+  "description": "Private monitoring dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {

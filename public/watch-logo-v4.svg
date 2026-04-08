@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
   <defs>
-    <linearGradient id="frame" x1="16" y1="14" x2="96" y2="92" gradientUnits="userSpaceOnUse">
+    <linearGradient id="frameV4" x1="16" y1="14" x2="96" y2="92" gradientUnits="userSpaceOnUse">
       <stop stop-color="#211a11"/>
       <stop offset="1" stop-color="#120f0b"/>
     </linearGradient>
-    <linearGradient id="glyph" x1="34" y1="24" x2="78" y2="75" gradientUnits="userSpaceOnUse">
+    <linearGradient id="glyphV4" x1="34" y1="24" x2="78" y2="75" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F0DF9D"/>
       <stop offset="1" stop-color="#CAA956"/>
     </linearGradient>
   </defs>
   <rect width="96" height="96" rx="22" fill="#0F0D09"/>
-  <rect x="14" y="14" width="78" height="74" rx="20" fill="url(#frame)" stroke="#CBAE5F" stroke-width="2"/>
+  <rect x="14" y="14" width="78" height="74" rx="20" fill="url(#frameV4)" stroke="#CBAE5F" stroke-width="2"/>
   <path d="M33 31h41" stroke="#47391D" stroke-width="4" stroke-linecap="round"/>
   <path d="M33 52h24" stroke="#47391D" stroke-width="4" stroke-linecap="round"/>
   <path d="M33 73h36" stroke="#47391D" stroke-width="4" stroke-linecap="round"/>
-  <path d="M52 29v44" stroke="url(#glyph)" stroke-width="5" stroke-linecap="round"/>
-  <path d="m52 51 16-16" stroke="url(#glyph)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M52 29v44" stroke="url(#glyphV4)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m52 51 16-16" stroke="url(#glyphV4)" stroke-width="5" stroke-linecap="round"/>
   <circle cx="68" cy="35" r="5" fill="#F0DF9D"/>
   <circle cx="52" cy="51" r="7" fill="#CAA956"/>
 </svg>

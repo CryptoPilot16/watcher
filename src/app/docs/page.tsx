@@ -9,7 +9,7 @@ const appSections = [
   {
     title: 'Primary task panel',
     body:
-      'The large top panel is reserved for the current Snapmolt task text. It prefers the latest task result file and falls back to the newest visible Snapmolt log line if no task text is available.',
+      'The large top panel is reserved for current Snapmolt activity. It prefers meaningful live Snapmolt output and ignores generic updater noise and boilerplate startup lines.',
   },
   {
     title: 'Secondary runtime panels',

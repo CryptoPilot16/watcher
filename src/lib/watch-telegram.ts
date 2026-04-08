@@ -1,6 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getWatchSnapshot, type WatchSnapshot } from '@/lib/watch-data';
+import {
+  getLatestSnapmoltActivity,
+  getLatestSnapmoltError,
+  getPrimarySnapmoltText,
+  getRecentSnapmoltActivity,
+} from '@/lib/snapmolt-mirror';
 
 type TelegramState = {
   chatId?: string;
@@ -117,52 +123,15 @@ function block(title: string, body: string) {
   return `${title}\n${'='.repeat(title.length)}\n${body.trim() || '(empty)'}`;
 }
 
-function getLines(value?: string) {
-  return (value || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function getLatestVisibleLine(value?: string) {
-  const lines = getLines(value);
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (!line || line === '(empty)') continue;
-    if (line.startsWith('at ')) continue;
-    return line;
-  }
-
-  return '';
-}
-
-function getRecentLines(value?: string, limit = 4) {
-  const lines = getLines(value);
-  const picked: string[] = [];
-
-  for (let index = lines.length - 1; index >= 0 && picked.length < limit; index -= 1) {
-    const line = lines[index];
-    if (!line || line === '(empty)' || line.startsWith('at ')) continue;
-    if (picked.includes(line)) continue;
-    picked.push(line);
-  }
-
-  return picked.reverse();
-}
-
 function getPrimaryTask(snapshot: WatchSnapshot) {
-  const updateResult = snapshot.sections.updateResult?.trim();
-  if (updateResult) return updateResult;
-
-  return getLatestVisibleLine(snapshot.sections.snapmoltOut) || 'No active task text available';
+  return getPrimarySnapmoltText(snapshot.sections.snapmoltOut, snapshot.sections.snapmoltErr);
 }
 
 function formatTeleprompterText(snapshot: WatchSnapshot) {
   const currentTask = getPrimaryTask(snapshot);
-  const latestActivity = getLatestVisibleLine(snapshot.sections.snapmoltOut) || 'No recent activity';
-  const latestError = getLatestVisibleLine(snapshot.sections.snapmoltErr);
-  const recentActivity = getRecentLines(snapshot.sections.snapmoltOut, 3);
+  const latestActivity = getLatestSnapmoltActivity(snapshot.sections.snapmoltOut);
+  const latestError = getLatestSnapmoltError(snapshot.sections.snapmoltErr);
+  const recentActivity = getRecentSnapmoltActivity(snapshot.sections.snapmoltOut, 3);
 
   const lines = [
     'SNAPMOLT TELEPROMPTER',

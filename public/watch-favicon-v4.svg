@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="frameFav" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="frameFavV4" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
       <stop stop-color="#211a11"/>
       <stop offset="1" stop-color="#120f0b"/>
     </linearGradient>
-    <linearGradient id="glyphFav" x1="21" y1="18" x2="43" y2="46" gradientUnits="userSpaceOnUse">
+    <linearGradient id="glyphFavV4" x1="21" y1="18" x2="43" y2="46" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F0DF9D"/>
       <stop offset="1" stop-color="#CAA956"/>
     </linearGradient>
   </defs>
-  <rect x="5" y="5" width="54" height="54" rx="16" fill="url(#frameFav)" stroke="#CBAE5F" stroke-width="2"/>
+  <rect x="5" y="5" width="54" height="54" rx="16" fill="url(#frameFavV4)" stroke="#CBAE5F" stroke-width="2"/>
   <path d="M18 21h28" stroke="#47391D" stroke-width="3" stroke-linecap="round"/>
   <path d="M18 34h16" stroke="#47391D" stroke-width="3" stroke-linecap="round"/>
   <path d="M18 47h23" stroke="#47391D" stroke-width="3" stroke-linecap="round"/>
-  <path d="M31 18v29" stroke="url(#glyphFav)" stroke-width="4" stroke-linecap="round"/>
-  <path d="m31 34 10-10" stroke="url(#glyphFav)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M31 18v29" stroke="url(#glyphFavV4)" stroke-width="4" stroke-linecap="round"/>
+  <path d="m31 34 10-10" stroke="url(#glyphFavV4)" stroke-width="4" stroke-linecap="round"/>
   <circle cx="41" cy="24" r="3.5" fill="#F0DF9D"/>
   <circle cx="31" cy="34" r="5" fill="#CAA956"/>
 </svg>

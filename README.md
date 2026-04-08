@@ -1,6 +1,6 @@
 # CLAWNUX Watch
 
-🛰️ Private monitoring dashboard for `watch.clawnux.com`.
+Private monitoring dashboard.
 
 ## Overview
 
@@ -78,4 +78,4 @@ Deploy flow:
 - `scripts/watch-telegram-loop.mjs` for the periodic Telegram updater
 - `src/components/watch-shell-header.tsx` for the shared Watch and Docs tab header
 - `ecosystem.config.cjs` for PM2 process definitions
-- `public/watch-logo-v3.svg` and `public/watch-favicon-v3.svg` for the current branding
+- `public/watch-logo-v4.svg` and `public/watch-favicon-v4.svg` for the current branding
