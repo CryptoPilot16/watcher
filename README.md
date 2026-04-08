@@ -1,86 +1,106 @@
 # CLAWNUX Watch
 
-Private monitoring dashboard.
+Private mission-control dashboard for the OpenClaw agent stack.
 
 ## Overview
 
-CLAWNUX Watch is a standalone Next.js watcher app built to keep the current Snapmolt task front and center while still exposing the surrounding runtime context.
+CLAWNUX Watch is a Next.js monitoring app that gives a live, consolidated view of everything
+OpenClaw is doing — active Telegram sessions, task runs, flows, cron jobs, auth state, and
+Snapmolt voice/HTTP activity — in a single password-gated dashboard.
 
 It provides:
 
-- password-gated access with `WATCH_PASSWORD`
-- a mobile-friendly `/watch` dashboard
-- an in-app `/docs` tab that explains the dashboard and Telegram behavior
-- a simplified project shell with logo, title, subtitle, tabs, and the Snapmolt tracker
-- a task-first Snapmolt mirror that filters updater noise from the primary panel
-- merged recent Snapmolt PM2 log reading so restarts and log rotation do not hide recent background activity
-- plain-language call activity rendering for Twilio status events
-- a live `/api/watch` snapshot endpoint
-- a Telegram updater with draft-style teleprompter support for private chats
-- PM2 processes for the web app and Telegram loop
-- custom watcher branding with versioned logo and favicon assets
+- **Mission status banner** — color-coded NOMINAL / DEGRADED / FAULT with pulsing "in session" indicator
+- **Live session feed** — real-time Telegram conversation turns (user → agent → tool) from the active session JSONL, newest first
+- **Health cards** — per-subsystem status: agent, auth providers, session staleness
+- **Task runs** — full history from `runs.sqlite` with terminal summaries and error details
+- **Flows** — multi-step flow runs from `flows/registry.sqlite`
+- **Cron** — recent cron job executions from `cron/runs/*.jsonl`
+- **Snapmolt mirror** — tagged voice/HTTP/event activity with breakdown chart
+- **PM2 processes** — process table and live log tail
+- **Auth state** — per-provider token health (anthropic, openai, telegram, etc.)
+- **Version + model badge** — always-visible OpenClaw version and active model
+- Mobile-optimised, PWA-installable (`start_url: /watch`, maskable icons)
+- Password-gated with `WATCH_PASSWORD`; `watch_access` cookie valid 30 days
 
 ## Environment
 
 Create `.env.local` from `.env.example` and set:
 
-- `WATCH_PASSWORD`
-- `WATCH_TELEGRAM_BOT_TOKEN`
-- `WATCH_TELEGRAM_CHAT_ID`
-- `WATCH_URL`
-- `WATCH_TELEGRAM_INTERVAL_MS`
+| Variable | Purpose |
+|---|---|
+| `WATCH_PASSWORD` | Required — gates all routes |
+| `WATCH_TELEGRAM_BOT_TOKEN` | Telegram bot for periodic status pings |
+| `WATCH_TELEGRAM_CHAT_ID` | Target chat (auto-detected if blank) |
+| `WATCH_URL` | Internal URL of the watcher (`http://127.0.0.1:3012`) |
+| `WATCH_TELEGRAM_INTERVAL_MS` | Telegram sync interval (default 60 000) |
 
-Notes:
+## OpenClaw paths read
 
-- `WATCH_PASSWORD` is required in the environment
-- the app no longer relies on a hardcoded password fallback in repo code
+| Source | What it shows |
+|---|---|
+| `~/.openclaw/agents/main/sessions/*.jsonl` | Live session conversation turns |
+| `~/.openclaw/agents/main/sessions/sessions.json` | Session status and staleness |
+| `~/.openclaw/runs.sqlite` | Task run history |
+| `~/.openclaw/flows/registry.sqlite` | Multi-step flow runs |
+| `~/.openclaw/cron/runs/*.jsonl` | Cron job executions |
+| `~/.openclaw/openclaw.json` | Version, model, heartbeat config |
+| `~/.openclaw/auth-state.json` | Provider auth health |
 
 ## Local Development
 
-1. `cd /opt/watcher`
-2. Copy `.env.example` to `.env.local`
-3. Run `npm install`
-4. Run `npm run dev`
+```bash
+cd /opt/watcher
+cp .env.example .env.local   # fill in values
+npm install
+npm run dev
+```
 
 ## Production Deploy
 
-This project is deployed from:
+- Caddy → `https://watch.clawnux.com`
+- PM2 runs `clawnux-watcher-web` (port 3012) and `clawnux-watcher-telegram`
 
-- `/opt/watcher`
+```bash
+cd /opt/watcher
+npm install
+npm run build
+pm2 restart ecosystem.config.cjs --only clawnux-watcher-web,clawnux-watcher-telegram --update-env
+pm2 save
+```
 
-Core runtime shape:
+## Routes
 
-- Caddy serves `https://watch.clawnux.com`
-- PM2 runs `clawnux-watcher-web`
-- PM2 runs `clawnux-watcher-telegram`
-- the web app listens on `127.0.0.1:3012`
-
-Deploy flow:
-
-1. `cd /opt/watcher`
-2. `npm install`
-3. `npm run build`
-4. `pm2 restart ecosystem.config.cjs --only clawnux-watcher-web,clawnux-watcher-telegram --update-env`
-5. `pm2 save`
-
-## Telegram Behavior
-
-- `POST /api/watch-telegram` triggers a Telegram sync
-- in private chats the bot uses Telegram draft streaming to keep a single teleprompter-style draft updated
-- the teleprompter text is built from filtered Snapmolt activity, latest error, and a short recent-activity list
-- recent Snapmolt activity is read from both the active and rotated PM2 logs so completed background actions still appear after a restart
-- if draft streaming is unavailable, the bot falls back to the standard tracked-message flow
-- `POST /api/watch-telegram/init` forces a fresh tracking cycle
-- local state is stored in `.watch-telegram-state.json`
-- if `WATCH_TELEGRAM_CHAT_ID` is empty, the bot uses the latest chat that messaged it
+| Route | Description |
+|---|---|
+| `/watch` | Live ops dashboard (status / runs / flows / snapmolt / logs / processes tabs) |
+| `/docs` | Built-in reference |
+| `/api/watch` | JSON runtime snapshot — auth required |
+| `/api/watch-telegram` | Triggers Telegram sync |
+| `/api/watch-telegram/init` | Force fresh tracking cycle |
 
 ## Key Files
 
-- `src/app/watch/page.tsx` for the main watcher UI
-- `src/app/docs/page.tsx` for the built-in product and integration documentation
-- `src/lib/watch-data.ts` for runtime data collection
-- `src/lib/watch-telegram.ts` for Telegram formatting and sync
-- `scripts/watch-telegram-loop.mjs` for the periodic Telegram updater
-- `src/components/watch-shell-header.tsx` for the shared Watch and Docs tab header
-- `ecosystem.config.cjs` for PM2 process definitions
-- `public/watch-logo-v4.svg` and `public/watch-favicon-v4.svg` for the current branding
+| File | Purpose |
+|---|---|
+| `src/app/watch/page.tsx` | Main dashboard UI |
+| `src/app/docs/page.tsx` | Docs tab content |
+| `src/lib/watch-data.ts` | All data collection (SQLite, JSONL, shell) |
+| `src/lib/openclaw-health.ts` | Health computation and color coding |
+| `src/lib/snapmolt-mirror.ts` | Snapmolt activity parsing and tagging |
+| `src/components/watch-shell-header.tsx` | Nav shell with tabs |
+| `ecosystem.config.cjs` | PM2 process definitions |
+
+## Performance
+
+The watcher is read-only. Each API poll runs a handful of `tail -n` and `sqlite3 -json`
+commands — no file locks, no persistent background workers beyond PM2. Overhead on the host
+is negligible (~66 MB RAM, sub-millisecond I/O per request).
+
+## Telegram Behavior
+
+- `POST /api/watch-telegram` triggers a sync
+- in private chats the bot uses Telegram draft streaming (teleprompter mode)
+- if unavailable, falls back to standard tracked-message flow
+- state stored in `.watch-telegram-state.json`
+- `WATCH_TELEGRAM_CHAT_ID` blank → auto-uses latest chat that messaged the bot

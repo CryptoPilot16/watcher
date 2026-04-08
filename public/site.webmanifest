@@ -2,14 +2,30 @@
   "name": "CLAWNUX Watch",
   "short_name": "Watch",
   "description": "Private monitoring dashboard",
+  "start_url": "/watch",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0f0d09",
+  "background_color": "#0f0d09",
   "icons": [
     {
-      "src": "/watch-favicon-v4.svg",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/watch-icon-v4.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
-  ],
-  "theme_color": "#040704",
-  "background_color": "#040704",
-  "display": "standalone"
+  ]
 }

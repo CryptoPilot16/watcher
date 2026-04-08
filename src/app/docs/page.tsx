@@ -1,20 +1,43 @@
 import { WatchShellHeader } from '@/components/watch-shell-header';
 
-const appSections = [
+const dashboardSections = [
   {
-    title: 'What the dashboard does',
+    title: 'Mission status banner',
     body:
-      'The Watch tab is the live operations surface. It keeps the current Snapmolt task in the primary position and reduces the surrounding chrome so the operator sees the tracked work first.',
+      'Always-visible banner at the top of the status tab. Color-coded: green NOMINAL, amber DEGRADED, red FAULT. Shows the active OpenClaw version, model in use, and a pulsing "in session" indicator whenever the agent is actively processing a Telegram conversation.',
+  },
+  {
+    title: 'Live session feed',
+    body:
+      'Reads the active session JSONL directly from the OpenClaw sessions directory. Shows real-time conversation turns — user messages, agent replies, and tool calls — newest first. Updates on every dashboard poll. This is the only source that captures live Telegram conversations; runs.sqlite only records discrete task completions.',
+  },
+  {
+    title: 'Health cards',
+    body:
+      'Per-subsystem health derived from auth-state.json and runs.sqlite. Flags auth providers in cooldown or error state, consecutive run failures (3+ = FAULT), and session staleness (>2h = DEGRADED, >8h = FAULT). A session with status=running is exempt from staleness warnings.',
+  },
+];
+
+const activitySections = [
+  {
+    title: 'Task runs',
+    body:
+      'Full history from runs.sqlite — task name, status, start time, duration, and terminal summary. Filters out health-probe noise ("Reply with exactly OK"). Error detail shown inline for failed runs.',
+  },
+  {
+    title: 'Flows',
+    body:
+      'Multi-step flow runs from flows/registry.sqlite. Shows goal, current step, and any blocked summary so you can see where a long-running flow is stuck.',
+  },
+  {
+    title: 'Cron',
+    body:
+      'Recent cron job executions read from cron/runs/*.jsonl. Deduplicated by jobId, showing the last run time and result for each scheduled task.',
   },
   {
     title: 'Snapmolt mirror',
     body:
-      'The main panel is a Snapmolt mirror. It prefers meaningful live Snapmolt output, filters updater noise and startup boilerplate, reads across recent PM2 log rotation, and avoids letting generic lines replace real activity.',
-  },
-  {
-    title: 'Interface shape',
-    body:
-      'The project shell is intentionally simple: logo, title, subtitle, tabs, and the task-first tracker. Supporting detail stays secondary so desktop and mobile views remain easy to scan.',
+      'Tagged activity feed from Snapmolt PM2 logs. Each line is classified as voice, http, event, error, system, task, or log. A breakdown bar chart shows the distribution of activity types across the current window.',
   },
 ];
 
@@ -22,40 +45,35 @@ const telegramSections = [
   {
     title: 'Telegram integration',
     body:
-      'The app includes a Telegram loop that periodically calls the local watcher API and mirrors the latest operator summary into Telegram. The loop is managed by PM2 and loads its configuration from .env.local.',
+      'The watcher includes a Telegram loop (clawnux-watcher-telegram) that periodically polls /api/watch and mirrors a status summary into your configured chat.',
   },
   {
     title: 'Teleprompter mode',
     body:
-      'For private chats, the bot uses Telegram draft streaming through sendMessageDraft. That keeps one teleprompter-style draft focused on the current Snapmolt task, the latest activity line, the latest error, and a short recent activity list drawn from the same merged Snapmolt activity feed as the web dashboard.',
-  },
-  {
-    title: 'Fallback behavior',
-    body:
-      'If Telegram draft streaming is unavailable for the chat, the bot falls back to the standard single-message workflow and edits or recreates the tracked message as needed. The state file stores the active mode, chat id, and tracking identifiers.',
+      'For private chats, the bot uses Telegram draft streaming to maintain a single live-updating summary message. Falls back to standard edit-in-place if draft streaming is unavailable.',
   },
 ];
 
 export default function DocsPage() {
   return (
-    <main className="min-h-dvh px-4 py-4 sm:px-6 sm:py-6">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+    <main className="min-h-dvh px-3 py-3 sm:px-5 sm:py-5">
+      <div className="mx-auto flex max-w-6xl flex-col gap-3">
         <WatchShellHeader activeTab="docs" />
 
-        <section className="overflow-hidden rounded-[28px] border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(34,28,18,0.96),rgba(18,15,11,0.96))] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
-          <div className="border-b border-[var(--watch-panel-border)] px-4 py-3 text-[11px] uppercase tracking-[0.25em] text-[var(--watch-accent-strong)]">
+        <section className="overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(24,20,14,0.97),rgba(16,13,9,0.97))] shadow-[0_8px_40px_rgba(0,0,0,0.28)]">
+          <div className="border-b border-[var(--watch-panel-border)] px-4 py-3 text-[10px] uppercase tracking-[0.3em] text-[var(--watch-accent-strong)]">
             documentation
           </div>
-          <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2">
-            <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-5">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
-                app flow
+          <div className="grid gap-3 p-4 sm:p-5 lg:grid-cols-2">
+            <article className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-4">
+              <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
+                status tab
               </div>
               <div className="mt-3 flex flex-col gap-4">
-                {appSections.map((section) => (
+                {dashboardSections.map((section) => (
                   <div key={section.title}>
-                    <h2 className="text-base font-semibold text-[var(--watch-text)]">{section.title}</h2>
-                    <p className="mt-2 text-sm leading-7 text-[var(--watch-text-muted)]">
+                    <h2 className="text-sm font-semibold text-[var(--watch-text)]">{section.title}</h2>
+                    <p className="mt-1.5 text-xs leading-6 text-[var(--watch-text-muted)]">
                       {section.body}
                     </p>
                   </div>
@@ -63,15 +81,15 @@ export default function DocsPage() {
               </div>
             </article>
 
-            <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-5">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
-                telegram flow
+            <article className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] p-4">
+              <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
+                activity tabs
               </div>
               <div className="mt-3 flex flex-col gap-4">
-                {telegramSections.map((section) => (
+                {activitySections.map((section) => (
                   <div key={section.title}>
-                    <h2 className="text-base font-semibold text-[var(--watch-text)]">{section.title}</h2>
-                    <p className="mt-2 text-sm leading-7 text-[var(--watch-text-muted)]">
+                    <h2 className="text-sm font-semibold text-[var(--watch-text)]">{section.title}</h2>
+                    <p className="mt-1.5 text-xs leading-6 text-[var(--watch-text-muted)]">
                       {section.body}
                     </p>
                   </div>
@@ -81,40 +99,52 @@ export default function DocsPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
               routes
             </div>
-            <div className="mt-3 text-sm leading-7 text-[var(--watch-text)]">
-              <div>`/watch` is the live dashboard.</div>
-              <div>`/docs` explains the product and integration behavior.</div>
-              <div>`/api/watch` exposes the current runtime snapshot.</div>
-              <div>`/api/watch-telegram` triggers a Telegram teleprompter sync.</div>
+            <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
+              <div>`/watch` — live ops dashboard</div>
+              <div>`/docs` — this reference</div>
+              <div>`/api/watch` — JSON snapshot</div>
+              <div>`/api/watch-telegram` — Telegram sync</div>
             </div>
           </article>
 
-          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
+          <article className="rounded border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
               auth
             </div>
-            <div className="mt-3 text-sm leading-7 text-[var(--watch-text)]">
-              <div>Access is controlled by `WATCH_PASSWORD`.</div>
-              <div>The app no longer carries a hardcoded password fallback in repo code.</div>
-              <div>Authenticated access is stored in the `watch_access` cookie.</div>
+            <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
+              <div>Gated by `WATCH_PASSWORD` env var.</div>
+              <div>No hardcoded fallback in repo code.</div>
+              <div>`watch_access` cookie, 30-day expiry.</div>
             </div>
           </article>
 
-          <article className="rounded-[24px] border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] md:col-span-2 xl:col-span-1">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
+          <article className="rounded border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
               operations
             </div>
-            <div className="mt-3 text-sm leading-7 text-[var(--watch-text)]">
-              <div>The web app listens on `127.0.0.1:3012`.</div>
-              <div>Caddy serves `watch.clawnux.com`.</div>
-              <div>PM2 manages both the web surface and the Telegram loop.</div>
-              <div>The watcher merges active and rotated Snapmolt PM2 logs before rendering activity.</div>
-              <div>The Telegram loop refreshes the single tracked draft on a timer.</div>
+            <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
+              <div>Web on `127.0.0.1:3012`, Caddy proxy.</div>
+              <div>PM2: watcher-web + watcher-telegram.</div>
+              <div>Build required before restart.</div>
+            </div>
+          </article>
+
+          <article className="rounded border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
+              telegram
+            </div>
+            <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
+              {telegramSections.map((s) => (
+                <div key={s.title}>
+                  <span className="font-medium text-[var(--watch-text-bright)]">{s.title}. </span>
+                  <span className="text-[var(--watch-text-muted)]">{s.body}</span>
+                </div>
+              ))}
             </div>
           </article>
         </section>
