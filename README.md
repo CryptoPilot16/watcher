@@ -2,6 +2,8 @@
 
 Private mission-control dashboard for the OpenClaw agent stack.
 
+![Watcher landing page desktop preview](docs/images/landing-page-desktop-preview.png)
+
 ## Overview
 
 CLAWNUX Watch is a Next.js monitoring app that gives a live, consolidated view of everything
