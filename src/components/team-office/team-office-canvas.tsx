@@ -77,13 +77,50 @@ function hashLabel(label: string) {
   return hash;
 }
 
+
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topic.configured.label);
   const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
   const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
-  const top = ['#6394eb', '#8d72d8', '#4ba69d', '#cf8f54', '#739650'][(seed >> 4) % 5];
-  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551'][(seed >> 6) % 4];
+  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
+  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
+}
+
+type WorkerStyle = {
+  bodyScale: [number, number, number];
+  headScale: [number, number, number];
+  shoulderWidth: number;
+  legHeight: number;
+  hasHat: boolean;
+  hatColor: string;
+  hatBrimColor: string;
+  hasApron: boolean;
+  apronColor: string;
+  hasJacket: boolean;
+  jacketColor: string;
+  skirt: boolean;
+  accentStripe: boolean;
+};
+
+function styleForTopic(topic: TeamTopic): WorkerStyle {
+  const seed = hashLabel(topic.configured.label);
+  const archetype = seed % 7;
+  return {
+    bodyScale: archetype === 4 ? [1.02, 1.12, 1] : archetype === 5 ? [0.94, 1.04, 0.96] : [0.98, 1.08, 0.98],
+    headScale: archetype === 0 ? [0.96, 1.0, 0.96] : [1, 1, 1],
+    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.15 : 0.135,
+    legHeight: archetype === 5 ? 0.24 : 0.22,
+    hasHat: [0, 3, 4, 6].includes(archetype),
+    hatColor: ['#ffffff', '#151820', '#314b88', '#f0c84e', '#f0c84e', '#efe7db', '#5a7fd2'][archetype],
+    hatBrimColor: ['#d74f52', '#2f3340', '#2f3340', '#b6892d', '#c89a3b', '#151515', '#2f7aa6'][archetype],
+    hasApron: archetype === 5,
+    apronColor: '#f3f0ea',
+    hasJacket: archetype === 2 || archetype === 3,
+    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
+    skirt: archetype === 5 || archetype === 6,
+    accentStripe: archetype === 0 || archetype === 4,
+  };
 }
 
 type DeskLayout = {
@@ -196,6 +233,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
   const rightLeg = useRef<THREE.Group>(null);
   const chest = useRef<THREE.Mesh>(null);
   const palette = useMemo(() => paletteForTopic(topic), [topic]);
+  const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const mode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
 
@@ -252,59 +290,98 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
         <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
       </mesh>
 
-      <mesh ref={chest} castShadow position={[0, 0.45, 0.02]}>
-        <capsuleGeometry args={[0.11, 0.28, 8, 14]} />
-        <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
-      </mesh>
-      <mesh castShadow position={[0, 0.24, 0.05]}>
-        <boxGeometry args={[0.19, 0.14, 0.15]} />
-        <meshStandardMaterial color={palette.bottom} />
-      </mesh>
-      <mesh castShadow position={[0, 0.66, -0.02]}>
-        <sphereGeometry args={[0.115, 22, 22]} />
-        <meshStandardMaterial color={palette.skin} />
-      </mesh>
-      <mesh castShadow position={[0, 0.75, -0.05]}>
-        <sphereGeometry args={[0.126, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.72} />
-      </mesh>
-      <mesh castShadow position={[0, 0.66, 0.095]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.022, 0.05, 8]} />
-        <meshStandardMaterial color={palette.skin} />
-      </mesh>
 
-      <group ref={leftArm} position={[-0.14, 0.48, 0.04]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <capsuleGeometry args={[0.035, 0.2, 4, 9]} />
-          <meshStandardMaterial color={palette.top} />
-        </mesh>
-      </group>
-      <group ref={rightArm} position={[0.14, 0.48, 0.04]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <capsuleGeometry args={[0.035, 0.2, 4, 9]} />
-          <meshStandardMaterial color={palette.top} />
-        </mesh>
-      </group>
-      <group ref={leftLeg} position={[-0.065, 0.2, 0.06]}>
-        <mesh castShadow position={[0, -0.11, 0]}>
-          <capsuleGeometry args={[0.04, 0.2, 4, 9]} />
-          <meshStandardMaterial color={palette.bottom} />
-        </mesh>
-        <mesh castShadow position={[0, -0.24, 0.06]}>
-          <boxGeometry args={[0.08, 0.04, 0.14]} />
-          <meshStandardMaterial color="#292a30" />
-        </mesh>
-      </group>
-      <group ref={rightLeg} position={[0.065, 0.2, 0.06]}>
-        <mesh castShadow position={[0, -0.11, 0]}>
-          <capsuleGeometry args={[0.04, 0.2, 4, 9]} />
-          <meshStandardMaterial color={palette.bottom} />
-        </mesh>
-        <mesh castShadow position={[0, -0.24, 0.06]}>
-          <boxGeometry args={[0.08, 0.04, 0.14]} />
-          <meshStandardMaterial color="#292a30" />
-        </mesh>
-      </group>
+<group scale={style.bodyScale}>
+  <mesh ref={chest} castShadow position={[0, 0.48, 0.02]}>
+    <capsuleGeometry args={[0.1, 0.32, 8, 14]} />
+    <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
+  </mesh>
+  {style.hasJacket && (
+    <mesh castShadow position={[0, 0.48, 0.07]}>
+      <boxGeometry args={[0.25, 0.38, 0.06]} />
+      <meshStandardMaterial color={style.jacketColor} />
+    </mesh>
+  )}
+  {style.accentStripe && (
+    <mesh castShadow position={[0, 0.5, 0.1]}>
+      <boxGeometry args={[0.06, 0.32, 0.02]} />
+      <meshStandardMaterial color="#f4f0df" />
+    </mesh>
+  )}
+  <mesh castShadow position={[0, 0.24, 0.05]}>
+    <boxGeometry args={[0.18, 0.14, 0.15]} />
+    <meshStandardMaterial color={palette.bottom} />
+  </mesh>
+  {style.skirt && (
+    <mesh castShadow position={[0, 0.18, 0.05]}>
+      <coneGeometry args={[0.14, 0.22, 8]} />
+      <meshStandardMaterial color={palette.bottom} />
+    </mesh>
+  )}
+  {style.hasApron && (
+    <mesh castShadow position={[0, 0.34, 0.11]}>
+      <boxGeometry args={[0.14, 0.22, 0.03]} />
+      <meshStandardMaterial color={style.apronColor} />
+    </mesh>
+  )}
+  <mesh castShadow position={[0, 0.68, -0.02]} scale={style.headScale}>
+    <sphereGeometry args={[0.115, 22, 22]} />
+    <meshStandardMaterial color={palette.skin} />
+  </mesh>
+  <mesh castShadow position={[0, 0.78, -0.05]}>
+    <sphereGeometry args={[0.126, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
+    <meshStandardMaterial color={palette.hair} roughness={0.72} />
+  </mesh>
+  <mesh castShadow position={[0, 0.68, 0.095]} rotation={[Math.PI / 2, 0, 0]}>
+    <coneGeometry args={[0.022, 0.05, 8]} />
+    <meshStandardMaterial color={palette.skin} />
+  </mesh>
+  {style.hasHat && (
+    <group position={[0, 0.82, -0.03]}>
+      <mesh castShadow>
+        <cylinderGeometry args={[0.1, 0.1, 0.06, 16]} />
+        <meshStandardMaterial color={style.hatColor} />
+      </mesh>
+      <mesh castShadow position={[0, -0.03, 0]}>
+        <cylinderGeometry args={[0.14, 0.14, 0.012, 18]} />
+        <meshStandardMaterial color={style.hatBrimColor} />
+      </mesh>
+    </group>
+  )}
+</group>
+
+<group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
+  <mesh castShadow position={[0, -0.12, 0]}>
+    <capsuleGeometry args={[0.032, 0.24, 4, 9]} />
+    <meshStandardMaterial color={palette.top} />
+  </mesh>
+</group>
+<group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
+  <mesh castShadow position={[0, -0.12, 0]}>
+    <capsuleGeometry args={[0.032, 0.24, 4, 9]} />
+    <meshStandardMaterial color={palette.top} />
+  </mesh>
+</group>
+<group ref={leftLeg} position={[-0.058, 0.2, 0.06]}>
+  <mesh castShadow position={[0, -0.11, 0]}>
+    <capsuleGeometry args={[0.036, style.legHeight, 4, 9]} />
+    <meshStandardMaterial color={palette.bottom} />
+  </mesh>
+  <mesh castShadow position={[0, -0.25, 0.06]}>
+    <boxGeometry args={[0.08, 0.04, 0.14]} />
+    <meshStandardMaterial color="#292a30" />
+  </mesh>
+</group>
+<group ref={rightLeg} position={[0.058, 0.2, 0.06]}>
+  <mesh castShadow position={[0, -0.11, 0]}>
+    <capsuleGeometry args={[0.036, style.legHeight, 4, 9]} />
+    <meshStandardMaterial color={palette.bottom} />
+  </mesh>
+  <mesh castShadow position={[0, -0.25, 0.06]}>
+    <boxGeometry args={[0.08, 0.04, 0.14]} />
+    <meshStandardMaterial color="#292a30" />
+  </mesh>
+</group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
       <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.26, 0]} visible={emphasized || topic.live.status !== 'idle'} />
@@ -697,21 +774,19 @@ function BreakArea({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) {
 
 function buildDeskLayouts(topics: TeamTopic[]) {
   const deskRows = Math.ceil(topics.length / 2);
-  const queueCols = Math.min(4, Math.max(1, topics.length));
+  const centerSpacing = 1.04;
 
   return topics.map((topic, index) => {
     const side = index % 2;
     const row = Math.floor(index / 2);
-    const queueCol = index % queueCols;
-    const queueRow = Math.floor(index / queueCols);
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
-    const x = side === 0 ? -4.4 : 4.4;
-    const z = (row - (deskRows - 1) / 2) * 2.28 - 0.6 + jitter;
+    const x = side === 0 ? -4.8 : 4.8;
+    const z = (row - (deskRows - 1) / 2) * 2.48 - 0.65 + jitter;
     const rotationY = side === 0 ? Math.PI : 0;
-    const standbyX = (queueCol - (queueCols - 1) / 2) * 1.15;
-    const standbyZ = 0.95 + queueRow * 1.04;
-    const deliveryX = (queueCol - (queueCols - 1) / 2) * 0.92;
-    const deliveryZ = 2.95 + queueRow * 0.72;
+    const standbyX = (index - (topics.length - 1) / 2) * centerSpacing;
+    const standbyZ = 1.1;
+    const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
+    const deliveryZ = 3.22;
     const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.05, 0, z + 0.42] : [x - 0.05, 0, z - 0.42];
 
     return {
@@ -721,7 +796,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       workerDeskPosition,
       standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
-      focusPoint: [side === 0 ? x + 0.9 : x - 0.9, 0.92, z + 0.1] as [number, number, number],
+      focusPoint: [side === 0 ? x + 1.05 : x - 1.05, 0.92, z + 0.1] as [number, number, number],
     };
   });
 }
@@ -747,8 +822,8 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
 
   return (
     <>
-      <color attach="background" args={['#edf4f4']} />
-      <fog attach="fog" args={['#edf4f4', 18, 34]} />
+      <color attach="background" args={['#eef5f6']} />
+      <fog attach="fog" args={['#eef5f6', 28, 56]} />
       <ambientLight intensity={1.2} color="#ffffff" />
       <hemisphereLight args={['#ffffff', '#dbe8ea', 1.18]} />
       <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
@@ -793,7 +868,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
         );
       })}
 
-      <ContactShadows position={[0, 0.02, 0.5]} opacity={0.24} scale={26} blur={2.7} far={8} />
+      <ContactShadows position={[0, 0.02, 0.8]} opacity={0.22} scale={34} blur={3.1} far={10} />
 
       <EffectComposer>
         <Bloom intensity={0.3} luminanceThreshold={0.66} luminanceSmoothing={0.9} />
@@ -820,8 +895,8 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
 
     const overviewTarget: [number, number, number] = [0, 1.0, 1.4];
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [4.5, 3.8, 5.0] : [5.4, 4.4, 5.8];
-    const overviewOffset: [number, number, number] = isMobile ? [9.8, 7.0, 10.4] : [11.6, 8.6, 12.2];
+    const focusOffset: [number, number, number] = isMobile ? [6.2, 4.7, 7.2] : [7.4, 5.8, 8.6];
+    const overviewOffset: [number, number, number] = isMobile ? [15.5, 11.0, 16.5] : [18.5, 13.2, 20.5];
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -1050,13 +1125,13 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.16)] ${isMobile && isLandscape ? 'h-[94dvh] min-h-[420px]' : 'h-[84dvh] min-h-[560px] sm:h-[680px] lg:h-[760px]'}`}>
+    <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.12)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}>
       <Canvas
         shadows
-        camera={{ position: [11.6, 8.6, 12.2], fov: isMobile ? 38 : 34, near: 0.1, far: 120 }}
+        camera={{ position: [18.5, 13.2, 20.5], fov: isMobile ? 44 : 38, near: 0.1, far: 180 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
-          camera.lookAt(0, 1.0, 1.4);
+          camera.lookAt(0, 1.15, 1.65);
         }}
         onPointerMissed={() => {
           setSelectedTopicId(null);
@@ -1096,13 +1171,17 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={4.2}
-          maxDistance={22}
-          minPolarAngle={0.52}
-          maxPolarAngle={1.52}
+          minDistance={3.8}
+          maxDistance={40}
+          zoomSpeed={1.5}
+          panSpeed={1.15}
+          rotateSpeed={0.9}
+          minPolarAngle={0.42}
+          maxPolarAngle={1.55}
           minAzimuthAngle={-Math.PI}
           maxAzimuthAngle={Math.PI}
-          target={[0, 1.0, 1.4]}
+          target={[0, 1.15, 1.65]}
+          screenSpacePanning
           touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
           onStart={() => setCameraMode('free')}
         />
