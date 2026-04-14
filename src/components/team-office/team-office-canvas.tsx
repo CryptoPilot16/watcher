@@ -62,9 +62,9 @@ function sourceLabel(source: TeamTaskSource) {
 
 function actionLabel(topic: TeamTopic) {
   if (topic.live.status === 'running') return sourceLabel(topic.currentTask.source);
-  if (topic.live.status === 'recent') return 'moving';
+  if (topic.live.status === 'recent') return 'delivering';
   if (topic.live.status === 'missing') return 'offline';
-  return 'idle';
+  return 'in line';
 }
 
 function topicHeadline(topic: TeamTopic) {
@@ -89,9 +89,11 @@ function paletteForTopic(topic: TeamTopic) {
 type DeskLayout = {
   topic: TeamTopic;
   position: [number, number, number];
-  routeStart: [number, number, number];
-  walkTarget: [number, number, number];
   rotationY: number;
+  workerDeskPosition: [number, number, number];
+  standbyPosition: [number, number, number];
+  deliveryPosition: [number, number, number];
+  focusPoint: [number, number, number];
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
@@ -173,13 +175,19 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
   );
 }
 
-function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, emphasized }: {
+
+function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
-  localOrigin: [number, number, number];
-  localTarget: [number, number, number];
+  standbyPosition: [number, number, number];
+  deskPosition: [number, number, number];
+  deliveryPosition: [number, number, number];
+  deskFacing: number;
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
+  onHover: () => void;
+  onLeave: () => void;
+  onSelect: () => void;
 }) {
   const group = useRef<THREE.Group>(null);
   const leftArm = useRef<THREE.Group>(null);
@@ -189,41 +197,32 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
   const chest = useRef<THREE.Mesh>(null);
   const palette = useMemo(() => paletteForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const walking = topic.live.status === 'recent';
+  const mode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.getElapsedTime() + seed * 0.27;
     const stride = Math.sin(t * 5.2) * 0.46;
+    const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
+    const facing = mode === 'desk' ? deskFacing : 0;
 
-    let x = localOrigin[0];
-    let z = localOrigin[2];
-    let facing = walking ? 0 : Math.PI;
-
-    if (walking && !reducedMotion) {
-      const p = (Math.sin(t * 0.75) + 1) / 2;
-      x = localOrigin[0] + (localTarget[0] - localOrigin[0]) * p;
-      z = localOrigin[2] + (localTarget[2] - localOrigin[2]) * p;
-      facing = Math.atan2(localTarget[0] - localOrigin[0], localTarget[2] - localOrigin[2]);
-    }
-
-    group.current.position.set(x, 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), z);
+    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
-      if (walking && !reducedMotion) {
-        leftArm.current.rotation.x = stride;
-        rightArm.current.rotation.x = -stride;
-        leftLeg.current.rotation.x = -stride * 0.82;
-        rightLeg.current.rotation.x = stride * 0.82;
-      } else if (topic.live.status === 'running' && !reducedMotion) {
+      if (mode === 'desk' && !reducedMotion) {
         leftArm.current.rotation.x = -1.05 + stride * 0.09;
         rightArm.current.rotation.x = -0.95 - stride * 0.09;
         leftLeg.current.rotation.x = 0.12;
         rightLeg.current.rotation.x = 0.02;
+      } else if (mode === 'delivery') {
+        leftArm.current.rotation.x = -0.2;
+        rightArm.current.rotation.x = -0.48;
+        leftLeg.current.rotation.x = 0;
+        rightLeg.current.rotation.x = 0;
       } else {
-        leftArm.current.rotation.x = -0.84;
-        rightArm.current.rotation.x = -0.74;
+        leftArm.current.rotation.x = -0.48;
+        rightArm.current.rotation.x = -0.38;
         leftLeg.current.rotation.x = 0;
         rightLeg.current.rotation.x = 0;
       }
@@ -237,7 +236,7 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
 
   if (topic.live.status === 'missing') {
     return (
-      <group position={[localOrigin[0], 0.2, localOrigin[2]]}>
+      <group position={[standbyPosition[0], 0.2, standbyPosition[2]]}>
         <mesh castShadow>
           <cylinderGeometry args={[0.14, 0.19, 0.24, 16]} />
           <meshStandardMaterial color="#3a1515" emissive="#ff6b6b" emissiveIntensity={0.8} />
@@ -309,6 +308,25 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
       <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.26, 0]} visible={emphasized || topic.live.status !== 'idle'} />
+
+      <mesh
+        position={[0, 0.7, 0]}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          onHover();
+        }}
+        onPointerOut={(event) => {
+          event.stopPropagation();
+          onLeave();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+        }}
+      >
+        <capsuleGeometry args={[0.22, 0.95, 6, 12]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
     </group>
   );
 }
@@ -411,12 +429,11 @@ function ChairFallback({ glow, glowStrength }: { glow: THREE.Color; glowStrength
   );
 }
 
-function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed, emphasized, manifest, onHover, onLeave, onSelect }: {
+function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized, manifest, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
   position: [number, number, number];
   rotationY: number;
   reducedMotion: boolean;
-  walkTarget: [number, number, number];
   seed: number;
   emphasized: boolean;
   manifest?: Partial<OfficeAssetManifest>;
@@ -432,15 +449,6 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed,
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.54, 0.02, 0.7]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
-
-      <WorkerAvatar
-        topic={topic}
-        localOrigin={[0.05, 0, 0.42]}
-        localTarget={[walkTarget[0] - position[0], 0, walkTarget[2] - position[2]]}
-        reducedMotion={reducedMotion}
-        seed={seed}
-        emphasized={emphasized}
-      />
 
       <mesh
         position={[0, 0.6, 0.17]}
@@ -613,16 +621,31 @@ function SideTableFallback() {
 function HubFallback() {
   return (
     <>
-      <RoundedBox args={[1.72, 0.14, 1.5]} radius={0.05} smoothness={4} position={[0, 0.08, 0]} castShadow>
-        <meshStandardMaterial color="#e2edf1" />
+      <RoundedBox args={[2.9, 0.16, 1.42]} radius={0.06} smoothness={4} position={[0, 0.08, 0]} castShadow>
+        <meshStandardMaterial color="#edf2f6" />
       </RoundedBox>
-      <mesh position={[0, 0.2, 0]} castShadow>
-        <cylinderGeometry args={[0.22, 0.26, 0.22, 18]} />
-        <meshStandardMaterial color="#6fd1e4" emissive="#6fd1e4" emissiveIntensity={0.5} />
+      {[-1.15, 1.15].map((x, i) => (
+        <mesh key={i} position={[x, 0.24, -0.42]} castShadow>
+          <boxGeometry args={[0.16, 0.48, 0.16]} />
+          <meshStandardMaterial color="#9f7753" />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.82, -0.24]} castShadow>
+        <RoundedBox args={[0.92, 0.44, 0.08]} radius={0.02} smoothness={4}>
+          <meshStandardMaterial color="#c8d3df" emissive="#7dffad" emissiveIntensity={0.08} />
+        </RoundedBox>
       </mesh>
-      <mesh position={[0, 0.4, 0]} castShadow>
-        <torusGeometry args={[0.34, 0.03, 10, 30]} />
-        <meshStandardMaterial color="#b9efff" emissive="#b9efff" emissiveIntensity={0.62} />
+      <mesh position={[0, 0.62, -0.24]} castShadow>
+        <boxGeometry args={[0.08, 0.38, 0.08]} />
+        <meshStandardMaterial color="#64707d" />
+      </mesh>
+      <mesh position={[-0.72, 0.57, 0.12]} castShadow>
+        <boxGeometry args={[0.42, 0.04, 0.22]} />
+        <meshStandardMaterial color="#d8dde4" />
+      </mesh>
+      <mesh position={[0.72, 0.57, 0.12]} castShadow>
+        <boxGeometry args={[0.42, 0.04, 0.22]} />
+        <meshStandardMaterial color="#d8dde4" />
       </mesh>
     </>
   );
@@ -632,93 +655,32 @@ function OfficeShell({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) 
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[19, 17]} />
-        <meshStandardMaterial color="#eff2f6" roughness={0.94} />
+        <planeGeometry args={[24, 22]} />
+        <meshStandardMaterial color="#edf3f4" roughness={0.96} />
       </mesh>
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0.05]} receiveShadow>
-        <planeGeometry args={[12.8, 10.5]} />
-        <meshStandardMaterial color="#9ed1d0" roughness={0.98} />
+        <planeGeometry args={[8.2, 12.8]} />
+        <meshStandardMaterial color="#d9ece6" roughness={0.98} />
       </mesh>
 
-      {[-4.8, -2.4, 0, 2.4, 4.8].map((x) => (
-        <mesh key={`tile-x-${x}`} position={[x, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.04, 10.2]} />
-          <meshBasicMaterial color="#87bbba" transparent opacity={0.22} />
-        </mesh>
-      ))}
-      {[-3.8, -1.9, 0, 1.9, 3.8].map((z) => (
-        <mesh key={`tile-z-${z}`} position={[0, 0.012, z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[12.2, 0.04]} />
-          <meshBasicMaterial color="#87bbba" transparent opacity={0.22} />
+      {[-4.5, 4.5].map((x) => (
+        <mesh key={`desk-pad-${x}`} position={[x, 0.015, -0.25]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[3.1, 12.5]} />
+          <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
         </mesh>
       ))}
 
-      <mesh position={[0, 2.08, -7.12]} receiveShadow>
-        <boxGeometry args={[17.2, 4.2, 0.2]} />
-        <meshStandardMaterial color="#f7f8fb" roughness={0.96} />
-      </mesh>
-      <mesh position={[-8.56, 2.08, 0]} receiveShadow>
-        <boxGeometry args={[0.2, 4.2, 14.9]} />
-        <meshStandardMaterial color="#f4f5f9" roughness={0.96} />
-      </mesh>
-      <mesh position={[8.56, 2.08, 0]} receiveShadow>
-        <boxGeometry args={[0.2, 4.2, 14.9]} />
-        <meshStandardMaterial color="#f4f5f9" roughness={0.96} />
-      </mesh>
-
-      {[-4.3, 0, 4.3].map((x, i) => (
-        <OfficeAssetSlot
-          key={i}
-          slot="wallFrame"
-          manifest={manifest}
-          position={[x, 2.28, -7.0]}
-          fallback={<WallFrameFallback />}
-        />
-      ))}
-
-      <mesh position={[-6.18, 2.15, -7.0]}>
-        <boxGeometry args={[1.92, 1.38, 0.08]} />
-        <meshStandardMaterial color="#dcc19b" roughness={0.98} />
-      </mesh>
-      {[
-        [-6.62, 2.42],
-        [-6.18, 2.42],
-        [-5.74, 2.42],
-        [-6.62, 1.96],
-        [-6.18, 1.96],
-        [-5.74, 1.96],
-      ].map((pin, i) => (
-        <mesh key={i} position={[pin[0], pin[1], -6.93]}>
-          <boxGeometry args={[0.28, 0.2, 0.02]} />
-          <meshStandardMaterial color={i % 2 === 0 ? '#ffd97f' : '#f9c7ae'} />
+      {[-3.4, -1.7, 0, 1.7, 3.4].map((x) => (
+        <mesh key={`review-line-${x}`} position={[x, 0.02, 3.15]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.6, 0.05]} />
+          <meshBasicMaterial color="#b8d4d7" transparent opacity={0.32} />
         </mesh>
       ))}
 
-      {[[-6.9, 0, 5.7], [6.95, 0, 5.7], [6.95, 0, -5.3]].map((coords, i) => (
-        <OfficeAssetSlot
-          key={i}
-          slot="plant"
-          manifest={manifest}
-          position={coords as [number, number, number]}
-          fallback={<PlantFallback />}
-        />
-      ))}
-
-      {[[-4.1, 3.25, -2.2], [0, 3.25, -2.5], [4.1, 3.25, -2.2]].map((coords, i) => (
-        <OfficeAssetSlot
-          key={i}
-          slot="ceilingLamp"
-          manifest={manifest}
-          position={coords as [number, number, number]}
-          fallback={<CeilingLampFallback />}
-        />
-      ))}
-
-      <OfficeAssetSlot slot="coffeeMachine" manifest={manifest} position={[6.4, 0, -4.9]} fallback={<CoffeeMachineFallback />} />
-      <mesh position={[6.4, 1.06, -4.82]}>
-        <boxGeometry args={[1.55, 0.08, 0.64]} />
-        <meshStandardMaterial color="#d9dee8" />
+      <mesh position={[0, 0.02, 4.1]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[6.2, 2.6]} />
+        <meshBasicMaterial color="#d7e5f2" transparent opacity={0.85} />
       </mesh>
     </>
   );
@@ -734,24 +696,41 @@ function BreakArea({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) {
 }
 
 function buildDeskLayouts(topics: TeamTopic[]) {
-  const rows = Math.ceil(topics.length / 2);
-  const gapZ = 2.16;
+  const deskRows = Math.ceil(topics.length / 2);
+  const queueCols = Math.min(4, Math.max(1, topics.length));
 
   return topics.map((topic, index) => {
-    const col = index % 2;
+    const side = index % 2;
     const row = Math.floor(index / 2);
+    const queueCol = index % queueCols;
+    const queueRow = Math.floor(index / queueCols);
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
-    const x = col === 0 ? -2.8 : 2.8;
-    const z = (row - (rows - 1) / 2) * gapZ + 0.2 + jitter;
+    const x = side === 0 ? -4.4 : 4.4;
+    const z = (row - (deskRows - 1) / 2) * 2.28 - 0.6 + jitter;
+    const rotationY = side === 0 ? Math.PI : 0;
+    const standbyX = (queueCol - (queueCols - 1) / 2) * 1.15;
+    const standbyZ = 0.95 + queueRow * 1.04;
+    const deliveryX = (queueCol - (queueCols - 1) / 2) * 0.92;
+    const deliveryZ = 2.95 + queueRow * 0.72;
+    const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.05, 0, z + 0.42] : [x - 0.05, 0, z - 0.42];
 
     return {
       topic,
       position: [x, 0, z] as [number, number, number],
-      routeStart: [col === 0 ? -0.88 : 0.88, 0.05, z + 0.2] as [number, number, number],
-      walkTarget: [col === 0 ? -0.34 : 0.34, 0, z + 0.2] as [number, number, number],
-      rotationY: col === 0 ? Math.PI : 0,
+      rotationY,
+      workerDeskPosition,
+      standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
+      deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
+      focusPoint: [side === 0 ? x + 0.9 : x - 0.9, 0.92, z + 0.1] as [number, number, number],
     };
   });
+}
+
+function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
+  if (!layout || !topic) return null;
+  if (topic.live.status === 'running') return layout.focusPoint;
+  if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
+  return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
 function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, manifest, onHover, onLeave, onSelect }: {
@@ -764,23 +743,21 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
 }) {
-  const hub: [number, number, number] = [0, 0.05, 3.55];
   const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
 
   return (
     <>
-      <color attach="background" args={['#ecf1f5']} />
-      <fog attach="fog" args={['#ecf1f5', 13, 24]} />
-      <ambientLight intensity={1.15} color="#ffffff" />
-      <hemisphereLight args={['#ffffff', '#c7d2d7', 1.15]} />
-      <directionalLight position={[6.5, 10, 5.2]} intensity={1.22} color="#fff6ea" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
-      <pointLight position={[0, 6.0, -1.3]} intensity={5.2} color="#fff8ef" />
-      <pointLight position={[0, 4.6, 4.8]} intensity={4.7} color="#d6fbff" />
+      <color attach="background" args={['#edf4f4']} />
+      <fog attach="fog" args={['#edf4f4', 18, 34]} />
+      <ambientLight intensity={1.2} color="#ffffff" />
+      <hemisphereLight args={['#ffffff', '#dbe8ea', 1.18]} />
+      <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+      <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
       <OfficeShell manifest={manifest} />
-      <BreakArea manifest={manifest} />
 
-      <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 3.55]} fallback={<HubFallback />} />
+      <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.15]} fallback={<HubFallback />} />
+      <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.15]} visible />
 
       {deskLayouts.map((desk, index) => {
         const emphasized = hoveredTopicId === desk.topic.topicId || selectedTopicId === desk.topic.topicId;
@@ -792,7 +769,6 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               position={desk.position}
               rotationY={desk.rotationY}
               reducedMotion={reducedMotion}
-              walkTarget={desk.walkTarget}
               seed={index + 1}
               emphasized={emphasized}
               manifest={manifest}
@@ -800,16 +776,28 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               onLeave={() => onLeave(desk.topic.topicId)}
               onSelect={() => onSelect(desk.topic.topicId)}
             />
-            <RouteLine start={desk.routeStart} end={hub} topic={desk.topic} reducedMotion={reducedMotion} />
+            <WorkerAvatar
+              topic={desk.topic}
+              standbyPosition={desk.standbyPosition}
+              deskPosition={desk.workerDeskPosition}
+              deliveryPosition={desk.deliveryPosition}
+              deskFacing={desk.rotationY === 0 ? Math.PI : 0}
+              reducedMotion={reducedMotion}
+              seed={index + 1}
+              emphasized={emphasized}
+              onHover={() => onHover(desk.topic.topicId)}
+              onLeave={() => onLeave(desk.topic.topicId)}
+              onSelect={() => onSelect(desk.topic.topicId)}
+            />
           </group>
         );
       })}
 
-      <ContactShadows position={[0, 0.02, 0]} opacity={0.28} scale={17} blur={2.3} far={6} />
+      <ContactShadows position={[0, 0.02, 0.5]} opacity={0.24} scale={26} blur={2.7} far={8} />
 
       <EffectComposer>
-        <Bloom intensity={0.36} luminanceThreshold={0.62} luminanceSmoothing={0.88} />
-        <Vignette offset={0.18} darkness={0.36} />
+        <Bloom intensity={0.3} luminanceThreshold={0.66} luminanceSmoothing={0.9} />
+        <Vignette offset={0.1} darkness={0.18} />
       </EffectComposer>
     </>
   );
@@ -830,10 +818,10 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
   useFrame((_, delta) => {
     if (mode === 'free') return;
 
-    const overviewTarget: [number, number, number] = [0, 0.92, 1.0];
+    const overviewTarget: [number, number, number] = [0, 1.0, 1.4];
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [3.5, 3.0, 4.0] : [4.3, 3.6, 4.8];
-    const overviewOffset: [number, number, number] = isMobile ? [7.1, 5.4, 7.4] : [8.6, 6.7, 8.9];
+    const focusOffset: [number, number, number] = isMobile ? [4.5, 3.8, 5.0] : [5.4, 4.4, 5.8];
+    const overviewOffset: [number, number, number] = isMobile ? [9.8, 7.0, 10.4] : [11.6, 8.6, 12.2];
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -993,6 +981,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
   const [hoveredTopicId, setHoveredTopicId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
@@ -1005,6 +994,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
       setReducedMotion(reduced);
       setFallback(reduced);
       setIsMobile(window.innerWidth < 640);
+      setIsLandscape(window.innerWidth > window.innerHeight);
     };
 
     updateViewport();
@@ -1030,9 +1020,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
 
   const focusTopic = selectedTopic || hoveredTopic || defaultTopic;
   const focusLayout = focusTopic ? layoutById.get(focusTopic.topicId) : null;
-  const focusTarget = focusLayout
-    ? [focusLayout.position[0], 0.92, focusLayout.position[2] + (focusLayout.rotationY === 0 ? 0.2 : -0.2)] as [number, number, number]
-    : null;
+  const focusTarget = currentAgentAnchor(focusLayout ?? null, focusTopic ?? null);
 
   const runningCount = topics.filter((topic) => topic.live.status === 'running').length;
   const recentCount = topics.filter((topic) => topic.live.status === 'recent').length;
@@ -1062,13 +1050,13 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className="relative h-[84dvh] min-h-[560px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[680px] lg:h-[760px]">
+    <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.16)] ${isMobile && isLandscape ? 'h-[94dvh] min-h-[420px]' : 'h-[84dvh] min-h-[560px] sm:h-[680px] lg:h-[760px]'}`}>
       <Canvas
         shadows
-        camera={{ position: [8.6, 6.7, 8.9], fov: 34, near: 0.1, far: 100 }}
+        camera={{ position: [11.6, 8.6, 12.2], fov: isMobile ? 38 : 34, near: 0.1, far: 120 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
-          camera.lookAt(0, 0.9, 1.0);
+          camera.lookAt(0, 1.0, 1.4);
         }}
         onPointerMissed={() => {
           setSelectedTopicId(null);
@@ -1103,18 +1091,18 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
 
         <OrbitControls
           ref={controlsRef}
-          enablePan={!isMobile}
+          enablePan
           enableZoom
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={4.6}
-          maxDistance={13}
-          minPolarAngle={0.68}
-          maxPolarAngle={1.45}
-          minAzimuthAngle={-1.25}
-          maxAzimuthAngle={1.25}
-          target={[0, 0.92, 1.0]}
+          minDistance={4.2}
+          maxDistance={22}
+          minPolarAngle={0.52}
+          maxPolarAngle={1.52}
+          minAzimuthAngle={-Math.PI}
+          maxAzimuthAngle={Math.PI}
+          target={[0, 1.0, 1.4]}
           touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
           onStart={() => setCameraMode('free')}
         />

@@ -42,9 +42,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Isometric operator floor with game-style camera modes, lane activity, and selectable desks.</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with a standby line, side work desks, and a front review desk for PILOT handoff.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
-            Running agents pulse brightest, recent handoffs physically move lanes, and scene props are wired through swappable asset slots for glTF upgrades.
+            Idle agents hold in the middle line, active ones break to the side desks with a green diamond, and recent deliveries queue at PILOT’s desk.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -77,7 +77,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.2)] px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)] sm:hidden">
         <span>running {topology.summary.running}</span>
         <span>recent {topology.summary.recent}</span>
-        <span>tap desks to focus</span>
+        <span>tap workers or desks</span>
       </div>
 
       <div className="hidden gap-3 xl:grid xl:grid-cols-[1.1fr_1.4fr]">
@@ -85,9 +85,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {([
-              { status: 'running', title: 'running', desc: 'avatar at desk, fast pulses, active route stream' },
-              { status: 'recent', title: 'handoff', desc: 'avatar walking lane between desk and hub' },
-              { status: 'idle', title: 'idle', desc: 'desk lit low, worker parked and waiting' },
+              { status: 'running', title: 'running', desc: 'worker at side desk with green diamond' },
+              { status: 'recent', title: 'handoff', desc: 'worker presenting output at PILOT desk' },
+              { status: 'idle', title: 'idle', desc: 'worker standing in the middle ready line' },
               { status: 'missing', title: 'offline', desc: 'red marker, no active worker body' },
             ] as const).map((item) => {
               const tone = statusTone(item.status);
@@ -106,7 +106,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
         </div>
 
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] p-4">
-          <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">live lanes</div>
+          <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">live floor</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {featured.map((topic) => {
               const tone = statusTone(topic.live.status);
