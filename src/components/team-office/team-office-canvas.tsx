@@ -8,30 +8,30 @@ import type { TeamTaskSource, TeamTopic } from '@/lib/watch-team';
 function statusColor(status: TeamTopic['live']['status']) {
   switch (status) {
     case 'running':
-      return '#67e8f9';
+      return '#4fd5ff';
     case 'recent':
-      return '#fbbf24';
+      return '#f6bf4f';
     case 'idle':
-      return '#8f7a53';
+      return '#9e8967';
     case 'missing':
-      return '#f87171';
+      return '#ff6b6b';
     default:
-      return '#d4ba68';
+      return '#d8ba75';
   }
 }
 
-function statusIntensity(status: TeamTopic['live']['status']) {
+function statusGlow(status: TeamTopic['live']['status']) {
   switch (status) {
     case 'running':
-      return 2.2;
+      return 1.8;
     case 'recent':
-      return 1.4;
+      return 1.1;
     case 'idle':
-      return 0.55;
+      return 0.35;
     case 'missing':
-      return 0.95;
+      return 0.8;
     default:
-      return 0.45;
+      return 0.4;
   }
 }
 
@@ -42,7 +42,7 @@ function sourceLabel(source: TeamTaskSource) {
     case 'yield':
       return 'handoff';
     case 'user':
-      return 'user ping';
+      return 'new task';
     case 'assistant':
       return 'replying';
     case 'tool':
@@ -59,39 +59,74 @@ function actionLabel(topic: TeamTopic) {
   return 'idle';
 }
 
-function confidenceColor(confidence: TeamTopic['currentTask']['confidence']) {
-  switch (confidence) {
-    case 'high':
-      return '#67e8f9';
-    case 'medium':
-      return '#fbbf24';
-    default:
-      return '#8f7a53';
-  }
-}
-
 type DeskLayout = {
   topic: TeamTopic;
   position: [number, number, number];
+  statusNode: [number, number, number];
+  walkTarget: [number, number, number];
   rotationY: number;
-  side: 'left' | 'right';
-  laneStart: [number, number, number];
 };
 
-function laneCurve(start: [number, number, number], end: [number, number, number], lift = 0.12) {
-  const midX = (start[0] + end[0]) / 2;
-  const midZ = (start[2] + end[2]) / 2;
-  return new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(...start),
-    new THREE.Vector3(midX, Math.max(start[1], end[1]) + lift, midZ),
-    new THREE.Vector3(...end),
+function buildNameTexture(name: string, accent: string) {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(12, 12, 16, 0.92)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  const radius = 14;
+  const x = 6;
+  const y = 6;
+  const w = canvas.width - 12;
+  const h = canvas.height - 12;
+
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.fillRect(14, 14, 10, h - 16);
+
+  ctx.font = '600 34px Inter, Arial, sans-serif';
+  ctx.fillStyle = '#f7f3eb';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, 40, canvas.height / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function FloatingNameTag({ name, color, position }: { name: string; color: string; position: [number, number, number] }) {
+  const texture = useMemo(() => buildNameTexture(name, color), [name, color]);
+  if (!texture) return null;
+
+  return (
+    <sprite position={position} scale={[2.2, 0.66, 1]}>
+      <spriteMaterial map={texture} transparent depthWrite={false} />
+    </sprite>
   );
 }
 
-function Avatar({ topic, deskPosition, hubPosition, reducedMotion, seed }: {
+function WorkerAvatar({ topic, origin, target, reducedMotion, seed }: {
   topic: TeamTopic;
-  deskPosition: [number, number, number];
-  hubPosition: [number, number, number];
+  origin: [number, number, number];
+  target: [number, number, number];
   reducedMotion: boolean;
   seed: number;
 }) {
@@ -99,38 +134,36 @@ function Avatar({ topic, deskPosition, hubPosition, reducedMotion, seed }: {
   const leftArm = useRef<THREE.Mesh>(null);
   const rightArm = useRef<THREE.Mesh>(null);
   const color = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const lane = useMemo(() => laneCurve(deskPosition, hubPosition, 0.4), [deskPosition, hubPosition]);
 
   useFrame(({ clock }) => {
     if (!group.current) return;
+    const t = clock.getElapsedTime() + seed * 0.29;
+    const swing = Math.sin(t * 5.2) * 0.35;
 
-    const t = clock.getElapsedTime() + seed * 0.37;
-    const baseY = 0.2;
-    const walkCycle = Math.sin(t * 5.4) * 0.22;
-
+    let x = origin[0];
+    let z = origin[2];
+    let facing = 0;
     if (topic.live.status === 'recent' && !reducedMotion) {
-      const progress = (Math.sin(t * 0.9) + 1) / 2;
-      const point = lane.getPoint(progress);
-      const nextPoint = lane.getPoint(Math.min(progress + 0.02, 1));
-      group.current.position.set(point.x, point.y + baseY, point.z);
-      group.current.lookAt(nextPoint.x, point.y + baseY, nextPoint.z);
-      group.current.rotation.x = 0;
-      group.current.rotation.z = 0;
+      const p = (Math.sin(t * 0.8) + 1) / 2;
+      x = origin[0] + (target[0] - origin[0]) * p;
+      z = origin[2] + (target[2] - origin[2]) * p;
+      facing = Math.atan2(target[0] - origin[0], target[2] - origin[2]);
     } else {
-      group.current.position.set(deskPosition[0], baseY, deskPosition[2] + 0.15);
-      group.current.rotation.set(0, topic.live.status === 'running' ? Math.PI : Math.PI * 0.95, 0);
-      if (!reducedMotion) {
-        group.current.position.y = baseY + (topic.live.status === 'running' ? Math.sin(t * 2.1) * 0.03 : Math.sin(t * 1.1) * 0.015);
-      }
+      x = origin[0];
+      z = origin[2];
+      facing = Math.PI * 0.15;
     }
+
+    group.current.position.set(x, 0.22 + (!reducedMotion ? Math.sin(t * 2.2) * 0.015 : 0), z);
+    group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current) {
       if (topic.live.status === 'running' && !reducedMotion) {
-        leftArm.current.rotation.x = -0.8 + walkCycle * 0.35;
-        rightArm.current.rotation.x = -0.8 - walkCycle * 0.35;
+        leftArm.current.rotation.x = -0.8 + swing * 0.25;
+        rightArm.current.rotation.x = -0.4 - swing * 0.25;
       } else if (topic.live.status === 'recent' && !reducedMotion) {
-        leftArm.current.rotation.x = walkCycle;
-        rightArm.current.rotation.x = -walkCycle;
+        leftArm.current.rotation.x = swing;
+        rightArm.current.rotation.x = -swing;
       } else {
         leftArm.current.rotation.x = -0.2;
         rightArm.current.rotation.x = 0.2;
@@ -140,10 +173,10 @@ function Avatar({ topic, deskPosition, hubPosition, reducedMotion, seed }: {
 
   if (topic.live.status === 'missing') {
     return (
-      <group position={[deskPosition[0], 0.25, deskPosition[2] + 0.12]}>
+      <group position={[origin[0], 0.2, origin[2]]}>
         <mesh>
-          <cylinderGeometry args={[0.11, 0.16, 0.18, 16]} />
-          <meshStandardMaterial color="#2a1111" emissive="#f87171" emissiveIntensity={0.55} transparent opacity={0.66} />
+          <cylinderGeometry args={[0.14, 0.18, 0.2, 16]} />
+          <meshStandardMaterial color="#3a1515" emissive="#ff6b6b" emissiveIntensity={0.7} />
         </mesh>
       </group>
     );
@@ -151,324 +184,338 @@ function Avatar({ topic, deskPosition, hubPosition, reducedMotion, seed }: {
 
   return (
     <group ref={group}>
-      <mesh position={[0, 0.38, 0]}>
-        <capsuleGeometry args={[0.12, 0.38, 4, 10]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={topic.live.status === 'running' ? 1.2 : 0.55} />
+      <mesh position={[0, 0.24, 0]}>
+        <boxGeometry args={[0.26, 0.36, 0.18]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={topic.live.status === 'running' ? 0.9 : 0.35} />
       </mesh>
-      <mesh position={[0, 0.72, 0]}>
-        <sphereGeometry args={[0.11, 18, 18]} />
-        <meshStandardMaterial color="#f3dfb3" emissive="#f3dfb3" emissiveIntensity={0.2} />
+      <mesh position={[0, 0.56, 0]}>
+        <boxGeometry args={[0.18, 0.18, 0.18]} />
+        <meshStandardMaterial color="#f1d3b0" />
       </mesh>
-      <mesh ref={leftArm} position={[-0.15, 0.43, 0]}>
-        <capsuleGeometry args={[0.035, 0.2, 4, 8]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} />
+      <mesh ref={leftArm} position={[-0.18, 0.25, 0]}>
+        <boxGeometry args={[0.08, 0.26, 0.08]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
       </mesh>
-      <mesh ref={rightArm} position={[0.15, 0.43, 0]}>
-        <capsuleGeometry args={[0.035, 0.2, 4, 8]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} />
+      <mesh ref={rightArm} position={[0.18, 0.25, 0]}>
+        <boxGeometry args={[0.08, 0.26, 0.08]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
       </mesh>
-      <mesh position={[-0.06, 0.05, 0]}>
-        <capsuleGeometry args={[0.03, 0.18, 4, 8]} />
-        <meshStandardMaterial color="#2c2217" />
+      <mesh position={[-0.08, -0.06, 0]}>
+        <boxGeometry args={[0.08, 0.26, 0.08]} />
+        <meshStandardMaterial color="#2a241e" />
       </mesh>
-      <mesh position={[0.06, 0.05, 0]}>
-        <capsuleGeometry args={[0.03, 0.18, 4, 8]} />
-        <meshStandardMaterial color="#2c2217" />
+      <mesh position={[0.08, -0.06, 0]}>
+        <boxGeometry args={[0.08, 0.26, 0.08]} />
+        <meshStandardMaterial color="#2a241e" />
       </mesh>
+      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.15, 0]} />
     </group>
   );
 }
 
-function DeskCluster({ topic, position, rotationY, reducedMotion, side, hubPosition, seed }: {
+function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed }: {
   topic: TeamTopic;
   position: [number, number, number];
   rotationY: number;
   reducedMotion: boolean;
-  side: 'left' | 'right';
-  hubPosition: [number, number, number];
+  walkTarget: [number, number, number];
   seed: number;
 }) {
   const monitor = useRef<THREE.Mesh>(null);
-  const beacon = useRef<THREE.Mesh>(null);
-  const deskAura = useRef<THREE.Mesh>(null);
-  const color = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const intensity = statusIntensity(topic.live.status);
+  const lamp = useRef<THREE.Mesh>(null);
+  const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
+  const glowStrength = statusGlow(topic.live.status);
 
   useFrame(({ clock }) => {
     if (reducedMotion) return;
-    const t = clock.getElapsedTime() + seed * 0.23;
-    const pulse = 1 + Math.sin(t * (topic.live.status === 'running' ? 3.2 : 1.6)) * 0.08;
-    if (beacon.current) {
-      beacon.current.scale.setScalar(pulse);
-      beacon.current.position.y = 1.06 + (pulse - 1) * 0.15;
-    }
+    const t = clock.getElapsedTime() + seed * 0.2;
     if (monitor.current) {
-      monitor.current.rotation.z = Math.sin(t * 0.9) * 0.015;
+      monitor.current.rotation.z = Math.sin(t * 0.7) * 0.01;
     }
-    if (deskAura.current) {
-      deskAura.current.scale.set(1 + (pulse - 1) * 0.9, 1, 1 + (pulse - 1) * 0.9);
+    if (lamp.current) {
+      lamp.current.scale.setScalar(1 + Math.sin(t * 2.3) * 0.06);
     }
   });
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <mesh position={[0, 0.03, 0]} ref={deskAura} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.62, 0.86, 40]} />
-        <meshBasicMaterial color={color} transparent opacity={topic.live.status === 'idle' ? 0.12 : 0.22} />
-      </mesh>
-
-      <mesh position={[0, 0.18, 0]}>
-        <boxGeometry args={[1.85, 0.16, 1.15]} />
-        <meshStandardMaterial color="#231a12" metalness={0.35} roughness={0.72} />
-      </mesh>
-      <mesh position={[0, 0.08, 0]}>
-        <boxGeometry args={[1.25, 0.06, 0.52]} />
-        <meshStandardMaterial color="#17120d" />
-      </mesh>
-      <mesh position={[0, 0.76, -0.24]} ref={monitor}>
-        <boxGeometry args={[0.92, 0.56, 0.08]} />
-        <meshStandardMaterial color="#0d1117" emissive={color} emissiveIntensity={intensity} />
-      </mesh>
-      <mesh position={[0, 0.76, -0.285]}>
-        <boxGeometry args={[0.74, 0.4, 0.03]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.45} transparent opacity={0.72} />
-      </mesh>
-      <mesh position={[0, 0.48, -0.22]}>
-        <boxGeometry args={[0.08, 0.36, 0.08]} />
-        <meshStandardMaterial color="#403320" />
-      </mesh>
-      <mesh position={[0.62, 0.28, 0.24]} ref={beacon}>
-        <sphereGeometry args={[0.1, 18, 18]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 2.2} />
-      </mesh>
-      <mesh position={[-0.62, 0.45, 0.1]}>
-        <boxGeometry args={[0.16, 0.52, 0.16]} />
-        <meshStandardMaterial color={side === 'left' ? '#4c6a76' : '#6c5c2c'} emissive={side === 'left' ? '#67e8f9' : '#d4ba68'} emissiveIntensity={0.25} />
-      </mesh>
-      <mesh position={[0, 0.3, 0.48]}>
-        <boxGeometry args={[0.74, 0.1, 0.54]} />
-        <meshStandardMaterial color="#261d15" />
-      </mesh>
-      <mesh position={[0, 0.6, 0.54]}>
-        <boxGeometry args={[0.64, 0.56, 0.08]} />
-        <meshStandardMaterial color="#1c140f" />
-      </mesh>
-      <Avatar topic={topic} deskPosition={[0, 0, 0.05]} hubPosition={[hubPosition[0] - position[0], hubPosition[1], hubPosition[2] - position[2]]} reducedMotion={reducedMotion} seed={seed} />
-    </group>
-  );
-}
-
-function Hub({ activeCount, reducedMotion }: { activeCount: number; reducedMotion: boolean }) {
-  const ring = useRef<THREE.Mesh>(null);
-  const core = useRef<THREE.Mesh>(null);
-  const holo = useRef<THREE.Mesh>(null);
-
-  useFrame(({ clock }) => {
-    if (reducedMotion) return;
-    const t = clock.getElapsedTime();
-    if (ring.current) ring.current.rotation.y = t * 0.55;
-    if (core.current) core.current.rotation.y = -t * 0.28;
-    if (holo.current) {
-      holo.current.rotation.z = Math.sin(t * 1.8) * 0.14;
-      holo.current.position.y = 1.52 + Math.sin(t * 2.1) * 0.05;
-    }
-  });
-
-  return (
-    <group position={[0, 0, 0]}>
-      <mesh position={[0, 0.18, 0]}>
-        <cylinderGeometry args={[1.5, 1.9, 0.28, 8]} />
-        <meshStandardMaterial color="#241b12" metalness={0.46} roughness={0.42} />
-      </mesh>
       <mesh position={[0, 0.48, 0]}>
-        <cylinderGeometry args={[0.82, 0.92, 0.44, 24]} />
-        <meshStandardMaterial color="#0f1720" emissive="#67e8f9" emissiveIntensity={1} transparent opacity={0.86} />
+        <boxGeometry args={[1.5, 0.12, 0.95]} />
+        <meshStandardMaterial color="#b47d4f" roughness={0.7} />
       </mesh>
-      <mesh ref={core} position={[0, 1.02, 0]}>
-        <cylinderGeometry args={[0.18, 0.18, 1.2, 20]} />
-        <meshStandardMaterial color="#a2f2ff" emissive="#67e8f9" emissiveIntensity={2.4 + Math.min(activeCount, 6) * 0.18} transparent opacity={0.92} />
+      <mesh position={[-0.56, 0.23, -0.3]}>
+        <boxGeometry args={[0.12, 0.46, 0.12]} />
+        <meshStandardMaterial color="#8a5d39" />
       </mesh>
-      <mesh ref={ring} position={[0, 1.48, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.94, 0.05, 18, 64]} />
-        <meshStandardMaterial color="#ecd58d" emissive="#ecd58d" emissiveIntensity={1.6} />
+      <mesh position={[0.56, 0.23, -0.3]}>
+        <boxGeometry args={[0.12, 0.46, 0.12]} />
+        <meshStandardMaterial color="#8a5d39" />
       </mesh>
-      <mesh ref={holo} position={[0, 1.54, 0]} rotation={[Math.PI / 2, 0, 0.2]}>
-        <torusGeometry args={[0.62, 0.03, 12, 48]} />
-        <meshStandardMaterial color="#67e8f9" emissive="#67e8f9" emissiveIntensity={1.8} transparent opacity={0.85} />
+      <mesh position={[-0.56, 0.23, 0.3]}>
+        <boxGeometry args={[0.12, 0.46, 0.12]} />
+        <meshStandardMaterial color="#8a5d39" />
       </mesh>
+      <mesh position={[0.56, 0.23, 0.3]}>
+        <boxGeometry args={[0.12, 0.46, 0.12]} />
+        <meshStandardMaterial color="#8a5d39" />
+      </mesh>
+
+      <mesh position={[0.02, 0.82, -0.2]} ref={monitor}>
+        <boxGeometry args={[0.54, 0.34, 0.06]} />
+        <meshStandardMaterial color="#2c3440" emissive={glow} emissiveIntensity={glowStrength} />
+      </mesh>
+      <mesh position={[0.02, 0.62, -0.2]}>
+        <boxGeometry args={[0.06, 0.2, 0.06]} />
+        <meshStandardMaterial color="#6f7a83" />
+      </mesh>
+      <mesh position={[-0.26, 0.56, 0.02]}>
+        <boxGeometry args={[0.18, 0.03, 0.12]} />
+        <meshStandardMaterial color="#d8dbe0" />
+      </mesh>
+      <mesh position={[-0.01, 0.56, 0.02]}>
+        <boxGeometry args={[0.22, 0.03, 0.12]} />
+        <meshStandardMaterial color="#d8dbe0" />
+      </mesh>
+      <mesh position={[0.43, 0.6, 0.12]} ref={lamp}>
+        <cylinderGeometry args={[0.05, 0.05, 0.16, 16]} />
+        <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={glowStrength * 1.3} />
+      </mesh>
+
+      <group position={[0.52, 0.02, 0.68]}>
+        <mesh position={[0, 0.25, 0]}>
+          <boxGeometry args={[0.42, 0.08, 0.42]} />
+          <meshStandardMaterial color="#556173" />
+        </mesh>
+        <mesh position={[0, 0.55, -0.14]}>
+          <boxGeometry args={[0.42, 0.46, 0.08]} />
+          <meshStandardMaterial color="#657285" />
+        </mesh>
+        <mesh position={[0, 0.13, 0]}>
+          <cylinderGeometry args={[0.05, 0.05, 0.24, 14]} />
+          <meshStandardMaterial color="#58524b" />
+        </mesh>
+      </group>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <ringGeometry args={[0.56, 0.73, 32]} />
+        <meshBasicMaterial color={glow} transparent opacity={topic.live.status === 'idle' ? 0.08 : 0.18} />
+      </mesh>
+
+      <WorkerAvatar
+        topic={topic}
+        origin={[0.05, 0, 0.4]}
+        target={[walkTarget[0] - position[0], 0, walkTarget[2] - position[2]]}
+        reducedMotion={reducedMotion}
+        seed={seed}
+      />
     </group>
   );
 }
 
-function ActivityLane({ start, end, topic, reducedMotion }: {
+function RouteLine({ start, end, topic, reducedMotion }: {
   start: [number, number, number];
   end: [number, number, number];
   topic: TeamTopic;
   reducedMotion: boolean;
 }) {
-  const trail = useRef<THREE.Mesh>(null);
-  const color = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const curve = useMemo(() => laneCurve(start, end, 0.18), [start, end]);
-  const geometry = useMemo(() => new THREE.TubeGeometry(curve, 40, 0.025, 8, false), [curve]);
+  const dot = useRef<THREE.Mesh>(null);
+  const curve = useMemo(() => {
+    const mid = new THREE.Vector3((start[0] + end[0]) / 2, 0.18, (start[2] + end[2]) / 2);
+    return new THREE.QuadraticBezierCurve3(new THREE.Vector3(...start), mid, new THREE.Vector3(...end));
+  }, [start, end]);
+  const geometry = useMemo(() => new THREE.TubeGeometry(curve, 28, 0.024, 10, false), [curve]);
+  const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
 
   useFrame(({ clock }) => {
-    if (reducedMotion || !trail.current) return;
+    if (reducedMotion || !dot.current || topic.live.status === 'missing') return;
     const t = clock.getElapsedTime();
-    const progress = topic.live.status === 'running'
-      ? (t * 0.22) % 1
-      : topic.live.status === 'recent'
-        ? (Math.sin(t * 1.1) + 1) / 2
-        : 0.08;
-    const point = curve.getPoint(progress);
-    trail.current.position.set(point.x, point.y, point.z);
+    const p = topic.live.status === 'running' ? (t * 0.28) % 1 : (Math.sin(t * 1.1) + 1) / 2;
+    const point = curve.getPoint(p);
+    dot.current.position.set(point.x, point.y, point.z);
   });
 
   return (
     <>
       <mesh geometry={geometry}>
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={topic.live.status === 'idle' ? 0.12 : 0.55} transparent opacity={topic.live.status === 'missing' ? 0.14 : 0.32} />
+        <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={topic.live.status === 'idle' ? 0.1 : 0.45} transparent opacity={topic.live.status === 'missing' ? 0.08 : 0.25} />
       </mesh>
       {topic.live.status !== 'missing' && (
-        <mesh ref={trail}>
-          <sphereGeometry args={[0.09, 16, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.8} transparent opacity={0.95} />
+        <mesh ref={dot}>
+          <sphereGeometry args={[0.08, 14, 14]} />
+          <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={1.3} />
         </mesh>
       )}
     </>
   );
 }
 
-function LegendMonolith({ position, label, color, intensity }: { position: [number, number, number]; label: string; color: string; intensity: number }) {
+function Lounge() {
   return (
-    <group position={position}>
-      <mesh position={[0, 0.58, 0]}>
-        <boxGeometry args={[0.42, 1.1, 0.42]} />
-        <meshStandardMaterial color="#171311" emissive={color} emissiveIntensity={intensity} />
+    <group position={[4.2, 0, -3.2]}>
+      <mesh position={[0, 0.28, 0]}>
+        <boxGeometry args={[1.4, 0.34, 0.7]} />
+        <meshStandardMaterial color="#8f6bd2" />
       </mesh>
-      <mesh position={[0, 1.2, 0]}>
-        <boxGeometry args={[0.28, 0.14, 0.28]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity * 1.6} />
+      <mesh position={[0, 0.66, -0.22]}>
+        <boxGeometry args={[1.4, 0.44, 0.14]} />
+        <meshStandardMaterial color="#7f5cc6" />
       </mesh>
-      <mesh position={[0.22, 0.88, 0]}>
-        <boxGeometry args={[0.12, 0.44, 0.12]} />
-        <meshStandardMaterial color="#2a2117" />
+      <mesh position={[-0.62, 0.58, 0]}>
+        <boxGeometry args={[0.14, 0.42, 0.7]} />
+        <meshStandardMaterial color="#7f5cc6" />
+      </mesh>
+      <mesh position={[0.62, 0.58, 0]}>
+        <boxGeometry args={[0.14, 0.42, 0.7]} />
+        <meshStandardMaterial color="#7f5cc6" />
       </mesh>
     </group>
   );
 }
 
+function MeetingTable() {
+  return (
+    <group position={[1.1, 0, -4.2]}>
+      <mesh position={[0, 0.52, 0]}>
+        <cylinderGeometry args={[1.7, 1.7, 0.16, 36]} />
+        <meshStandardMaterial color="#d4a076" />
+      </mesh>
+      <mesh position={[0, 0.26, 0]}>
+        <cylinderGeometry args={[0.16, 0.22, 0.52, 18]} />
+        <meshStandardMaterial color="#99704b" />
+      </mesh>
+      {[
+        [-1.6, 0, -0.2],
+        [1.4, 0, -0.4],
+        [-0.5, 0, 1.7],
+        [0.9, 0, 1.5],
+      ].map((pos, i) => (
+        <group key={i} position={pos as [number, number, number]}>
+          <mesh position={[0, 0.22, 0]}>
+            <boxGeometry args={[0.34, 0.08, 0.34]} />
+            <meshStandardMaterial color="#637289" />
+          </mesh>
+          <mesh position={[0, 0.5, -0.1]}>
+            <boxGeometry args={[0.34, 0.44, 0.08]} />
+            <meshStandardMaterial color="#73829b" />
+          </mesh>
+          <mesh position={[0, 0.12, 0]}>
+            <cylinderGeometry args={[0.04, 0.04, 0.24, 12]} />
+            <meshStandardMaterial color="#55514b" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function WallScreens() {
+  return (
+    <>
+      <mesh position={[-3.6, 1.8, -6.92]}>
+        <boxGeometry args={[1.7, 0.9, 0.08]} />
+        <meshStandardMaterial color="#16242c" emissive="#2d8fb0" emissiveIntensity={0.45} />
+      </mesh>
+      <mesh position={[4.8, 1.8, -6.92]}>
+        <boxGeometry args={[1.1, 0.9, 0.08]} />
+        <meshStandardMaterial color="#22314c" emissive="#7aa1ff" emissiveIntensity={0.35} />
+      </mesh>
+    </>
+  );
+}
+
 function OfficeRoom({ topics, reducedMotion }: { topics: TeamTopic[]; reducedMotion: boolean }) {
-  const hubPosition: [number, number, number] = [0, 0.14, 0];
-  const activeCount = topics.filter((topic) => topic.live.status === 'running' || topic.live.status === 'recent').length;
-  const deskLayout = useMemo<DeskLayout[]>(() => {
+  const hub: [number, number, number] = [0.2, 0.06, -0.8];
+  const deskLayouts = useMemo<DeskLayout[]>(() => {
     const rows = Math.ceil(topics.length / 2);
-    const laneSpacing = rows > 1 ? 2.55 : 0;
+    const gapZ = rows > 1 ? 2.6 : 0;
     return topics.map((topic, index) => {
-      const side: 'left' | 'right' = index % 2 === 0 ? 'left' : 'right';
+      const col = index % 2;
       const row = Math.floor(index / 2);
-      const z = (row - Math.max(rows - 1, 0) / 2) * laneSpacing;
-      const x = side === 'left' ? -4.15 : 4.15;
+      const x = col === 0 ? -3.5 : 2.8;
+      const z = (row - (rows - 1) / 2) * gapZ + 0.8;
       return {
         topic,
-        side,
         position: [x, 0, z] as [number, number, number],
-        rotationY: side === 'left' ? -Math.PI / 2 : Math.PI / 2,
-        laneStart: [side === 'left' ? -2.3 : 2.3, 0.06, z] as [number, number, number],
+        statusNode: [x + 0.7, 0.05, z - 0.2] as [number, number, number],
+        walkTarget: [col === 0 ? -1.3 : 1.5, 0, z - 0.25] as [number, number, number],
+        rotationY: col === 0 ? Math.PI * 0.02 : -Math.PI * 0.04,
       };
     });
   }, [topics]);
 
   return (
     <>
-      <color attach="background" args={['#0f0b08']} />
-      <fog attach="fog" args={['#0f0b08', 10, 24]} />
-      <ambientLight intensity={0.8} color="#f5e8bd" />
-      <pointLight position={[0, 6.5, 0]} intensity={22} color="#f8d375" />
-      <pointLight position={[-5.5, 3.2, 4.4]} intensity={10} color="#67e8f9" />
-      <pointLight position={[5.5, 2.8, -4.2]} intensity={8} color="#a855f7" />
-      <spotLight position={[0, 7, 8]} angle={0.45} penumbra={0.75} intensity={18} color="#ecd58d" />
+      <color attach="background" args={['#2b160f']} />
+      <fog attach="fog" args={['#2b160f', 13, 24]} />
+      <ambientLight intensity={1.15} color="#fff0d0" />
+      <hemisphereLight args={['#fff4d8', '#8c6246', 1.25]} />
+      <directionalLight position={[6, 10, 5]} intensity={1.7} color="#fff1ca" />
+      <pointLight position={[0, 7, -2]} intensity={18} color="#ffd4a6" />
+      <pointLight position={[5.5, 5, -4]} intensity={6} color="#a072ff" />
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
-        <planeGeometry args={[18, 18]} />
-        <meshStandardMaterial color="#140f0a" metalness={0.18} roughness={0.94} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[16, 14]} />
+        <meshStandardMaterial color="#f3ead7" roughness={0.95} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <ringGeometry args={[1.8, 7.6, 64]} />
-        <meshBasicMaterial color="#d4ba68" transparent opacity={0.12} />
+      <mesh position={[0, 1.45, -6.95]}>
+        <boxGeometry args={[16, 2.9, 0.18]} />
+        <meshStandardMaterial color="#a7a7ad" />
       </mesh>
-
-      <mesh position={[0, 1.8, -7.2]}>
-        <boxGeometry args={[15.2, 3.6, 0.18]} />
-        <meshStandardMaterial color="#18120d" emissive="#23190f" emissiveIntensity={0.55} />
+      <mesh position={[-7.92, 1.45, 0]}>
+        <boxGeometry args={[0.18, 2.9, 14]} />
+        <meshStandardMaterial color="#8f8f95" />
       </mesh>
-      <mesh position={[-7.5, 1.7, 0]}>
-        <boxGeometry args={[0.18, 3.4, 14.8]} />
-        <meshStandardMaterial color="#18120d" emissive="#1f1710" emissiveIntensity={0.4} />
-      </mesh>
-      <mesh position={[7.5, 1.7, 0]}>
-        <boxGeometry args={[0.18, 3.4, 14.8]} />
-        <meshStandardMaterial color="#18120d" emissive="#1f1710" emissiveIntensity={0.4} />
+      <mesh position={[7.92, 1.45, 0]}>
+        <boxGeometry args={[0.18, 2.9, 14]} />
+        <meshStandardMaterial color="#8f8f95" />
       </mesh>
 
-      <mesh position={[0, 3.25, -1.4]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[5.9, 0.08, 18, 72]} />
-        <meshStandardMaterial color="#ecd58d" emissive="#ecd58d" emissiveIntensity={0.5} />
+      <mesh position={[0.2, 0.02, -0.8]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[2.15, 40]} />
+        <meshBasicMaterial color="#d9ad84" />
       </mesh>
 
-      <mesh position={[-4.8, 1.8, -7.06]}>
-        <boxGeometry args={[3.2, 1.5, 0.12]} />
-        <meshStandardMaterial color="#19222a" emissive="#67e8f9" emissiveIntensity={0.42} />
+      <MeetingTable />
+      <Lounge />
+      <WallScreens />
+
+      <mesh position={[5.8, 0.55, 0.4]}>
+        <boxGeometry args={[0.35, 1.1, 0.35]} />
+        <meshStandardMaterial color="#f5f7fa" />
       </mesh>
-      <mesh position={[4.8, 1.8, -7.06]}>
-        <boxGeometry args={[3.2, 1.5, 0.12]} />
-        <meshStandardMaterial color="#2a1f16" emissive="#d4ba68" emissiveIntensity={0.42} />
+      <mesh position={[5.8, 1.2, 0.4]}>
+        <cylinderGeometry args={[0.08, 0.08, 0.36, 16]} />
+        <meshStandardMaterial color="#89d7b1" emissive="#89d7b1" emissiveIntensity={0.35} />
       </mesh>
 
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[2.2, 13.2]} />
-        <meshBasicMaterial color="#67e8f9" transparent opacity={0.06} />
-      </mesh>
-
-      <Hub activeCount={activeCount} reducedMotion={reducedMotion} />
-
-      {deskLayout.map((desk, index) => (
+      {deskLayouts.map((desk, index) => (
         <group key={desk.topic.topicId}>
-          <DeskCluster
+          <DeskUnit
             topic={desk.topic}
             position={desk.position}
             rotationY={desk.rotationY}
             reducedMotion={reducedMotion}
-            side={desk.side}
-            hubPosition={hubPosition}
+            walkTarget={desk.walkTarget}
             seed={index + 1}
           />
-          <ActivityLane start={desk.laneStart} end={hubPosition} topic={desk.topic} reducedMotion={reducedMotion} />
+          <RouteLine start={desk.statusNode} end={hub} topic={desk.topic} reducedMotion={reducedMotion} />
         </group>
       ))}
-
-      <LegendMonolith position={[-6.2, 0, 5.5]} label="running" color="#67e8f9" intensity={0.9} />
-      <LegendMonolith position={[-4.8, 0, 5.5]} label="recent" color="#fbbf24" intensity={0.65} />
-      <LegendMonolith position={[4.8, 0, 5.5]} label="idle" color="#8f7a53" intensity={0.28} />
-      <LegendMonolith position={[6.2, 0, 5.5]} label="missing" color="#f87171" intensity={0.5} />
     </>
   );
 }
 
 function FallbackOffice({ topics }: { topics: TeamTopic[] }) {
   return (
-    <div className="relative h-[360px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.12),transparent_28%),linear-gradient(180deg,rgba(22,17,12,0.98),rgba(14,11,8,0.98))] sm:h-[460px]">
-      <div className="absolute inset-x-4 top-4 text-[10px] uppercase tracking-[0.22em] text-[var(--watch-text-muted)]">
-        full office preview
-      </div>
-      <div className="absolute inset-x-6 top-10 h-32 rounded-full border border-[rgba(103,232,249,0.28)] bg-[rgba(103,232,249,0.08)] blur-sm" />
-      <div className="absolute inset-x-0 top-28 flex justify-center">
-        <div className="h-24 w-24 rounded-full border border-[rgba(212,186,104,0.45)] bg-[rgba(212,186,104,0.12)] shadow-[0_0_40px_rgba(103,232,249,0.2)]" />
-      </div>
-      <div className="absolute bottom-6 left-4 right-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="relative h-[380px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[linear-gradient(180deg,#2a160f,#130d0a)] sm:h-[560px]">
+      <div className="absolute inset-6 rounded-xl bg-[#f3ead7]" />
+      <div className="absolute left-1/2 top-20 h-28 w-28 -translate-x-1/2 rounded-full bg-[#d9ad84] opacity-90" />
+      <div className="absolute right-12 top-28 h-16 w-20 rounded bg-[#8f6bd2]" />
+      <div className="absolute inset-x-8 bottom-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {topics.slice(0, 8).map((topic) => (
-          <div key={topic.topicId} className="rounded-lg border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.32)] px-3 py-2 backdrop-blur-sm">
-            <div className="truncate text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">{topic.configured.label}</div>
-            <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{actionLabel(topic)}</div>
+          <div key={topic.topicId} className="rounded-lg border border-black/10 bg-[rgba(12,12,16,0.84)] px-3 py-2 text-white shadow-lg">
+            <div className="truncate text-[10px] uppercase tracking-[0.16em] text-white/65">{topic.configured.label}</div>
+            <div className="mt-1 text-[11px]" style={{ color: statusColor(topic.live.status) }}>{actionLabel(topic)}</div>
           </div>
         ))}
       </div>
@@ -489,10 +536,14 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className="h-[380px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.32)] sm:h-[560px]">
+    <div className="h-[390px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px]">
       <Canvas
-        camera={{ position: [0, 8.2, 12], fov: 40 }}
+        orthographic
+        camera={{ position: [8.5, 10, 8.5], zoom: 58, near: 0.1, far: 100 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.15 : 1.5)}
+        onCreated={({ camera }) => {
+          camera.lookAt(0, 0, -1.4);
+        }}
       >
         <OfficeRoom topics={topics} reducedMotion={reducedMotion} />
       </Canvas>
