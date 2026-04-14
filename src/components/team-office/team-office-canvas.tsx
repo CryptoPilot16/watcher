@@ -8,9 +8,11 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import type { TeamTaskSource, TeamTopic } from '@/lib/watch-team';
 import {
+  loadOfficeLocalAssetManifest,
   OfficeAssetSlot,
   preloadOfficeAssets,
-  type OfficeAssetManifest,
+  resolveOfficeAssetManifest,
+  type OfficeAssetManifestOverride,
 } from './office-asset-pipeline';
 
 function statusColor(status: TeamTopic['live']['status']) {
@@ -561,7 +563,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
-  manifest?: Partial<OfficeAssetManifest>;
+  manifest?: OfficeAssetManifestOverride;
   onHover: () => void;
   onLeave: () => void;
   onSelect: () => void;
@@ -776,7 +778,7 @@ function HubFallback() {
   );
 }
 
-function OfficeShell({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) {
+function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
@@ -811,7 +813,7 @@ function OfficeShell({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) 
   );
 }
 
-function BreakArea({ manifest }: { manifest?: Partial<OfficeAssetManifest> }) {
+function BreakArea({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
   return (
     <group position={[5.35, 0, 2.95]}>
       <OfficeAssetSlot slot="breakSofa" manifest={manifest} fallback={<SofaFallback />} />
@@ -861,7 +863,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
-  manifest?: Partial<OfficeAssetManifest>;
+  manifest?: OfficeAssetManifestOverride;
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
@@ -1099,7 +1101,7 @@ function SceneHud({ running, recent, mode, isMobile, onMode }: {
   );
 }
 
-export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[]; assetManifest?: Partial<OfficeAssetManifest> }) {
+export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[]; assetManifest?: OfficeAssetManifestOverride }) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -1109,6 +1111,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
+  const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
 
   useEffect(() => {
     const updateViewport = () => {
@@ -1126,8 +1129,21 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   }, []);
 
   useEffect(() => {
-    preloadOfficeAssets(assetManifest);
-  }, [assetManifest]);
+    const controller = new AbortController();
+    loadOfficeLocalAssetManifest(controller.signal).then((manifest) => {
+      setLocalAssetManifest(manifest);
+    });
+    return () => controller.abort();
+  }, []);
+
+  const resolvedAssetManifest = useMemo(
+    () => resolveOfficeAssetManifest(assetManifest, localAssetManifest),
+    [assetManifest, localAssetManifest],
+  );
+
+  useEffect(() => {
+    preloadOfficeAssets(resolvedAssetManifest);
+  }, [resolvedAssetManifest]);
 
   const deskLayouts = useMemo(() => buildDeskLayouts(topics), [topics]);
   const layoutById = useMemo(() => {
@@ -1192,7 +1208,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           reducedMotion={reducedMotion}
           hoveredTopicId={hoveredTopicId}
           selectedTopicId={selectedTopicId}
-          manifest={assetManifest}
+          manifest={resolvedAssetManifest}
           onHover={setHoveredTopicId}
           onLeave={(topicId) => {
             setHoveredTopicId((current) => (current === topicId ? null : current));

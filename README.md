@@ -91,6 +91,7 @@ pm2 save
 | `src/lib/openclaw-health.ts` | Health computation and color coding |
 | `src/lib/snapmolt-mirror.ts` | Snapmolt activity parsing and tagging |
 | `src/components/watch-shell-header.tsx` | Nav shell with tabs |
+| `docs/private-ts1-office-assets.md` | Local-only TS1 office asset override workflow |
 | `ecosystem.config.cjs` | PM2 process definitions |
 
 ## Performance

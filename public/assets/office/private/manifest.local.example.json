@@ -1,0 +1,9 @@
+{
+  "desk": "desk.glb",
+  "deskChair": "desk-chair.glb",
+  "hubCore": {
+    "file": "hub-core.glb",
+    "position": [0, 0, 0],
+    "scale": 1
+  }
+}

@@ -19,6 +19,11 @@
 .codex
 /tmp/
 
+# local-only private TS1 office assets
+public/assets/office/private/*
+!public/assets/office/private/.gitkeep
+!public/assets/office/private/manifest.local.example.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
