@@ -65,7 +65,7 @@ const TeamOfficePanel = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-[360px] animate-pulse rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.03)] sm:h-[460px]" />
+      <div className="h-[72dvh] min-h-[520px] animate-pulse rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.03)] sm:h-[560px]" />
     ),
   },
 );
@@ -872,16 +872,13 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`rounded-md border px-3 py-2 text-left transition-colors ${
+          className={`rounded border px-2.5 py-1.5 text-left transition-colors ${
             isActive
-              ? 'border-[var(--watch-accent)]/50 bg-[rgba(212,186,104,0.12)] text-[var(--watch-text)] shadow-[inset_0_0_0_1px_rgba(212,186,104,0.12)]'
+              ? 'border-[var(--watch-accent)]/50 bg-[rgba(212,186,104,0.12)] text-[var(--watch-text)]'
               : 'border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
           }`}
         >
-          <div className="text-[11px] uppercase tracking-[0.16em]">{tab.label}</div>
-          <div className={`mt-1 text-[10px] leading-4 ${isActive ? 'text-[var(--watch-text-bright)]' : 'text-[var(--watch-text-muted)]'}`}>
-            {tab.hint}
-          </div>
+          <div className="text-[10px] uppercase tracking-[0.16em]">{tab.label}</div>
         </button>
       );
     }
@@ -904,7 +901,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
 
   return (
     <div className="border-b border-[var(--watch-panel-border)]">
-      <div className="grid grid-cols-2 gap-2 p-2 sm:hidden">
+      <div className="flex gap-1.5 overflow-x-auto px-2 py-2 sm:hidden">
         {sectionTabs.map((tab) => renderTab(tab, true))}
       </div>
       <div className="hidden items-stretch overflow-x-auto sm:flex">
@@ -1000,7 +997,7 @@ export default function WatchPage() {
           <SectionTabsBar activeSection={activeSection} onChange={setActiveSection} />
 
           {/* Section content */}
-          <div className={activeSection === 'office' ? 'p-2 sm:p-4' : 'p-4 sm:p-5'}>
+          <div className={activeSection === 'office' ? 'p-1 sm:p-4' : 'p-4 sm:p-5'}>
             {!data ? (
               <div className="flex flex-col gap-3">
                 {Array.from({ length: 4 }).map((_, i) => (

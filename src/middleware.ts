@@ -3,14 +3,28 @@ import { isAuthed } from '@/lib/auth';
 
 const PUBLIC_FILE = /\.(.*)$/;
 
-function getRequestOrigin(request: NextRequest) {
-  const proto = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '');
-  const host =
-    request.headers.get('x-forwarded-host') ||
-    request.headers.get('host') ||
-    request.nextUrl.host;
+function getRedirectUrl(request: NextRequest, pathname: string, search = '') {
+  const url = request.nextUrl.clone();
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const hostHeader =
+    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
+    request.headers.get('host')?.split(',')[0]?.trim();
 
-  return `${proto}://${host}`;
+  if (proto) url.protocol = `${proto}:`;
+
+  if (hostHeader) {
+    const [hostname, port] = hostHeader.split(':');
+    url.hostname = hostname;
+    url.port = port || '';
+  }
+
+  if (!hostHeader && proto === 'https') {
+    url.port = '';
+  }
+
+  url.pathname = pathname;
+  url.search = search;
+  return url;
 }
 
 export function middleware(request: NextRequest) {
@@ -26,7 +40,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname === '/') {
-    return NextResponse.redirect(new URL('/watch', getRequestOrigin(request)));
+    return NextResponse.redirect(getRedirectUrl(request, '/watch'));
   }
 
   if (isAuthed(request)) {
@@ -37,9 +51,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const loginUrl = new URL('/login', getRequestOrigin(request));
-  loginUrl.searchParams.set('redirect', pathname);
-  return NextResponse.redirect(loginUrl);
+  const redirectPath = `${pathname}${request.nextUrl.search || ''}`;
+  return NextResponse.redirect(
+    getRedirectUrl(request, '/login', `?redirect=${encodeURIComponent(redirectPath)}`),
+  );
 }
 
 export const config = {

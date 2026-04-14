@@ -42,9 +42,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">3D operator floor, mobile-first, with tap-to-identify agents and live office activity.</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Isometric operator floor with game-style camera modes, lane activity, and selectable desks.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
-            Running agents glow hottest, recent handoffs move across lanes, and each desk can be inspected directly from the floor.
+            Running agents pulse brightest, recent handoffs physically move lanes, and scene props are wired through swappable asset slots for glTF upgrades.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -72,6 +72,12 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.2)] px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)] sm:hidden">
+        <span>running {topology.summary.running}</span>
+        <span>recent {topology.summary.recent}</span>
+        <span>tap desks to focus</span>
       </div>
 
       <div className="hidden gap-3 xl:grid xl:grid-cols-[1.1fr_1.4fr]">
