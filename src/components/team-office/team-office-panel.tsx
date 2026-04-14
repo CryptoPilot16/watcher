@@ -38,8 +38,8 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
   const featured = topics.slice(0, 6);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-1 sm:px-0">
+    <div className="flex flex-col gap-3 sm:gap-4">
+      <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
           <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">3D operator floor, mobile-first, with tap-to-identify agents and live office activity.</div>
@@ -58,7 +58,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="relative">
         <TeamOfficeCanvas topics={topics} />
 
-        <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap gap-2">
+        <div className="pointer-events-none absolute left-3 right-3 top-3 hidden flex-wrap gap-2 sm:flex">
           {active.slice(0, 5).map((topic) => (
             <div
               key={topic.topicId}
@@ -74,7 +74,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
         </div>
       </div>
 
-      <div className="hidden gap-3 lg:grid lg:grid-cols-[1.1fr_1.4fr]">
+      <div className="hidden gap-3 xl:grid xl:grid-cols-[1.1fr_1.4fr]">
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] p-4">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">

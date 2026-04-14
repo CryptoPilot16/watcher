@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { ContactShadows, Float, RoundedBox } from '@react-three/drei';
+import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import type { TeamTaskSource, TeamTopic } from '@/lib/watch-team';
@@ -764,7 +764,7 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className="relative h-[72vh] min-h-[460px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px] lg:h-[700px]">
+    <div className="relative h-[78dvh] min-h-[520px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px] lg:h-[700px]">
       <Canvas
         shadows
         camera={{ position: [7.2, 5.8, 8.4], fov: 36, near: 0.1, far: 100 }}
@@ -791,12 +791,27 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
             if (isMobile) setMobileInfoExpanded(true);
           }}
         />
+        <OrbitControls
+          enablePan={!isMobile}
+          enableZoom
+          enableRotate
+          enableDamping
+          dampingFactor={0.08}
+          minDistance={4.8}
+          maxDistance={13}
+          minPolarAngle={0.7}
+          maxPolarAngle={1.45}
+          minAzimuthAngle={-1.15}
+          maxAzimuthAngle={1.15}
+          target={[0, 0.85, 0.9]}
+          touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
+        />
       </Canvas>
 
       <TopicInfoCard topic={activeTopic} isMobile={isMobile} expanded={mobileInfoExpanded} onToggle={() => setMobileInfoExpanded((value) => !value)} />
 
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2">
-        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">tap a worker for info</div>
+        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">drag to move camera</div>
         {!isMobile && <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">green diamond = active agent</div>}
       </div>
     </div>
