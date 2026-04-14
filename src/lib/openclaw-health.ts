@@ -77,6 +77,7 @@ export type SessionTurn = {
 
 export type FaultState = {
   clearedRunFaultAt: number | null;
+  clearedSessionIdleAt: number | null;
 };
 
 export function parseSession(raw: string | undefined): SessionTurn[] {
@@ -84,7 +85,7 @@ export function parseSession(raw: string | undefined): SessionTurn[] {
 }
 
 export function parseFaultState(raw: string | undefined): FaultState {
-  return parseJsonSafe<FaultState>(raw, { clearedRunFaultAt: null });
+  return parseJsonSafe<FaultState>(raw, { clearedRunFaultAt: null, clearedSessionIdleAt: null });
 }
 
 export type CronRecord = {
@@ -166,6 +167,7 @@ export function computeHealth(
 
   // ── recent run failures ───────────────────────────────────────────────────
   const clearedRunFaultAt = faultState?.clearedRunFaultAt ?? null;
+  const clearedSessionIdleAt = faultState?.clearedSessionIdleAt ?? null;
   const runWindow = clearedRunFaultAt
     ? runs.filter((r) => runTsMs(r.ts) > clearedRunFaultAt)
     : runs;
@@ -185,7 +187,7 @@ export function computeHealth(
   const mainSession = meta.sessions.find((s) => s.key === 'agent:main:main');
   if (mainSession) {
     // 'running' means actively processing — never flag as stale
-    if (mainSession.status !== 'running' && mainSession.updatedAt) {
+    if (mainSession.status !== 'running' && mainSession.updatedAt && (!clearedSessionIdleAt || mainSession.updatedAt > clearedSessionIdleAt)) {
       const idleMs = now - mainSession.updatedAt;
       const idleHours = idleMs / 3_600_000;
       if (idleHours >= 8) {

@@ -145,12 +145,12 @@ function LogPanel({ label, hint, content }: { label: string; hint: string; conte
 
 // ── mission control banner ───────────────────────────────────────────────────
 
-function MissionBanner({ health, meta, now, sessionRunning, canClearRunFaults, clearingRunFaults, onClearRunFaults }: {
+function MissionBanner({ health, meta, now, sessionRunning, canClearStaleFaults, clearingRunFaults, onClearRunFaults }: {
   health: SystemHealth;
   meta: OpenClawMeta;
   now: string;
   sessionRunning: boolean;
-  canClearRunFaults: boolean;
+  canClearStaleFaults: boolean;
   clearingRunFaults: boolean;
   onClearRunFaults: () => void;
 }) {
@@ -205,7 +205,7 @@ function MissionBanner({ health, meta, now, sessionRunning, canClearRunFaults, c
             ⚠ {health.issues[0].message}
             {health.issues.length > 1 ? ` (+${health.issues.length - 1} more)` : ''}
           </span>
-          {canClearRunFaults && (
+          {canClearStaleFaults && (
             <button
               type="button"
               onClick={onClearRunFaults}
@@ -213,7 +213,7 @@ function MissionBanner({ health, meta, now, sessionRunning, canClearRunFaults, c
               className="rounded-sm border px-2 py-1 text-[10px] uppercase tracking-[0.18em] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
               style={{ borderColor: 'rgba(242,232,186,0.22)', color: 'var(--watch-text-bright)', background: 'rgba(255,255,255,0.03)' }}
             >
-              {clearingRunFaults ? 'clearing…' : 'clear old run faults'}
+              {clearingRunFaults ? 'clearing…' : 'clear stale faults'}
             </button>
           )}
         </>
@@ -951,7 +951,7 @@ export default function WatchPage() {
   const faultState: FaultState = parseFaultState(data?.sections.watchFaultState);
   const health         = computeHealth(meta, runs, faultState);
   const sessionRunning = meta.sessions.some((s) => s.key === 'agent:main:main' && s.status === 'running');
-  const canClearRunFaults = health.issues.some((issue) => /consecutive runs failed|recent run failure|of last .* runs failed/i.test(issue.message));
+  const canClearStaleFaults = health.issues.some((issue) => /consecutive runs failed|recent run failure|of last .* runs failed|Agent session idle for/i.test(issue.message));
 
   async function clearRunFaults() {
     try {
@@ -960,14 +960,14 @@ export default function WatchPage() {
         method: 'POST',
         credentials: 'same-origin',
       });
-      if (!res.ok) throw new Error('failed to clear old run faults');
+      if (!res.ok) throw new Error('failed to clear stale faults');
       const refresh = await fetch('/api/watch', { cache: 'no-store', credentials: 'same-origin' });
       if (!refresh.ok) throw new Error('failed to refresh watch data');
       const json = (await refresh.json()) as WatchData;
       setData(json);
       setError(null);
     } catch (err: any) {
-      setError(err?.message || 'failed to clear old run faults');
+      setError(err?.message || 'failed to clear stale faults');
     } finally {
       setClearingRunFaults(false);
     }
@@ -990,7 +990,7 @@ export default function WatchPage() {
           meta={meta}
           now={data?.now ?? ''}
           sessionRunning={sessionRunning}
-          canClearRunFaults={canClearRunFaults}
+          canClearStaleFaults={canClearStaleFaults}
           clearingRunFaults={clearingRunFaults}
           onClearRunFaults={clearRunFaults}
         />

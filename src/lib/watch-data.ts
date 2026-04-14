@@ -36,7 +36,7 @@ const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
 const OPENCLAW_DIR  = '/root/.openclaw';
 const WATCH_STATE_FILE = path.join(process.cwd(), '.watch-state.json');
 
-function readWatchState(): { clearedRunFaultAt: number | null } {
+function readWatchState(): { clearedRunFaultAt: number | null; clearedSessionIdleAt: number | null } {
   try {
     const raw = fs.readFileSync(WATCH_STATE_FILE, 'utf8');
     const parsed = JSON.parse(raw);
@@ -45,18 +45,26 @@ function readWatchState(): { clearedRunFaultAt: number | null } {
         typeof parsed?.clearedRunFaultAt === 'number' && Number.isFinite(parsed.clearedRunFaultAt)
           ? parsed.clearedRunFaultAt
           : null,
+      clearedSessionIdleAt:
+        typeof parsed?.clearedSessionIdleAt === 'number' && Number.isFinite(parsed.clearedSessionIdleAt)
+          ? parsed.clearedSessionIdleAt
+          : null,
     };
   } catch {
-    return { clearedRunFaultAt: null };
+    return { clearedRunFaultAt: null, clearedSessionIdleAt: null };
   }
 }
 
-function writeWatchState(state: { clearedRunFaultAt: number | null }) {
+function writeWatchState(state: { clearedRunFaultAt: number | null; clearedSessionIdleAt: number | null }) {
   fs.writeFileSync(WATCH_STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-export function clearRunFaults() {
-  const nextState = { clearedRunFaultAt: Date.now() };
+export function clearStaleFaults() {
+  const now = Date.now();
+  const nextState = {
+    clearedRunFaultAt: now,
+    clearedSessionIdleAt: now,
+  };
   writeWatchState(nextState);
   return nextState;
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { clearRunFaults } from '@/lib/watch-data';
+import { clearStaleFaults } from '@/lib/watch-data';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST() {
-  const state = clearRunFaults();
+  const state = clearStaleFaults();
   return NextResponse.json({ ok: true, state });
 }
