@@ -138,21 +138,21 @@ type CameraMode = 'overview' | 'focus' | 'free';
 function buildNameTexture(name: string, accent: string) {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = 360;
-  canvas.height = 92;
+  canvas.width = 260;
+  canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'rgba(10, 10, 14, 0.94)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(10, 10, 14, 0.78)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1.5;
 
-  const x = 6;
-  const y = 6;
-  const w = canvas.width - 12;
-  const h = canvas.height - 12;
-  const radius = 16;
+  const x = 4;
+  const y = 4;
+  const w = canvas.width - 8;
+  const h = canvas.height - 8;
+  const radius = 12;
 
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -169,12 +169,12 @@ function buildNameTexture(name: string, accent: string) {
   ctx.stroke();
 
   ctx.fillStyle = accent;
-  ctx.fillRect(16, 14, 11, h - 16);
+  ctx.fillRect(12, 11, 7, h - 14);
 
-  ctx.font = '600 34px JetBrains Mono, monospace';
+  ctx.font = '600 22px JetBrains Mono, monospace';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#f7f3eb';
-  ctx.fillText(name, 42, canvas.height / 2 + 1);
+  ctx.fillText(name, 28, canvas.height / 2 + 1);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
@@ -186,7 +186,7 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   if (!texture || !visible) return null;
 
   return (
-    <sprite position={position} scale={[2.35, 0.62, 1]}>
+    <sprite position={position} scale={[1.62, 0.4, 1]}>
       <spriteMaterial map={texture} transparent depthWrite={false} />
     </sprite>
   );
@@ -384,7 +384,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
 </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.26, 0]} visible={emphasized || topic.live.status !== 'idle'} />
+      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0.42, 1.42, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -782,7 +782,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
     const x = side === 0 ? -4.8 : 4.8;
     const z = (row - (deskRows - 1) / 2) * 2.48 - 0.65 + jitter;
-    const rotationY = side === 0 ? Math.PI : 0;
+    const rotationY = Math.PI;
     const standbyX = (index - (topics.length - 1) / 2) * centerSpacing;
     const standbyZ = 1.1;
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
