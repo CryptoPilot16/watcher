@@ -17,6 +17,7 @@ import {
   parseFlows,
   parseCron,
   parseSession,
+  parseFaultState,
   providerHealth,
   sessionIdleLabel,
   type HealthLevel,
@@ -26,6 +27,7 @@ import {
   type CronRecord,
   type SessionTurn,
   type SystemHealth,
+  type FaultState,
 } from '@/lib/openclaw-health';
 
 // ── types ────────────────────────────────────────────────────────────────────
@@ -124,11 +126,14 @@ function LogPanel({ label, hint, content }: { label: string; hint: string; conte
 
 // ── mission control banner ───────────────────────────────────────────────────
 
-function MissionBanner({ health, meta, now, sessionRunning }: {
+function MissionBanner({ health, meta, now, sessionRunning, canClearRunFaults, clearingRunFaults, onClearRunFaults }: {
   health: SystemHealth;
   meta: OpenClawMeta;
   now: string;
   sessionRunning: boolean;
+  canClearRunFaults: boolean;
+  clearingRunFaults: boolean;
+  onClearRunFaults: () => void;
 }) {
   const s = HEALTH_STYLE[health.level];
   const modelShort = meta.model.replace('openai-codex/', '').replace('anthropic/', '');
@@ -181,6 +186,17 @@ function MissionBanner({ health, meta, now, sessionRunning }: {
             ⚠ {health.issues[0].message}
             {health.issues.length > 1 ? ` (+${health.issues.length - 1} more)` : ''}
           </span>
+          {canClearRunFaults && (
+            <button
+              type="button"
+              onClick={onClearRunFaults}
+              disabled={clearingRunFaults}
+              className="rounded-sm border px-2 py-1 text-[10px] uppercase tracking-[0.18em] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ borderColor: 'rgba(242,232,186,0.22)', color: 'var(--watch-text-bright)', background: 'rgba(255,255,255,0.03)' }}
+            >
+              {clearingRunFaults ? 'clearing…' : 'clear old run faults'}
+            </button>
+          )}
         </>
       )}
 
@@ -706,6 +722,7 @@ export default function WatchPage() {
   const [data, setData]           = useState<WatchData | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SectionTab>('status');
+  const [clearingRunFaults, setClearingRunFaults] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -732,8 +749,30 @@ export default function WatchPage() {
   const flows          = parseFlows(data?.sections.openclawFlows);
   const cron           = parseCron(data?.sections.openclawCron);
   const turns          = parseSession(data?.sections.openclawSession);
-  const health         = computeHealth(meta, runs);
+  const faultState: FaultState = parseFaultState(data?.sections.watchFaultState);
+  const health         = computeHealth(meta, runs, faultState);
   const sessionRunning = meta.sessions.some((s) => s.key === 'agent:main:main' && s.status === 'running');
+  const canClearRunFaults = health.issues.some((issue) => /consecutive runs failed|recent run failure|of last .* runs failed/i.test(issue.message));
+
+  async function clearRunFaults() {
+    try {
+      setClearingRunFaults(true);
+      const res = await fetch('/api/watch/faults/clear', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) throw new Error('failed to clear old run faults');
+      const refresh = await fetch('/api/watch', { cache: 'no-store', credentials: 'same-origin' });
+      if (!refresh.ok) throw new Error('failed to refresh watch data');
+      const json = (await refresh.json()) as WatchData;
+      setData(json);
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'failed to clear old run faults');
+    } finally {
+      setClearingRunFaults(false);
+    }
+  }
 
   return (
     <main className="min-h-dvh px-3 py-3 sm:px-5 sm:py-5">
@@ -747,7 +786,15 @@ export default function WatchPage() {
         )}
 
         {/* Mission control banner — always visible */}
-        <MissionBanner health={health} meta={meta} now={data?.now ?? ''} sessionRunning={sessionRunning} />
+        <MissionBanner
+          health={health}
+          meta={meta}
+          now={data?.now ?? ''}
+          sessionRunning={sessionRunning}
+          canClearRunFaults={canClearRunFaults}
+          clearingRunFaults={clearingRunFaults}
+          onClearRunFaults={clearRunFaults}
+        />
 
         {/* Main panel */}
         <div className="overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(24,20,14,0.97),rgba(16,13,9,0.97))] shadow-[0_8px_40px_rgba(0,0,0,0.28)]">

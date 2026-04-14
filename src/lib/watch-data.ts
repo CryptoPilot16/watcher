@@ -1,4 +1,6 @@
 import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 export type WatchSnapshot = {
   ok: true;
@@ -31,6 +33,32 @@ function parseSafe(raw: string): any {
 
 const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
 const OPENCLAW_DIR  = '/root/.openclaw';
+const WATCH_STATE_FILE = path.join(process.cwd(), '.watch-state.json');
+
+function readWatchState(): { clearedRunFaultAt: number | null } {
+  try {
+    const raw = fs.readFileSync(WATCH_STATE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return {
+      clearedRunFaultAt:
+        typeof parsed?.clearedRunFaultAt === 'number' && Number.isFinite(parsed.clearedRunFaultAt)
+          ? parsed.clearedRunFaultAt
+          : null,
+    };
+  } catch {
+    return { clearedRunFaultAt: null };
+  }
+}
+
+function writeWatchState(state: { clearedRunFaultAt: number | null }) {
+  fs.writeFileSync(WATCH_STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+export function clearRunFaults() {
+  const nextState = { clearedRunFaultAt: Date.now() };
+  writeWatchState(nextState);
+  return nextState;
+}
 
 // ── task runs ──────────────────────────────────────────────────────────────
 function getOpenClawRuns(): string {
@@ -231,6 +259,7 @@ export function getWatchSnapshot(): WatchSnapshot {
       openclawRuns:    getOpenClawRuns(),
       openclawFlows:   getOpenClawFlows(),
       openclawCron:    getOpenClawCron(),
+      watchFaultState: JSON.stringify(readWatchState()),
       pm2:           run('pm2 list'),
       updateResult:  run('cat /root/.openclaw/tasks/update-command.result 2>/dev/null || true'),
       snapmoltOut:   readMergedLog('/root/.pm2/logs/snapmolt-out*.log', 120, 160),

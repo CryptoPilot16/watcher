@@ -26,6 +26,7 @@ yarn-error.log*
 .env.local
 .env.*.local
 .watch-telegram-state.json
+.watch-state.json
 
 # vercel
 .vercel

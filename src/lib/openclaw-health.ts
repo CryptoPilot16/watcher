@@ -75,8 +75,16 @@ export type SessionTurn = {
   detail?: string;
 };
 
+export type FaultState = {
+  clearedRunFaultAt: number | null;
+};
+
 export function parseSession(raw: string | undefined): SessionTurn[] {
   return parseJsonSafe<SessionTurn[]>(raw, []);
+}
+
+export function parseFaultState(raw: string | undefined): FaultState {
+  return parseJsonSafe<FaultState>(raw, { clearedRunFaultAt: null });
 }
 
 export type CronRecord = {
@@ -114,9 +122,17 @@ export function parseCron(raw: string | undefined): CronRecord[] {
   return parseJsonSafe<CronRecord[]>(raw, []);
 }
 
+function runTsMs(ts: string | undefined): number {
+  if (!ts) return 0;
+  const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+  const ms = Date.parse(normalized);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export function computeHealth(
   meta: OpenClawMeta,
   runs: RunRecord[],
+  faultState?: FaultState,
 ): SystemHealth {
   const now = Date.now();
   const issues: HealthIssue[] = [];
@@ -149,7 +165,11 @@ export function computeHealth(
   }
 
   // ── recent run failures ───────────────────────────────────────────────────
-  const recent = runs.slice(0, 8);
+  const clearedRunFaultAt = faultState?.clearedRunFaultAt ?? null;
+  const runWindow = clearedRunFaultAt
+    ? runs.filter((r) => runTsMs(r.ts) > clearedRunFaultAt)
+    : runs;
+  const recent = runWindow.slice(0, 8);
   const failures = recent.filter((r) => r.status === 'failed');
   const allRecentFailed = recent.length >= 3 && recent.slice(0, 3).every((r) => r.status === 'failed');
 
