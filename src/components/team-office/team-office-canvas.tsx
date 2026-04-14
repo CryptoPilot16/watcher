@@ -422,61 +422,93 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
     if (reducedMotion) return;
     const t = clock.getElapsedTime() + seed * 0.22;
     if (monitor.current) monitor.current.rotation.z = Math.sin(t * 0.7) * 0.012;
-    if (lamp.current) lamp.current.scale.setScalar(1 + Math.sin(t * 2.2) * 0.06);
+    if (lamp.current) lamp.current.rotation.z = -0.22 + Math.sin(t * 2.2) * 0.03;
   });
 
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <ringGeometry args={[0.57, emphasized ? 0.89 : 0.74, 32]} />
+        <ringGeometry args={[0.58, emphasized ? 0.92 : 0.76, 32]} />
         <meshBasicMaterial color={glow} transparent opacity={emphasized ? 0.32 : 0.18} />
       </mesh>
 
-      <RoundedBox args={[1.58, 0.12, 0.98]} radius={0.04} smoothness={4} position={[0, 0.5, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color="#f2f4f7" roughness={0.78} />
+      <RoundedBox args={[1.52, 0.1, 0.74]} radius={0.03} smoothness={4} position={[-0.08, 0.5, -0.06]} castShadow receiveShadow>
+        <meshStandardMaterial color="#ece7df" roughness={0.82} />
+      </RoundedBox>
+      <RoundedBox args={[0.76, 0.1, 1.18]} radius={0.03} smoothness={4} position={[0.46, 0.5, 0.16]} castShadow receiveShadow>
+        <meshStandardMaterial color="#e9e3d9" roughness={0.82} />
       </RoundedBox>
       {[
-        [-0.6, 0.24, -0.31],
-        [0.6, 0.24, -0.31],
-        [-0.6, 0.24, 0.31],
-        [0.6, 0.24, 0.31],
+        [-0.72, 0.24, -0.34],
+        [0.38, 0.24, -0.34],
+        [-0.72, 0.24, 0.2],
+        [0.12, 0.24, 0.62],
+        [0.82, 0.24, 0.62],
       ].map((leg, i) => (
         <mesh key={i} position={leg as [number, number, number]} castShadow>
-          <boxGeometry args={[0.11, 0.48, 0.11]} />
-          <meshStandardMaterial color="#8b5e37" />
+          <boxGeometry args={[0.08, 0.48, 0.08]} />
+          <meshStandardMaterial color="#8f8578" />
         </mesh>
       ))}
 
-      <RoundedBox args={[0.57, 0.36, 0.06]} radius={0.02} smoothness={4} position={[0.02, 0.84, -0.2]} castShadow ref={monitor as never}>
-        <meshStandardMaterial color="#cad4e0" emissive={glow} emissiveIntensity={glowStrength * 0.74} />
+      <RoundedBox args={[0.54, 0.34, 0.08]} radius={0.02} smoothness={4} position={[-0.08, 0.82, -0.29]} castShadow ref={monitor as never}>
+        <meshStandardMaterial color="#d7ddd9" emissive={glow} emissiveIntensity={glowStrength * 0.74} />
       </RoundedBox>
-      <mesh position={[0.02, 0.64, -0.2]} castShadow>
+      <mesh position={[-0.08, 0.64, -0.29]} castShadow>
         <boxGeometry args={[0.06, 0.2, 0.06]} />
-        <meshStandardMaterial color="#6f7b84" />
+        <meshStandardMaterial color="#75808b" />
       </mesh>
-      <mesh position={[-0.28, 0.56, 0.03]} castShadow>
-        <boxGeometry args={[0.2, 0.03, 0.13]} />
-        <meshStandardMaterial color="#d8dbe0" />
-      </mesh>
-      <mesh position={[0.0, 0.56, 0.03]} castShadow>
-        <boxGeometry args={[0.22, 0.03, 0.13]} />
-        <meshStandardMaterial color="#d8dbe0" />
-      </mesh>
-      <mesh position={[0.26, 0.57, 0.11]} castShadow>
-        <cylinderGeometry args={[0.032, 0.032, 0.08, 14]} />
-        <meshStandardMaterial color="#f2f3f5" />
-      </mesh>
-      <mesh position={[0.43, 0.6, 0.12]} ref={lamp} castShadow>
-        <cylinderGeometry args={[0.052, 0.052, 0.16, 16]} />
-        <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={glowStrength * 1.34} />
+      <RoundedBox args={[0.34, 0.26, 0.06]} radius={0.02} smoothness={4} position={[0.33, 0.77, -0.14]} castShadow>
+        <meshStandardMaterial color="#c6ccc8" emissive={glow} emissiveIntensity={glowStrength * 0.4} />
+      </RoundedBox>
+      <mesh position={[0.33, 0.63, -0.14]} castShadow>
+        <boxGeometry args={[0.05, 0.14, 0.05]} />
+        <meshStandardMaterial color="#747d86" />
       </mesh>
 
-      <RoundedBox args={[1.42, 0.44, 0.06]} radius={0.025} smoothness={4} position={[0, 0.86, 0.35]} castShadow>
-        <meshStandardMaterial color="#3c3438" />
+      <mesh position={[-0.22, 0.56, -0.02]} castShadow>
+        <boxGeometry args={[0.3, 0.03, 0.13]} />
+        <meshStandardMaterial color="#d6d0c6" />
+      </mesh>
+      <mesh position={[0.05, 0.56, -0.02]} castShadow>
+        <boxGeometry args={[0.24, 0.03, 0.13]} />
+        <meshStandardMaterial color="#d6d0c6" />
+      </mesh>
+      <mesh position={[0.44, 0.57, 0.32]} castShadow>
+        <cylinderGeometry args={[0.05, 0.05, 0.1, 16]} />
+        <meshStandardMaterial color="#d7b77d" />
+      </mesh>
+      <mesh position={[0.58, 0.58, -0.08]} ref={lamp} castShadow rotation={[0, 0, -0.22]}>
+        <cylinderGeometry args={[0.02, 0.03, 0.34, 16]} />
+        <meshStandardMaterial color="#49515c" emissive={glow} emissiveIntensity={glowStrength * 0.14} />
+      </mesh>
+      <mesh position={[0.66, 0.73, -0.14]} castShadow>
+        <coneGeometry args={[0.09, 0.18, 18]} />
+        <meshStandardMaterial color="#f5f1e4" emissive="#f5f1e4" emissiveIntensity={0.22} />
+      </mesh>
+
+      <mesh position={[-0.56, 0.3, 0.12]} castShadow>
+        <boxGeometry args={[0.3, 0.42, 0.48]} />
+        <meshStandardMaterial color="#c9c0b3" />
+      </mesh>
+      {[0.18, 0.32].map((y, i) => (
+        <mesh key={i} position={[-0.41, y, 0.36]} castShadow>
+          <boxGeometry args={[0.02, 0.08, 0.2]} />
+          <meshStandardMaterial color="#8f8578" />
+        </mesh>
+      ))}
+
+      <RoundedBox args={[1.52, 0.46, 0.04]} radius={0.02} smoothness={4} position={[-0.08, 0.82, -0.43]} castShadow>
+        <meshStandardMaterial color="#c8c6c0" />
       </RoundedBox>
-      <RoundedBox args={[0.06, 0.44, 0.76]} radius={0.025} smoothness={4} position={[-0.7, 0.86, 0]} castShadow>
-        <meshStandardMaterial color="#3c3438" />
+      <RoundedBox args={[0.04, 0.46, 1.06]} radius={0.02} smoothness={4} position={[0.84, 0.82, 0.1]} castShadow>
+        <meshStandardMaterial color="#c8c6c0" />
       </RoundedBox>
+
+      <mesh position={[0.55, 0.58, 0.46]} castShadow>
+        <boxGeometry args={[0.18, 0.04, 0.26]} />
+        <meshStandardMaterial color="#c8b296" />
+      </mesh>
     </>
   );
 }
@@ -484,20 +516,36 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
 function ChairFallback({ glow, glowStrength }: { glow: THREE.Color; glowStrength: number }) {
   return (
     <>
-      <mesh position={[0, 0.28, 0]} castShadow>
-        <boxGeometry args={[0.44, 0.08, 0.44]} />
+      <mesh position={[0, 0.29, 0.03]} castShadow>
+        <boxGeometry args={[0.42, 0.08, 0.4]} />
         <meshStandardMaterial color="#57657a" emissive={glow} emissiveIntensity={glowStrength * 0.08} />
       </mesh>
-      <mesh position={[0, 0.56, -0.15]} castShadow>
-        <boxGeometry args={[0.44, 0.5, 0.08]} />
+      <mesh position={[0, 0.56, 0.18]} castShadow>
+        <boxGeometry args={[0.42, 0.46, 0.08]} />
         <meshStandardMaterial color="#667489" />
       </mesh>
-      <mesh position={[0, 0.14, 0]} castShadow>
+      {[-0.18, 0.18].map((x, i) => (
+        <mesh key={i} position={[x, 0.34, 0.02]} castShadow>
+          <boxGeometry args={[0.05, 0.18, 0.24]} />
+          <meshStandardMaterial color="#4d596b" />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.14, 0.02]} castShadow>
         <cylinderGeometry args={[0.05, 0.05, 0.28, 14]} />
         <meshStandardMaterial color="#5b554f" />
       </mesh>
-      {[-0.13, 0.13].map((x, i) => (
-        <mesh key={i} position={[x, 0.03, -0.13]} castShadow>
+      <mesh position={[0, 0.03, 0.02]} castShadow>
+        <cylinderGeometry args={[0.16, 0.05, 0.04, 16]} />
+        <meshStandardMaterial color="#403b37" />
+      </mesh>
+      {[
+        [-0.16, 0.03, 0.17],
+        [0.16, 0.03, 0.17],
+        [-0.18, 0.03, -0.13],
+        [0.18, 0.03, -0.13],
+        [0, 0.03, -0.2],
+      ].map((wheel, i) => (
+        <mesh key={i} position={wheel as [number, number, number]} castShadow>
           <cylinderGeometry args={[0.03, 0.03, 0.04, 12]} />
           <meshStandardMaterial color="#202026" />
         </mesh>
@@ -525,7 +573,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
     <group position={position} rotation={[0, rotationY, 0]}>
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
-      <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.54, 0.02, 0.7]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
+      <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.16, 0.02, 0.78]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
 
       <mesh
         position={[0, 0.6, 0.17]}
@@ -780,14 +828,14 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const side = index % 2;
     const row = Math.floor(index / 2);
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
-    const x = side === 0 ? -4.8 : 4.8;
-    const z = (row - (deskRows - 1) / 2) * 2.48 - 0.65 + jitter;
+    const x = side === 0 ? -4.3 : 4.3;
+    const z = (row - (deskRows - 1) / 2) * 2.28 - 0.55 + jitter;
     const rotationY = Math.PI;
     const standbyX = (index - (topics.length - 1) / 2) * centerSpacing;
-    const standbyZ = 1.1;
+    const standbyZ = 1.0;
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.22;
-    const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.05, 0, z + 0.42] : [x - 0.05, 0, z - 0.42];
+    const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.14, 0, z + 0.48] : [x - 0.14, 0, z - 0.48];
 
     return {
       topic,
@@ -796,7 +844,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       workerDeskPosition,
       standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
-      focusPoint: [side === 0 ? x + 1.05 : x - 1.05, 0.92, z + 0.1] as [number, number, number],
+      focusPoint: [side === 0 ? x + 0.75 : x - 0.75, 0.92, z + 0.02] as [number, number, number],
     };
   });
 }
