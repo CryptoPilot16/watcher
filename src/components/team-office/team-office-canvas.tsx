@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import { ContactShadows, Float, RoundedBox } from '@react-three/drei';
+import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import type { TeamTaskSource, TeamTopic } from '@/lib/watch-team';
 
@@ -133,17 +135,18 @@ function Plumbob({ visible }: { visible: boolean }) {
   useFrame(({ clock }) => {
     if (!mesh.current || !visible) return;
     const t = clock.getElapsedTime();
-    mesh.current.rotation.y = t * 1.2;
-    mesh.current.position.y = 1.52 + Math.sin(t * 2) * 0.06;
+    mesh.current.rotation.y = t * 1.4;
   });
 
   if (!visible) return null;
 
   return (
-    <mesh ref={mesh} position={[0, 1.52, 0]}>
-      <octahedronGeometry args={[0.16, 0]} />
-      <meshStandardMaterial color="#73ff9f" emissive="#73ff9f" emissiveIntensity={1.45} />
-    </mesh>
+    <Float speed={2.1} rotationIntensity={0.15} floatIntensity={0.55}>
+      <mesh ref={mesh} position={[0, 1.52, 0]}>
+        <octahedronGeometry args={[0.16, 0]} />
+        <meshStandardMaterial color="#73ff9f" emissive="#73ff9f" emissiveIntensity={1.6} />
+      </mesh>
+    </Float>
   );
 }
 
@@ -267,10 +270,9 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed,
         <meshBasicMaterial color={glow} transparent opacity={topic.live.status === 'idle' ? 0.08 : emphasized ? 0.28 : 0.18} />
       </mesh>
 
-      <mesh position={[0, 0.48, 0]}>
-        <boxGeometry args={[1.5, 0.12, 0.95]} />
-        <meshStandardMaterial color="#b47d4f" roughness={0.7} />
-      </mesh>
+      <RoundedBox args={[1.5, 0.12, 0.95]} radius={0.04} smoothness={4} position={[0, 0.48, 0]}>
+        <meshStandardMaterial color="#f3f5f7" roughness={0.75} />
+      </RoundedBox>
       {[
         [-0.56, 0.23, -0.3],
         [0.56, 0.23, -0.3],
@@ -283,10 +285,9 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed,
         </mesh>
       ))}
 
-      <mesh position={[0.02, 0.82, -0.2]} ref={monitor}>
-        <boxGeometry args={[0.54, 0.34, 0.06]} />
-        <meshStandardMaterial color="#2c3440" emissive={glow} emissiveIntensity={glowStrength} />
-      </mesh>
+      <RoundedBox args={[0.54, 0.34, 0.06]} radius={0.02} smoothness={4} position={[0.02, 0.82, -0.2]} ref={monitor as never}>
+        <meshStandardMaterial color="#c9d2dc" emissive={glow} emissiveIntensity={glowStrength * 0.72} />
+      </RoundedBox>
       <mesh position={[0.02, 0.62, -0.2]}>
         <boxGeometry args={[0.06, 0.2, 0.06]} />
         <meshStandardMaterial color="#6f7a83" />
@@ -304,14 +305,12 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, walkTarget, seed,
         <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={glowStrength * 1.3} />
       </mesh>
 
-      <mesh position={[0, 0.84, 0.34]}>
-        <boxGeometry args={[1.35, 0.42, 0.06]} />
-        <meshStandardMaterial color="#2b2727" />
-      </mesh>
-      <mesh position={[-0.66, 0.84, 0]}>
-        <boxGeometry args={[0.06, 0.42, 0.72]} />
-        <meshStandardMaterial color="#2b2727" />
-      </mesh>
+      <RoundedBox args={[1.35, 0.42, 0.06]} radius={0.025} smoothness={4} position={[0, 0.84, 0.34]}>
+        <meshStandardMaterial color="#3d3437" />
+      </RoundedBox>
+      <RoundedBox args={[0.06, 0.42, 0.72]} radius={0.025} smoothness={4} position={[-0.66, 0.84, 0]}>
+        <meshStandardMaterial color="#3d3437" />
+      </RoundedBox>
 
       <group position={[0.52, 0.02, 0.68]}>
         <mesh position={[0, 0.25, 0]}>
@@ -402,107 +401,97 @@ function RouteLine({ start, end, topic, reducedMotion }: {
   );
 }
 
-function Lounge() {
-  return (
-    <group position={[4.25, 0, -3.1]}>
-      <mesh position={[0, 0.28, 0]}>
-        <boxGeometry args={[1.45, 0.34, 0.72]} />
-        <meshStandardMaterial color="#8f6bd2" />
-      </mesh>
-      <mesh position={[0, 0.66, -0.22]}>
-        <boxGeometry args={[1.45, 0.44, 0.14]} />
-        <meshStandardMaterial color="#7f5cc6" />
-      </mesh>
-      <mesh position={[-0.65, 0.58, 0]}>
-        <boxGeometry args={[0.14, 0.42, 0.72]} />
-        <meshStandardMaterial color="#7f5cc6" />
-      </mesh>
-      <mesh position={[0.65, 0.58, 0]}>
-        <boxGeometry args={[0.14, 0.42, 0.72]} />
-        <meshStandardMaterial color="#7f5cc6" />
-      </mesh>
-    </group>
-  );
-}
-
-function MeetingTable() {
-  return (
-    <group position={[1.2, 0, -4.1]}>
-      <mesh position={[0, 0.52, 0]}>
-        <cylinderGeometry args={[1.75, 1.75, 0.16, 36]} />
-        <meshStandardMaterial color="#d4a076" />
-      </mesh>
-      <mesh position={[0, 0.26, 0]}>
-        <cylinderGeometry args={[0.16, 0.22, 0.52, 18]} />
-        <meshStandardMaterial color="#99704b" />
-      </mesh>
-      {[
-        [-1.62, 0, -0.15],
-        [1.42, 0, -0.36],
-        [-0.54, 0, 1.74],
-        [0.92, 0, 1.56],
-      ].map((pos, i) => (
-        <group key={i} position={pos as [number, number, number]}>
-          <mesh position={[0, 0.22, 0]}>
-            <boxGeometry args={[0.34, 0.08, 0.34]} />
-            <meshStandardMaterial color="#637289" />
-          </mesh>
-          <mesh position={[0, 0.5, -0.1]}>
-            <boxGeometry args={[0.34, 0.44, 0.08]} />
-            <meshStandardMaterial color="#73829b" />
-          </mesh>
-          <mesh position={[0, 0.12, 0]}>
-            <cylinderGeometry args={[0.04, 0.04, 0.24, 12]} />
-            <meshStandardMaterial color="#55514b" />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function WindowsAndDecor() {
+function OfficeShell() {
   return (
     <>
-      {[-3.7, 0.1, 3.9].map((x, i) => (
-        <group key={i} position={[x, 1.85, -6.9]}>
-          <mesh>
-            <boxGeometry args={[1.7, 1.7, 0.06]} />
-            <meshStandardMaterial color="#212229" />
-          </mesh>
-          <mesh position={[0, 0, -0.01]}>
-            <boxGeometry args={[1.4, 1.45, 0.02]} />
-            <meshStandardMaterial color="#dbeffc" emissive="#dbeffc" emissiveIntensity={0.18} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[18, 16]} />
+        <meshStandardMaterial color="#eef1f4" roughness={0.94} />
+      </mesh>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0.1]} receiveShadow>
+        <planeGeometry args={[11.8, 9.6]} />
+        <meshStandardMaterial color="#95c9c7" roughness={0.98} />
+      </mesh>
+
+      <mesh position={[0, 1.95, -6.8]} receiveShadow>
+        <boxGeometry args={[16.2, 3.9, 0.18]} />
+        <meshStandardMaterial color="#f7f7fa" roughness={0.96} />
+      </mesh>
+      <mesh position={[-8.05, 1.95, 0]} receiveShadow>
+        <boxGeometry args={[0.18, 3.9, 14]} />
+        <meshStandardMaterial color="#f3f4f8" roughness={0.96} />
+      </mesh>
+      <mesh position={[8.05, 1.95, 0]} receiveShadow>
+        <boxGeometry args={[0.18, 3.9, 14]} />
+        <meshStandardMaterial color="#f3f4f8" roughness={0.96} />
+      </mesh>
+
+      {[-4.2, 0, 4.2].map((x, i) => (
+        <group key={i} position={[x, 2.1, -6.68]}>
+          <RoundedBox args={[2.1, 2.15, 0.08]} radius={0.04} smoothness={4}>
+            <meshStandardMaterial color="#24252a" roughness={0.7} />
+          </RoundedBox>
+          <mesh position={[0, 0, -0.03]}>
+            <planeGeometry args={[1.8, 1.82]} />
+            <meshStandardMaterial color="#deefff" emissive="#deefff" emissiveIntensity={0.16} />
           </mesh>
           <mesh position={[0, 0, 0.02]}>
-            <boxGeometry args={[0.06, 1.45, 0.04]} />
-            <meshStandardMaterial color="#1f1f23" />
-          </mesh>
-          <mesh position={[0, 0, 0.02]} rotation={[0, 0, Math.PI / 2]}>
-            <boxGeometry args={[0.06, 1.45, 0.04]} />
-            <meshStandardMaterial color="#1f1f23" />
+            <boxGeometry args={[0.07, 1.85, 0.03]} />
+            <meshStandardMaterial color="#24252a" />
           </mesh>
         </group>
       ))}
 
-      <mesh position={[-5.2, 1.75, -6.87]}>
-        <boxGeometry args={[1.4, 1.1, 0.06]} />
-        <meshStandardMaterial color="#d3b78f" />
+      <mesh position={[-5.7, 2.12, -6.68]}>
+        <boxGeometry args={[1.85, 1.35, 0.07]} />
+        <meshStandardMaterial color="#d8be99" roughness={1} />
       </mesh>
       {[
-        [-5.55, 2.05],
-        [-5.1, 2.05],
-        [-4.65, 2.05],
-        [-5.55, 1.65],
-        [-5.1, 1.65],
-        [-4.65, 1.65],
+        [-6.15, 2.42],
+        [-5.7, 2.42],
+        [-5.25, 2.42],
+        [-6.15, 1.95],
+        [-5.7, 1.95],
+        [-5.25, 1.95],
       ].map((pin, i) => (
-        <mesh key={i} position={[pin[0], pin[1], -6.82]}>
-          <boxGeometry args={[0.26, 0.18, 0.02]} />
-          <meshStandardMaterial color={i % 2 === 0 ? '#ffe38d' : '#f9c1a5'} />
+        <mesh key={i} position={[pin[0], pin[1], -6.62]}>
+          <boxGeometry args={[0.28, 0.2, 0.02]} />
+          <meshStandardMaterial color={i % 2 === 0 ? '#ffd97f' : '#f9c7ae'} />
         </mesh>
       ))}
+
+      <group position={[5.95, 0, -4.2]}>
+        <RoundedBox args={[0.5, 1.25, 0.5]} radius={0.08} smoothness={4} position={[0, 0.62, 0]}>
+          <meshStandardMaterial color="#f6f7fa" />
+        </RoundedBox>
+        <mesh position={[0, 1.62, 0]}>
+          <octahedronGeometry args={[0.22, 0]} />
+          <meshStandardMaterial color="#78ff9d" emissive="#78ff9d" emissiveIntensity={0.65} />
+        </mesh>
+      </group>
     </>
+  );
+}
+
+function BreakArea() {
+  return (
+    <group position={[5.2, 0, 2.85]}>
+      <RoundedBox args={[1.8, 0.38, 0.82]} radius={0.08} smoothness={4} position={[0, 0.24, 0]}>
+        <meshStandardMaterial color="#8567cf" />
+      </RoundedBox>
+      <RoundedBox args={[1.8, 0.46, 0.18]} radius={0.06} smoothness={4} position={[0, 0.65, -0.24]}>
+        <meshStandardMaterial color="#7859c7" />
+      </RoundedBox>
+      <mesh position={[-1.15, 0.18, 0.1]}>
+        <cylinderGeometry args={[0.26, 0.3, 0.36, 18]} />
+        <meshStandardMaterial color="#d4a076" roughness={0.8} />
+      </mesh>
+      <mesh position={[-1.15, 0.47, 0.1]}>
+        <cylinderGeometry args={[0.6, 0.6, 0.08, 26]} />
+        <meshStandardMaterial color="#d9b188" roughness={0.8} />
+      </mesh>
+    </group>
   );
 }
 
@@ -515,68 +504,44 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, on
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
 }) {
-  const hub: [number, number, number] = [0.2, 0.06, -0.8];
+  const hub: [number, number, number] = [0, 0.05, 3.45];
   const deskLayouts = useMemo<DeskLayout[]>(() => {
     const rows = Math.ceil(topics.length / 2);
-    const gapZ = rows > 1 ? 2.6 : 0;
+    const gapZ = 2.1;
     return topics.map((topic, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const x = col === 0 ? -3.5 : 2.8;
-      const z = (row - (rows - 1) / 2) * gapZ + 0.8;
+      const x = col === 0 ? -2.3 : 2.3;
+      const z = (row - (rows - 1) / 2) * gapZ + 0.2;
       return {
         topic,
         position: [x, 0, z] as [number, number, number],
-        routeStart: [x + 0.7, 0.05, z - 0.2] as [number, number, number],
-        walkTarget: [col === 0 ? -1.3 : 1.5, 0, z - 0.25] as [number, number, number],
-        rotationY: col === 0 ? Math.PI * 0.02 : -Math.PI * 0.04,
+        routeStart: [col === 0 ? -0.72 : 0.72, 0.05, z + 0.14] as [number, number, number],
+        walkTarget: [col === 0 ? -0.3 : 0.3, 0, z + 0.18] as [number, number, number],
+        rotationY: col === 0 ? Math.PI : 0,
       };
     });
   }, [topics]);
 
   return (
     <>
-      <color attach="background" args={['#2b160f']} />
-      <fog attach="fog" args={['#2b160f', 13, 24]} />
-      <ambientLight intensity={1.15} color="#fff0d0" />
-      <hemisphereLight args={['#fff4d8', '#8c6246', 1.25]} />
-      <directionalLight position={[6, 10, 5]} intensity={1.7} color="#fff1ca" />
-      <pointLight position={[0, 7, -2]} intensity={18} color="#ffd4a6" />
-      <pointLight position={[5.5, 5, -4]} intensity={6} color="#a072ff" />
+      <color attach="background" args={['#edf2f6']} />
+      <fog attach="fog" args={['#edf2f6', 14, 22]} />
+      <ambientLight intensity={1.35} color="#ffffff" />
+      <hemisphereLight args={['#ffffff', '#c8d3d8', 1.15]} />
+      <directionalLight position={[6, 10, 5]} intensity={1.35} color="#fff8eb" />
+      <pointLight position={[0, 5.8, -1.6]} intensity={7} color="#ffffff" />
+      <pointLight position={[0, 4.6, 4.6]} intensity={5} color="#d6fbff" />
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-        <planeGeometry args={[16, 14]} />
-        <meshStandardMaterial color="#f3ead7" roughness={0.95} />
-      </mesh>
-      <mesh position={[0, 1.45, -6.95]}>
-        <boxGeometry args={[16, 2.9, 0.18]} />
-        <meshStandardMaterial color="#a7a7ad" />
-      </mesh>
-      <mesh position={[-7.92, 1.45, 0]}>
-        <boxGeometry args={[0.18, 2.9, 14]} />
-        <meshStandardMaterial color="#8f8f95" />
-      </mesh>
-      <mesh position={[7.92, 1.45, 0]}>
-        <boxGeometry args={[0.18, 2.9, 14]} />
-        <meshStandardMaterial color="#8f8f95" />
-      </mesh>
+      <OfficeShell />
+      <BreakArea />
 
-      <mesh position={[0.2, 0.02, -0.8]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[2.15, 40]} />
-        <meshBasicMaterial color="#d9ad84" />
-      </mesh>
-
-      <MeetingTable />
-      <Lounge />
-      <WindowsAndDecor />
-
-      <mesh position={[5.8, 0.55, 0.4]}>
-        <boxGeometry args={[0.35, 1.1, 0.35]} />
-        <meshStandardMaterial color="#f5f7fa" />
-      </mesh>
-      <mesh position={[5.8, 1.2, 0.4]}>
-        <cylinderGeometry args={[0.08, 0.08, 0.36, 16]} />
-        <meshStandardMaterial color="#89d7b1" emissive="#89d7b1" emissiveIntensity={0.35} />
+      <RoundedBox args={[1.6, 0.12, 1.4]} radius={0.05} smoothness={4} position={[0, 0.08, 3.48]}>
+        <meshStandardMaterial color="#e2edf1" />
+      </RoundedBox>
+      <mesh position={[0, 0.18, 3.48]}>
+        <cylinderGeometry args={[0.18, 0.22, 0.2, 18]} />
+        <meshStandardMaterial color="#6fd1e4" emissive="#6fd1e4" emissiveIntensity={0.45} />
       </mesh>
 
       {deskLayouts.map((desk, index) => {
@@ -599,6 +564,13 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, on
           </group>
         );
       })}
+
+      <ContactShadows position={[0, 0.02, 0]} opacity={0.28} scale={16} blur={2.2} far={6} />
+
+      <EffectComposer>
+        <Bloom intensity={0.35} luminanceThreshold={0.6} luminanceSmoothing={0.9} />
+        <Vignette offset={0.18} darkness={0.38} />
+      </EffectComposer>
     </>
   );
 }
@@ -673,11 +645,11 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
   return (
     <div className="relative h-[390px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px]">
       <Canvas
-        orthographic
-        camera={{ position: [8.5, 10, 8.5], zoom: 58, near: 0.1, far: 100 }}
-        dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.15 : 1.5)}
+        shadows
+        camera={{ position: [7.2, 5.8, 8.4], fov: 36, near: 0.1, far: 100 }}
+        dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.15 : 1.6)}
         onCreated={({ camera }) => {
-          camera.lookAt(0, 0, -1.4);
+          camera.lookAt(0, 0.8, 0.6);
         }}
         onPointerMissed={() => setSelectedTopicId(null)}
       >
@@ -698,7 +670,7 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
 
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2">
         <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">hover or tap a worker</div>
-        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">green diamond = active sim</div>
+        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">green diamond = active agent</div>
       </div>
     </div>
   );
