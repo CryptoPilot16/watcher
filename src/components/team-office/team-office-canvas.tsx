@@ -65,6 +65,21 @@ function topicHeadline(topic: TeamTopic) {
   return topic.currentTask.snippet || topic.recent.lastAssistantText || topic.recent.lastUserText || topic.live.freshnessLabel || 'Waiting for work';
 }
 
+function hashLabel(label: string) {
+  let hash = 0;
+  for (let i = 0; i < label.length; i += 1) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  return hash;
+}
+
+function paletteForTopic(topic: TeamTopic) {
+  const seed = hashLabel(topic.configured.label);
+  const skin = ['#f1d2bc', '#e7c09d', '#c88e68', '#8f5d43'][seed % 4];
+  const hair = ['#241c18', '#5c3725', '#2d2e39', '#6d5a48'][(seed >> 2) % 4];
+  const top = ['#5f8ee6', '#7b6ed6', '#4ca4a0', '#d08b55', '#6b8b4d'][(seed >> 4) % 5];
+  const bottom = ['#2e3644', '#373a42', '#4b5869', '#3d4450'][(seed >> 6) % 4];
+  return { skin, hair, top, bottom };
+}
+
 type DeskLayout = {
   topic: TeamTopic;
   position: [number, number, number];
@@ -159,9 +174,11 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
   emphasized: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
-  const leftArm = useRef<THREE.Mesh>(null);
-  const rightArm = useRef<THREE.Mesh>(null);
-  const color = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
+  const leftArm = useRef<THREE.Group>(null);
+  const rightArm = useRef<THREE.Group>(null);
+  const palette = useMemo(() => paletteForTopic(topic), [topic]);
+  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
+  const walking = topic.live.status === 'recent';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
@@ -170,9 +187,9 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
 
     let x = localOrigin[0];
     let z = localOrigin[2];
-    let facing = Math.PI * 0.08;
+    let facing = walking ? 0 : Math.PI;
 
-    if (topic.live.status === 'recent' && !reducedMotion) {
+    if (walking && !reducedMotion) {
       const p = (Math.sin(t * 0.78) + 1) / 2;
       x = localOrigin[0] + (localTarget[0] - localOrigin[0]) * p;
       z = localOrigin[2] + (localTarget[2] - localOrigin[2]) * p;
@@ -183,15 +200,15 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current) {
-      if (topic.live.status === 'running' && !reducedMotion) {
-        leftArm.current.rotation.x = -0.82 + swing * 0.22;
-        rightArm.current.rotation.x = -0.42 - swing * 0.22;
-      } else if (topic.live.status === 'recent' && !reducedMotion) {
+      if (walking && !reducedMotion) {
         leftArm.current.rotation.x = swing;
         rightArm.current.rotation.x = -swing;
+      } else if (topic.live.status === 'running' && !reducedMotion) {
+        leftArm.current.rotation.x = -1.12 + swing * 0.08;
+        rightArm.current.rotation.x = -1.02 - swing * 0.08;
       } else {
-        leftArm.current.rotation.x = -0.18;
-        rightArm.current.rotation.x = 0.18;
+        leftArm.current.rotation.x = -0.96;
+        rightArm.current.rotation.x = -0.9;
       }
     }
   });
@@ -199,7 +216,7 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
   if (topic.live.status === 'missing') {
     return (
       <group position={[localOrigin[0], 0.2, localOrigin[2]]}>
-        <mesh>
+        <mesh castShadow>
           <cylinderGeometry args={[0.14, 0.18, 0.2, 16]} />
           <meshStandardMaterial color="#3a1515" emissive="#ff6b6b" emissiveIntensity={0.72} />
         </mesh>
@@ -209,32 +226,82 @@ function WorkerAvatar({ topic, localOrigin, localTarget, reducedMotion, seed, em
 
   return (
     <group ref={group}>
-      <mesh position={[0, 0.24, 0]}>
-        <boxGeometry args={[0.26, 0.36, 0.18]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={topic.live.status === 'running' ? 0.92 : 0.34} />
-      </mesh>
-      <mesh position={[0, 0.56, 0]}>
-        <boxGeometry args={[0.18, 0.18, 0.18]} />
-        <meshStandardMaterial color="#f1d3b0" />
-      </mesh>
-      <mesh ref={leftArm} position={[-0.18, 0.25, 0]}>
-        <boxGeometry args={[0.08, 0.26, 0.08]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
-      </mesh>
-      <mesh ref={rightArm} position={[0.18, 0.25, 0]}>
-        <boxGeometry args={[0.08, 0.26, 0.08]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
-      </mesh>
-      <mesh position={[-0.08, -0.06, 0]}>
-        <boxGeometry args={[0.08, 0.26, 0.08]} />
-        <meshStandardMaterial color="#2a241e" />
-      </mesh>
-      <mesh position={[0.08, -0.06, 0]}>
-        <boxGeometry args={[0.08, 0.26, 0.08]} />
-        <meshStandardMaterial color="#2a241e" />
+      {walking ? (
+        <>
+          <RoundedBox castShadow args={[0.24, 0.34, 0.18]} radius={0.04} smoothness={4} position={[0, 0.28, 0]}>
+            <meshStandardMaterial color={palette.top} />
+          </RoundedBox>
+          <mesh castShadow position={[0, 0.59, 0]}>
+            <sphereGeometry args={[0.12, 20, 20]} />
+            <meshStandardMaterial color={palette.skin} />
+          </mesh>
+          <mesh castShadow position={[0, 0.68, -0.03]}>
+            <sphereGeometry args={[0.13, 18, 18, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color={palette.hair} />
+          </mesh>
+          <group ref={leftArm} position={[-0.15, 0.33, 0]}>
+            <mesh castShadow position={[0, -0.12, 0]}>
+              <capsuleGeometry args={[0.035, 0.2, 4, 8]} />
+              <meshStandardMaterial color={palette.top} />
+            </mesh>
+          </group>
+          <group ref={rightArm} position={[0.15, 0.33, 0]}>
+            <mesh castShadow position={[0, -0.12, 0]}>
+              <capsuleGeometry args={[0.035, 0.2, 4, 8]} />
+              <meshStandardMaterial color={palette.top} />
+            </mesh>
+          </group>
+          <mesh castShadow position={[-0.07, 0.02, 0]}>
+            <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+          <mesh castShadow position={[0.07, 0.02, 0]}>
+            <capsuleGeometry args={[0.04, 0.24, 4, 8]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+        </>
+      ) : (
+        <>
+          <RoundedBox castShadow args={[0.24, 0.3, 0.2]} radius={0.04} smoothness={4} position={[0, 0.33, 0.08]} rotation={[0.18, 0, 0]}>
+            <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.18 : 0.02} />
+          </RoundedBox>
+          <mesh castShadow position={[0, 0.62, -0.02]}>
+            <sphereGeometry args={[0.12, 20, 20]} />
+            <meshStandardMaterial color={palette.skin} />
+          </mesh>
+          <mesh castShadow position={[0, 0.71, -0.05]}>
+            <sphereGeometry args={[0.135, 18, 18, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color={palette.hair} />
+          </mesh>
+          <group ref={leftArm} position={[-0.15, 0.42, 0.08]} rotation={[-0.95, 0.08, 0]}>
+            <mesh castShadow position={[0, -0.12, 0]}>
+              <capsuleGeometry args={[0.034, 0.2, 4, 8]} />
+              <meshStandardMaterial color={palette.top} />
+            </mesh>
+          </group>
+          <group ref={rightArm} position={[0.15, 0.42, 0.08]} rotation={[-0.9, -0.08, 0]}>
+            <mesh castShadow position={[0, -0.12, 0]}>
+              <capsuleGeometry args={[0.034, 0.2, 4, 8]} />
+              <meshStandardMaterial color={palette.top} />
+            </mesh>
+          </group>
+          <mesh castShadow position={[-0.07, 0.11, 0.2]} rotation={[1.2, 0, 0]}>
+            <capsuleGeometry args={[0.038, 0.18, 4, 8]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+          <mesh castShadow position={[0.07, 0.11, 0.2]} rotation={[1.2, 0, 0]}>
+            <capsuleGeometry args={[0.038, 0.18, 4, 8]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+        </>
+      )}
+
+      <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.14, 0.18, 18]} />
+        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.42 : 0.16} />
       </mesh>
       <Plumbob visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.16, 0]} visible={emphasized || topic.live.status !== 'idle'} />
+      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0, 1.2, 0]} visible={emphasized || topic.live.status !== 'idle'} />
     </group>
   );
 }
@@ -593,11 +660,55 @@ function FallbackOffice({ topics }: { topics: TeamTopic[] }) {
   );
 }
 
-function TopicInfoCard({ topic }: { topic: TeamTopic | null }) {
+function TopicInfoCard({ topic, isMobile, expanded, onToggle }: { topic: TeamTopic | null; isMobile: boolean; expanded: boolean; onToggle: () => void }) {
   if (!topic) return null;
   const color = statusColor(topic.live.status);
+
+  if (isMobile) {
+    if (!expanded) {
+      return (
+        <div className="absolute bottom-3 right-3 z-10 pointer-events-auto">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="rounded-xl border border-white/10 bg-[rgba(10,10,14,0.88)] px-3 py-2 text-left text-white shadow-2xl backdrop-blur-md"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold" style={{ color }}>{topic.configured.label}</span>
+              <span className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>{topic.live.status}</span>
+            </div>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="absolute inset-x-3 bottom-3 z-10 pointer-events-auto rounded-2xl border border-white/10 bg-[rgba(10,10,14,0.9)] p-3 text-white shadow-2xl backdrop-blur-md">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
+            <div className="truncate text-base font-semibold" style={{ color }}>{topic.configured.label}</div>
+          </div>
+          <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">minimize</button>
+        </div>
+        <div className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
+        <div className="mt-1 text-sm leading-6 text-white/90">{topicHeadline(topic)}</div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.14em] text-white/55">
+          <div>
+            <div>mode</div>
+            <div className="mt-1 text-[11px] text-white/85">{actionLabel(topic)}</div>
+          </div>
+          <div>
+            <div>freshness</div>
+            <div className="mt-1 text-[11px] text-white/85">{topic.live.freshnessLabel}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="pointer-events-none absolute right-3 top-3 w-[220px] rounded-xl border border-white/10 bg-[rgba(10,10,14,0.88)] p-3 text-white shadow-2xl backdrop-blur-md sm:w-[260px]">
+    <div className="pointer-events-none absolute right-3 top-3 z-10 w-[260px] rounded-xl border border-white/10 bg-[rgba(10,10,14,0.88)] p-3 text-white shadow-2xl backdrop-blur-md">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
@@ -626,24 +737,34 @@ function TopicInfoCard({ topic }: { topic: TeamTopic | null }) {
 export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [hoveredTopicId, setHoveredTopicId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
 
   useEffect(() => {
-    const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    setReducedMotion(reduced);
-    setFallback(reduced);
+    const updateViewport = () => {
+      if (typeof window === 'undefined') return;
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      setReducedMotion(reduced);
+      setFallback(reduced);
+      setIsMobile(window.innerWidth < 640);
+    };
+
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
   }, []);
 
   const defaultTopic = topics.find((topic) => topic.live.status === 'running') || topics.find((topic) => topic.live.status === 'recent') || topics[0] || null;
-  const activeTopic = topics.find((topic) => topic.topicId === hoveredTopicId)
-    || topics.find((topic) => topic.topicId === selectedTopicId)
-    || defaultTopic;
+  const hoveredTopic = topics.find((topic) => topic.topicId === hoveredTopicId) || null;
+  const selectedTopic = topics.find((topic) => topic.topicId === selectedTopicId) || null;
+  const activeTopic = isMobile ? (selectedTopic || hoveredTopic) : (hoveredTopic || selectedTopic || defaultTopic);
 
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className="relative h-[390px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px]">
+    <div className="relative h-[72vh] min-h-[460px] overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] sm:h-[620px] lg:h-[700px]">
       <Canvas
         shadows
         camera={{ position: [7.2, 5.8, 8.4], fov: 36, near: 0.1, far: 100 }}
@@ -651,7 +772,10 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
         onCreated={({ camera }) => {
           camera.lookAt(0, 0.8, 0.6);
         }}
-        onPointerMissed={() => setSelectedTopicId(null)}
+        onPointerMissed={() => {
+          setSelectedTopicId(null);
+          setMobileInfoExpanded(false);
+        }}
       >
         <OfficeRoom
           topics={topics}
@@ -662,15 +786,18 @@ export function TeamOfficeCanvas({ topics }: { topics: TeamTopic[] }) {
           onLeave={(topicId) => {
             setHoveredTopicId((current) => (current === topicId ? null : current));
           }}
-          onSelect={setSelectedTopicId}
+          onSelect={(topicId) => {
+            setSelectedTopicId(topicId);
+            if (isMobile) setMobileInfoExpanded(true);
+          }}
         />
       </Canvas>
 
-      <TopicInfoCard topic={activeTopic} />
+      <TopicInfoCard topic={activeTopic} isMobile={isMobile} expanded={mobileInfoExpanded} onToggle={() => setMobileInfoExpanded((value) => !value)} />
 
       <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2">
-        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">hover or tap a worker</div>
-        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">green diamond = active agent</div>
+        <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">tap a worker for info</div>
+        {!isMobile && <div className="rounded-md bg-[rgba(10,10,14,0.84)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">green diamond = active agent</div>}
       </div>
     </div>
   );

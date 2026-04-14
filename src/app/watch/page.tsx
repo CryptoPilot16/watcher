@@ -47,11 +47,12 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-type SectionTab = 'status' | 'team' | 'runs' | 'flows' | 'snapmolt' | 'logs' | 'processes';
+type SectionTab = 'status' | 'office' | 'team' | 'runs' | 'flows' | 'snapmolt' | 'logs' | 'processes';
 
 const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'status',    label: 'status',    hint: 'mission control' },
-  { id: 'team',      label: 'team',      hint: 'office & lanes' },
+  { id: 'office',    label: 'office',    hint: '3d operator floor' },
+  { id: 'team',      label: 'team',      hint: 'lanes & roster' },
   { id: 'runs',      label: 'runs',      hint: 'openclaw activity' },
   { id: 'flows',     label: 'flows',     hint: 'multi-step goals' },
   { id: 'snapmolt',  label: 'snapmolt',  hint: 'voice & agent feed' },
@@ -698,6 +699,10 @@ function SnapmoltSection({ data }: { data: WatchData | null }) {
 
 // ── TEAM TAB ─────────────────────────────────────────────────────────────────
 
+function OfficeSection({ topology }: { topology: TeamTopology }) {
+  return <TeamOfficePanel topology={topology} />;
+}
+
 function TeamSection({ topology }: { topology: TeamTopology }) {
   const topics = sortTeamTopics(topology.topics);
   const activeTasks = [...topics]
@@ -736,8 +741,6 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
           </div>
         ))}
       </div>
-
-      <TeamOfficePanel topology={topology} />
 
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <div className="flex flex-col gap-2">
@@ -916,7 +919,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
 export default function WatchPage() {
   const [data, setData]           = useState<WatchData | null>(null);
   const [error, setError]         = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<SectionTab>('status');
+  const [activeSection, setActiveSection] = useState<SectionTab>('office');
   const [clearingRunFaults, setClearingRunFaults] = useState(false);
 
   useEffect(() => {
@@ -997,7 +1000,7 @@ export default function WatchPage() {
           <SectionTabsBar activeSection={activeSection} onChange={setActiveSection} />
 
           {/* Section content */}
-          <div className="p-4 sm:p-5">
+          <div className={activeSection === 'office' ? 'p-2 sm:p-4' : 'p-4 sm:p-5'}>
             {!data ? (
               <div className="flex flex-col gap-3">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -1007,6 +1010,7 @@ export default function WatchPage() {
             ) : (
               <>
                 {activeSection === 'status'    && <StatusSection    data={data} health={health} meta={meta} runs={runs} cron={cron} turns={turns} sessionRunning={sessionRunning} />}
+                {activeSection === 'office'    && <OfficeSection    topology={teamTopology} />}
                 {activeSection === 'team'      && <TeamSection      topology={teamTopology} />}
                 {activeSection === 'runs'      && <RunsSection      runs={runs} />}
                 {activeSection === 'flows'     && <FlowsSection     flows={flows} />}

@@ -39,12 +39,12 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-1 sm:px-0">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ operator floor</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Full 3D office with live worker motion, command hub routing, and desk activity.</div>
-          <div className="mt-2 max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:text-[13px]">
-            Cyan workers are actively handling tasks, amber workers are moving through handoffs, bronze desks are waiting, and red posts mark missing or offline lanes.
+          <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">3D operator floor, mobile-first, with tap-to-identify agents and live office activity.</div>
+          <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
+            Running agents glow hottest, recent handoffs move across lanes, and each desk can be inspected directly from the floor.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -74,7 +74,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[1.1fr_1.4fr]">
+      <div className="hidden gap-3 lg:grid lg:grid-cols-[1.1fr_1.4fr]">
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.22)] p-4">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
