@@ -824,7 +824,11 @@ function BreakArea({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
 
 function buildDeskLayouts(topics: TeamTopic[]) {
   const deskRows = Math.ceil(topics.length / 2);
-  const centerSpacing = 1.04;
+  const inactiveTopics = topics.filter((topic) => !['running', 'recent'].includes(topic.live.status));
+  const inactiveColumns = Math.max(1, Math.ceil(inactiveTopics.length / 2));
+  const inactiveSpacingX = 1.04;
+  const inactiveRowZ = [0.55, 1.35];
+  const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
 
   return topics.map((topic, index) => {
     const side = index % 2;
@@ -833,8 +837,13 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const x = side === 0 ? -4.3 : 4.3;
     const z = (row - (deskRows - 1) / 2) * 2.28 - 0.55 + jitter;
     const rotationY = Math.PI;
-    const standbyX = (index - (topics.length - 1) / 2) * centerSpacing;
-    const standbyZ = 1.0;
+
+    const inactiveIndex = inactiveIndexById.get(topic.topicId) ?? index;
+    const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
+    const inactiveColumn = inactiveIndex % inactiveColumns;
+    const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
+    const standbyZ = inactiveRowZ[Math.min(inactiveRow, inactiveRowZ.length - 1)];
+
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.22;
     const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.14, 0, z + 0.48] : [x - 0.14, 0, z - 0.48];
