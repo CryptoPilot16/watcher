@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { getTeamTopology } from '@/lib/team-topology-server';
 
 export type WatchSnapshot = {
   ok: true;
@@ -259,6 +260,7 @@ export function getWatchSnapshot(): WatchSnapshot {
       openclawRuns:    getOpenClawRuns(),
       openclawFlows:   getOpenClawFlows(),
       openclawCron:    getOpenClawCron(),
+      teamTopology:    getTeamTopology(),
       watchFaultState: JSON.stringify(readWatchState()),
       pm2:           run('pm2 list'),
       updateResult:  run('cat /root/.openclaw/tasks/update-command.result 2>/dev/null || true'),

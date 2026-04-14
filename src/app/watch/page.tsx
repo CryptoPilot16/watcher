@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { WatchShellHeader } from '@/components/watch-shell-header';
 import {
@@ -29,6 +30,12 @@ import {
   type SystemHealth,
   type FaultState,
 } from '@/lib/openclaw-health';
+import {
+  parseTeamTopology,
+  sortTeamTopics,
+  type TeamTopic,
+  type TeamTopology,
+} from '@/lib/watch-team';
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -40,16 +47,27 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-type SectionTab = 'status' | 'runs' | 'flows' | 'snapmolt' | 'logs' | 'processes';
+type SectionTab = 'status' | 'team' | 'runs' | 'flows' | 'snapmolt' | 'logs' | 'processes';
 
 const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'status',    label: 'status',    hint: 'mission control' },
+  { id: 'team',      label: 'team',      hint: 'office & lanes' },
   { id: 'runs',      label: 'runs',      hint: 'openclaw activity' },
   { id: 'flows',     label: 'flows',     hint: 'multi-step goals' },
   { id: 'snapmolt',  label: 'snapmolt',  hint: 'voice & agent feed' },
   { id: 'logs',      label: 'logs',      hint: 'raw output streams' },
   { id: 'processes', label: 'processes', hint: 'pm2 status' },
 ];
+
+const TeamOfficePanel = dynamic(
+  () => import('@/components/team-office/team-office-panel').then((mod) => mod.TeamOfficePanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[360px] animate-pulse rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.03)] sm:h-[460px]" />
+    ),
+  },
+);
 
 // ── shared primitives ────────────────────────────────────────────────────────
 
@@ -678,6 +696,131 @@ function SnapmoltSection({ data }: { data: WatchData | null }) {
   );
 }
 
+// ── TEAM TAB ─────────────────────────────────────────────────────────────────
+
+function TeamSection({ topology }: { topology: TeamTopology }) {
+  const topics = sortTeamTopics(topology.topics);
+  const activeTasks = [...topics]
+    .filter((topic) => topic.currentTask.snippet)
+    .sort((a, b) => {
+      const statusOrder = (a.live.status === 'running' ? -1 : 0) - (b.live.status === 'running' ? -1 : 0);
+      if (statusOrder !== 0) return statusOrder;
+      return (b.currentTask.updatedAt || '').localeCompare(a.currentTask.updatedAt || '');
+    });
+
+  const statusLevel = (status: TeamTopic['live']['status']): HealthLevel => {
+    if (status === 'running') return 'ok';
+    if (status === 'recent') return 'warn';
+    if (status === 'missing') return 'error';
+    return 'ok';
+  };
+
+  const sourceLabel = (topic: TeamTopic) => {
+    if (topic.currentTask.source === 'none') return topic.live.freshnessLabel;
+    return `${topic.currentTask.source} · ${topic.live.freshnessLabel}`;
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          { label: 'topics', value: topology.summary.totalTopics },
+          { label: 'running', value: topology.summary.running },
+          { label: 'recent', value: topology.summary.recent },
+          { label: 'idle', value: topology.summary.idle },
+          { label: 'missing', value: topology.summary.missingSession },
+        ].map((item) => (
+          <div key={item.label} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--watch-text-muted)]">{item.label}</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--watch-text-bright)]">{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <TeamOfficePanel topology={topology} />
+
+      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+        <div className="flex flex-col gap-2">
+          <SectionLabel>topic lanes</SectionLabel>
+          <div className="grid gap-3 md:grid-cols-2">
+            {topics.map((topic) => (
+              <div key={topic.topicId} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{topic.configured.label}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
+                      {topic.telegram.currentTopicName || `topic ${topic.topicId}`} · {topic.configured.role.replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                  <HealthBadge level={statusLevel(topic.live.status)} label={topic.live.status} />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {topic.configured.capabilities.map((capability) => (
+                    <span
+                      key={capability}
+                      className="rounded-sm border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.03)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]"
+                    >
+                      {capability}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-3 rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">current task</div>
+                  <div className="mt-1 text-xs leading-6 text-[var(--watch-text-bright)]">
+                    {topic.currentTask.snippet || 'Idle, waiting for work.'}
+                  </div>
+                  <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{sourceLabel(topic)}</div>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-[10px] text-[var(--watch-text-muted)] sm:grid-cols-2">
+                  <div>
+                    <span className="uppercase tracking-[0.14em]">agent</span>
+                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.configured.agent || 'main'}</div>
+                  </div>
+                  <div>
+                    <span className="uppercase tracking-[0.14em]">runtime</span>
+                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.configured.runtime || 'main'}</div>
+                  </div>
+                  <div>
+                    <span className="uppercase tracking-[0.14em]">updated</span>
+                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.live.freshnessLabel}</div>
+                  </div>
+                  <div>
+                    <span className="uppercase tracking-[0.14em]">last tool</span>
+                    <div className="mt-1 truncate text-[11px] text-[var(--watch-text-bright)]">{topic.recent.lastToolName || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <SectionLabel>task board</SectionLabel>
+          <div className="overflow-hidden rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
+            {activeTasks.length === 0 ? (
+              <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No live task snippets yet.</div>
+            ) : (
+              activeTasks.map((topic) => (
+                <div key={topic.topicId} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--watch-accent-strong)]">{topic.configured.label}</div>
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{topic.currentTask.confidence}</span>
+                  </div>
+                  <div className="mt-2 text-xs leading-6 text-[var(--watch-text-bright)]">{topic.currentTask.snippet}</div>
+                  <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{sourceLabel(topic)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── LOGS TAB ─────────────────────────────────────────────────────────────────
 
 function LogsSection({ data }: { data: WatchData | null }) {
@@ -749,6 +892,7 @@ export default function WatchPage() {
   const flows          = parseFlows(data?.sections.openclawFlows);
   const cron           = parseCron(data?.sections.openclawCron);
   const turns          = parseSession(data?.sections.openclawSession);
+  const teamTopology   = parseTeamTopology(data?.sections.teamTopology);
   const faultState: FaultState = parseFaultState(data?.sections.watchFaultState);
   const health         = computeHealth(meta, runs, faultState);
   const sessionRunning = meta.sessions.some((s) => s.key === 'agent:main:main' && s.status === 'running');
@@ -829,6 +973,7 @@ export default function WatchPage() {
             ) : (
               <>
                 {activeSection === 'status'    && <StatusSection    data={data} health={health} meta={meta} runs={runs} cron={cron} turns={turns} sessionRunning={sessionRunning} />}
+                {activeSection === 'team'      && <TeamSection      topology={teamTopology} />}
                 {activeSection === 'runs'      && <RunsSection      runs={runs} />}
                 {activeSection === 'flows'     && <FlowsSection     flows={flows} />}
                 {activeSection === 'snapmolt'  && <SnapmoltSection  data={data} />}
