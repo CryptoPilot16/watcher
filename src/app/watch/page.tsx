@@ -859,6 +859,58 @@ function ProcessesSection({ data }: { data: WatchData | null }) {
   );
 }
 
+function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab; onChange: (tab: SectionTab) => void }) {
+  function renderTab(tab: { id: SectionTab; label: string; hint: string }, compact: boolean) {
+    const isActive = tab.id === activeSection;
+
+    if (compact) {
+      return (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`rounded-md border px-3 py-2 text-left transition-colors ${
+            isActive
+              ? 'border-[var(--watch-accent)]/50 bg-[rgba(212,186,104,0.12)] text-[var(--watch-text)] shadow-[inset_0_0_0_1px_rgba(212,186,104,0.12)]'
+              : 'border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
+          }`}
+        >
+          <div className="text-[11px] uppercase tracking-[0.16em]">{tab.label}</div>
+          <div className={`mt-1 text-[10px] leading-4 ${isActive ? 'text-[var(--watch-text-bright)]' : 'text-[var(--watch-text-muted)]'}`}>
+            {tab.hint}
+          </div>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        key={tab.id}
+        type="button"
+        onClick={() => onChange(tab.id)}
+        className={`relative flex flex-col items-start gap-0.5 px-4 py-3 text-left transition-colors whitespace-nowrap sm:flex-row sm:items-center sm:gap-2 ${
+          isActive ? 'text-[var(--watch-text)]' : 'text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]/70'
+        }`}
+      >
+        <span className="text-xs tracking-[0.15em] uppercase">{tab.label}</span>
+        <span className="hidden text-[10px] text-[var(--watch-text-muted)] sm:inline">{tab.hint}</span>
+        {isActive && <span className="absolute bottom-0 left-0 right-0 h-px bg-[var(--watch-accent)]" />}
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-b border-[var(--watch-panel-border)]">
+      <div className="grid grid-cols-2 gap-2 p-2 sm:hidden">
+        {sectionTabs.map((tab) => renderTab(tab, true))}
+      </div>
+      <div className="hidden items-stretch overflow-x-auto sm:flex">
+        {sectionTabs.map((tab) => renderTab(tab, false))}
+      </div>
+    </div>
+  );
+}
+
 // ── PAGE ─────────────────────────────────────────────────────────────────────
 
 export default function WatchPage() {
@@ -942,25 +994,7 @@ export default function WatchPage() {
 
         {/* Main panel */}
         <div className="overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(135deg,rgba(24,20,14,0.97),rgba(16,13,9,0.97))] shadow-[0_8px_40px_rgba(0,0,0,0.28)]">
-          {/* Tab bar */}
-          <div className="flex items-stretch border-b border-[var(--watch-panel-border)] overflow-x-auto">
-            {sectionTabs.map((tab) => {
-              const isActive = tab.id === activeSection;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveSection(tab.id)}
-                  className={`relative flex flex-col items-start gap-0.5 px-4 py-3 text-left transition-colors whitespace-nowrap sm:flex-row sm:items-center sm:gap-2 ${
-                    isActive ? 'text-[var(--watch-text)]' : 'text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]/70'
-                  }`}
-                >
-                  <span className="text-xs tracking-[0.15em] uppercase">{tab.label}</span>
-                  <span className="hidden text-[10px] text-[var(--watch-text-muted)] sm:inline">{tab.hint}</span>
-                  {isActive && <span className="absolute bottom-0 left-0 right-0 h-px bg-[var(--watch-accent)]" />}
-                </button>
-              );
-            })}
-          </div>
+          <SectionTabsBar activeSection={activeSection} onChange={setActiveSection} />
 
           {/* Section content */}
           <div className="p-4 sm:p-5">
