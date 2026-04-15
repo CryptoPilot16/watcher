@@ -778,6 +778,71 @@ function HubFallback() {
   );
 }
 
+function DividerFallback({ width = 2.3, height = 1.22 }: { width?: number; height?: number }) {
+  return (
+    <>
+      <RoundedBox args={[width, height, 0.08]} radius={0.03} smoothness={4} position={[0, height / 2, 0]} castShadow>
+        <meshStandardMaterial color="#d8ddd8" roughness={0.94} />
+      </RoundedBox>
+      <mesh position={[0, height * 0.72, 0.05]}>
+        <planeGeometry args={[width * 0.88, height * 0.38]} />
+        <meshStandardMaterial color="#b8d9ea" transparent opacity={0.45} />
+      </mesh>
+      {[-width / 2 + 0.12, width / 2 - 0.12].map((x, i) => (
+        <mesh key={i} position={[x, 0.28, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.56, 0.12]} />
+          <meshStandardMaterial color="#9a9288" />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+function BookshelfFallback({ width = 1.45 }: { width?: number }) {
+  return (
+    <>
+      <RoundedBox args={[width, 1.92, 0.38]} radius={0.04} smoothness={4} position={[0, 0.96, 0]} castShadow>
+        <meshStandardMaterial color="#b98f63" roughness={0.86} />
+      </RoundedBox>
+      {[-0.52, -0.16, 0.2, 0.56].map((y, i) => (
+        <mesh key={i} position={[0, 0.96 + y, 0.03]} castShadow>
+          <boxGeometry args={[width * 0.9, 0.04, 0.28]} />
+          <meshStandardMaterial color="#d8b58b" />
+        </mesh>
+      ))}
+      {[-0.36, -0.06, 0.24].map((x, i) => (
+        <mesh key={`book-a-${i}`} position={[x, 0.58 + i * 0.34, 0.16]} castShadow>
+          <boxGeometry args={[0.12, 0.26, 0.1]} />
+          <meshStandardMaterial color={['#6a8bb6', '#d78058', '#8a9c6b'][i % 3]} />
+        </mesh>
+      ))}
+      {[0.16, 0.32, 0.46].map((x, i) => (
+        <mesh key={`book-b-${i}`} position={[x, 0.5 + i * 0.32, 0.16]} castShadow>
+          <boxGeometry args={[0.09, 0.22, 0.1]} />
+          <meshStandardMaterial color={['#cbb16f', '#59708d', '#b96f6f'][i % 3]} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+function WindowBlindsFallback() {
+  return (
+    <>
+      <mesh position={[0, 1.7, 0]} castShadow>
+        <boxGeometry args={[2.7, 0.08, 0.16]} />
+        <meshStandardMaterial color="#d2cec4" />
+      </mesh>
+      {[-0.78, -0.52, -0.26, 0, 0.26, 0.52, 0.78].map((x, i) => (
+        <mesh key={i} position={[x, 1.16, 0]} rotation={[0, 0, 0.03 * (i % 2 === 0 ? 1 : -1)]}>
+          <planeGeometry args={[0.22, 1.1]} />
+          <meshStandardMaterial color="#f4efe3" side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
   return (
     <>
@@ -890,6 +955,54 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
 
       <OfficeShell manifest={manifest} />
 
+      <group position={[0, 0, 5.25]}>
+        <group position={[-3.28, 0, -0.05]}>
+          <DividerFallback width={2.4} height={1.34} />
+        </group>
+        <group position={[3.28, 0, -0.05]}>
+          <DividerFallback width={2.4} height={1.34} />
+        </group>
+        <group position={[-5.45, 0, -0.9]}>
+          <BookshelfFallback width={1.35} />
+        </group>
+        <group position={[5.45, 0, -0.9]}>
+          <BookshelfFallback width={1.35} />
+        </group>
+      </group>
+
+      <group position={[-6.9, 0, -2.1]}>
+        <WindowBlindsFallback />
+      </group>
+      <group position={[0, 0, -2.1]}>
+        <WindowBlindsFallback />
+      </group>
+      <group position={[6.9, 0, -2.1]}>
+        <WindowBlindsFallback />
+      </group>
+
+      <group position={[-6.2, 0, 4.85]}>
+        <BookshelfFallback width={1.12} />
+      </group>
+      <group position={[6.2, 0, 4.85]}>
+        <BookshelfFallback width={1.12} />
+      </group>
+      <group position={[-6.9, 0, 2.5]}>
+        <OfficeAssetSlot slot="plant" manifest={manifest} fallback={<PlantFallback />} />
+      </group>
+      <group position={[6.9, 0, 2.5]}>
+        <OfficeAssetSlot slot="plant" manifest={manifest} fallback={<PlantFallback />} />
+      </group>
+      <group position={[-5.9, 0, 4.4]}>
+        <OfficeAssetSlot slot="wallFrame" manifest={manifest} fallback={<WallFrameFallback />} />
+      </group>
+      <group position={[5.9, 0, 4.4]}>
+        <OfficeAssetSlot slot="wallFrame" manifest={manifest} fallback={<WallFrameFallback />} />
+      </group>
+      <group position={[6.1, 0, 1.2]}>
+        <OfficeAssetSlot slot="coffeeMachine" manifest={manifest} fallback={<CoffeeMachineFallback />} />
+      </group>
+      <BreakArea manifest={manifest} />
+
       <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.15]} fallback={<HubFallback />} />
       <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.15]} visible />
 
@@ -952,10 +1065,10 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
   useFrame((_, delta) => {
     if (mode === 'free') return;
 
-    const overviewTarget: [number, number, number] = [0, 1.0, 1.4];
+    const overviewTarget: [number, number, number] = [0, 1.15, 1.9];
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [6.2, 4.7, 7.2] : [7.4, 5.8, 8.6];
-    const overviewOffset: [number, number, number] = isMobile ? [15.5, 11.0, 16.5] : [18.5, 13.2, 20.5];
+    const focusOffset: [number, number, number] = isMobile ? [7.2, 5.2, 8.4] : [8.2, 6.2, 9.5];
+    const overviewOffset: [number, number, number] = isMobile ? [18.5, 12.6, 19.8] : [22.8, 15.4, 24.8];
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -1201,7 +1314,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
     <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.12)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}>
       <Canvas
         shadows
-        camera={{ position: [18.5, 13.2, 20.5], fov: isMobile ? 44 : 38, near: 0.1, far: 180 }}
+        camera={{ position: [22.8, 15.4, 24.8], fov: isMobile ? 46 : 40, near: 0.1, far: 180 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
           camera.lookAt(0, 1.15, 1.65);
@@ -1244,10 +1357,10 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={3.8}
-          maxDistance={40}
-          zoomSpeed={1.5}
-          panSpeed={1.15}
+          minDistance={5.2}
+          maxDistance={48}
+          zoomSpeed={1.35}
+          panSpeed={1.2}
           rotateSpeed={0.9}
           minPolarAngle={0.42}
           maxPolarAngle={1.55}
