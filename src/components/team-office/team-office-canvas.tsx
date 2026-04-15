@@ -180,13 +180,17 @@ type ProjectBadgeSpec = {
   label: string;
   accent: string;
   imageUrl: string;
+  maxWidth: number;
+  maxHeight: number;
+  position: [number, number, number];
 };
 
 function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
   const label = topicDisplayLabel(topic).toLowerCase();
-  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy.png' };
-  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes.png' };
-  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap.png' };
+  const base = { position: [0.05, 0.84, -0.438] as [number, number, number] };
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy.svg', maxWidth: 0.24, maxHeight: 0.12, ...base };
+  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes.svg', maxWidth: 0.24, maxHeight: 0.12, ...base };
+  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.16, maxHeight: 0.16, ...base };
   return null;
 }
 
@@ -247,13 +251,15 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   );
 }
 
-function ProjectDeskBadge({ topic, position }: { topic: TeamTopic; position: [number, number, number] }) {
+function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
   const spec = useMemo(() => projectBadgeSpec(topic), [topic]);
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
+  const [aspect, setAspect] = useState(1);
 
   useEffect(() => {
     if (!spec) {
       setTexture(null);
+      setAspect(1);
       return;
     }
 
@@ -263,24 +269,29 @@ function ProjectDeskBadge({ topic, position }: { topic: TeamTopic; position: [nu
       (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.needsUpdate = true;
+        const imageWidth = Number((loaded.image as { width?: number })?.width || 1);
+        const imageHeight = Number((loaded.image as { height?: number })?.height || 1);
+        setAspect(imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 1);
         setTexture(loaded);
       },
       undefined,
-      () => setTexture(null),
+      () => {
+        setTexture(null);
+        setAspect(1);
+      },
     );
   }, [spec]);
 
   if (!spec || !texture) return null;
 
+  const width = Math.min(spec.maxWidth, spec.maxHeight * aspect);
+  const height = Math.min(spec.maxHeight, spec.maxWidth / Math.max(aspect, 0.01));
+
   return (
-    <group position={position} renderOrder={18}>
-      <sprite scale={[1.82, 0.94, 1]} renderOrder={18}>
-        <spriteMaterial color="#0f1015" transparent opacity={0.88} depthWrite={false} depthTest={false} />
-      </sprite>
-      <sprite scale={[1.52, 0.66, 1]} renderOrder={19}>
-        <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
-      </sprite>
-    </group>
+    <mesh position={spec.position} renderOrder={19}>
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
+    </mesh>
   );
 }
 
@@ -928,7 +939,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
-      <ProjectDeskBadge topic={topic} position={[0.02, 1.18, -0.02]} />
+      <ProjectDeskBadge topic={topic} />
 
       <mesh
         position={[0, 0.6, 0.17]}

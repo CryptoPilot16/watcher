@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="40" viewBox="0 0 320 40" fill="none">
+  <rect x="1" y="1" width="318" height="38" rx="4" fill="#0f1110" stroke="#2a2f2b"/>
+  <g transform="translate(10,6)">
+    <rect x="0" y="0" width="28" height="28" rx="4" fill="#151914" stroke="#9f0000"/>
+    <circle cx="14" cy="14" r="7" fill="none" stroke="#9f0000" stroke-width="1.5"/>
+    <circle cx="14" cy="14" r="2" fill="#f4e9d5"/>
+    <path d="M4 14h4M20 14h4M14 4v4M14 20v4" stroke="#f4e9d5" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  <text x="48" y="24" fill="#f4e9d5" font-family="'JetBrains Mono', monospace" font-size="15" font-weight="700" letter-spacing="1.6">SKYBUDDY</text>
+  <text x="158" y="24" fill="#9f0000" font-family="'JetBrains Mono', monospace" font-size="15" font-weight="700">//</text>
+  <text x="182" y="24" fill="#c8b89d" font-family="'JetBrains Mono', monospace" font-size="12" letter-spacing="1">RETRO FLIGHT TRACKER</text>
+</svg>
