@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { AvatarAccessory, type AvatarAccessoryId } from './avatar-accessory-pipeline';
 import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -82,10 +83,10 @@ function hashLabel(label: string) {
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topic.configured.label);
-  const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
-  const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
-  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
-  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
+  const skin = ['#f3d4bc', '#e2b893', '#c68f69', '#8b593f'][seed % 4];
+  const hair = ['#1f1814', '#4f2f22', '#2e3240', '#6a5440'][(seed >> 2) % 4];
+  const top = ['#7d91bb', '#8c6d58', '#6d7f66', '#5f7395', '#b28b4a', '#9a5c4f', '#7f6d96'][(seed >> 4) % 7];
+  const bottom = ['#394252', '#484850', '#4e5d6f', '#454d59', '#5b687e'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
 }
 
@@ -94,6 +95,7 @@ type WorkerStyle = {
   headScale: [number, number, number];
   shoulderWidth: number;
   legHeight: number;
+  armLength: number;
   hasHat: boolean;
   hatColor: string;
   hatBrimColor: string;
@@ -103,16 +105,28 @@ type WorkerStyle = {
   jacketColor: string;
   skirt: boolean;
   accentStripe: boolean;
+  hasVest: boolean;
+  vestColor: string;
+  hasTie: boolean;
+  tieColor: string;
+  blouseColor: string;
+  sockColor: string;
+  shoeColor: string;
+  hairStyle: 'bob' | 'part' | 'bun' | 'crop' | 'flip';
+  hairVolume: number;
+  headAccessory?: AvatarAccessoryId;
+  neckAccessory?: AvatarAccessoryId;
 };
 
 function styleForTopic(topic: TeamTopic): WorkerStyle {
   const seed = hashLabel(topic.configured.label);
   const archetype = seed % 7;
   return {
-    bodyScale: archetype === 4 ? [1.02, 1.12, 1] : archetype === 5 ? [0.94, 1.04, 0.96] : [0.98, 1.08, 0.98],
-    headScale: archetype === 0 ? [0.96, 1.0, 0.96] : [1, 1, 1],
-    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.15 : 0.135,
-    legHeight: archetype === 5 ? 0.24 : 0.22,
+    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
+    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
+    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
+    legHeight: archetype === 5 ? 0.21 : 0.235,
+    armLength: archetype === 4 ? 0.24 : 0.22,
     hasHat: [0, 3, 4, 6].includes(archetype),
     hatColor: ['#ffffff', '#151820', '#314b88', '#f0c84e', '#f0c84e', '#efe7db', '#5a7fd2'][archetype],
     hatBrimColor: ['#d74f52', '#2f3340', '#2f3340', '#b6892d', '#c89a3b', '#151515', '#2f7aa6'][archetype],
@@ -122,6 +136,17 @@ function styleForTopic(topic: TeamTopic): WorkerStyle {
     jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
     skirt: archetype === 5 || archetype === 6,
     accentStripe: archetype === 0 || archetype === 4,
+    hasVest: archetype === 1 || archetype === 4,
+    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
+    hasTie: archetype === 0 || archetype === 2,
+    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
+    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
+    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
+    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
+    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
+    headAccessory: archetype === 1 || archetype === 3 ? 'sunglasses1' : undefined,
+    neckAccessory: archetype === 5 || archetype === 6 ? 'pearlNecklace' : undefined,
   };
 }
 
@@ -188,8 +213,8 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   if (!texture || !visible) return null;
 
   return (
-    <sprite position={position} scale={[1.62, 0.4, 1]}>
-      <spriteMaterial map={texture} transparent depthWrite={false} />
+    <sprite position={position} scale={[1.62, 0.4, 1]} renderOrder={20}>
+      <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
     </sprite>
   );
 }
@@ -214,6 +239,78 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
   );
 }
 
+function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForTopic>; style: WorkerStyle }) {
+  const capScale: [number, number, number] = [style.headScale[0] * 1.05, style.headScale[1] * 0.82 * style.hairVolume, style.headScale[2] * 1.02];
+
+  return (
+    <group>
+      <mesh castShadow position={[0, 0.92, -0.045]} scale={capScale}>
+        <sphereGeometry args={[0.122, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.86]} />
+        <meshStandardMaterial color={palette.hair} roughness={0.72} />
+      </mesh>
+      {style.hairStyle === 'bob' && (
+        <>
+          <mesh castShadow position={[0, 0.835, -0.055]} scale={[style.headScale[0] * 1.02, style.headScale[1] * 0.82, style.headScale[2] * 0.92]}>
+            <sphereGeometry args={[0.108, 18, 18, 0, Math.PI * 2, Math.PI / 2.35, Math.PI / 1.65]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.76} />
+          </mesh>
+          {[-0.1, 0.1].map((x) => (
+            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.025]} scale={[0.88, 1.18, 0.78]}>
+              <sphereGeometry args={[0.042, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.76} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {style.hairStyle === 'part' && (
+        <>
+          <mesh castShadow position={[0, 0.885, 0.012]} rotation={[0.22, 0, 0]}>
+            <boxGeometry args={[0.18, 0.028, 0.05]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+          <mesh castShadow position={[-0.06, 0.845, 0.022]} rotation={[0.2, 0.2, -0.18]}>
+            <boxGeometry args={[0.065, 0.11, 0.03]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+        </>
+      )}
+      {style.hairStyle === 'bun' && (
+        <>
+          <mesh castShadow position={[0, 0.81, -0.09]}>
+            <sphereGeometry args={[0.06, 14, 14]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
+          </mesh>
+          {[-0.082, 0.082].map((x) => (
+            <mesh key={`bun-side-${x}`} castShadow position={[x, 0.87, -0.01]} scale={[0.75, 1.15, 0.72]}>
+              <sphereGeometry args={[0.038, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {style.hairStyle === 'crop' && (
+        <mesh castShadow position={[0, 0.905, 0.03]} rotation={[0.36, 0, 0]}>
+          <boxGeometry args={[0.19, 0.038, 0.07]} />
+          <meshStandardMaterial color={palette.hair} roughness={0.66} />
+        </mesh>
+      )}
+      {style.hairStyle === 'flip' && (
+        <>
+          <mesh castShadow position={[0, 0.84, -0.07]} scale={[1, 0.95, 0.9]}>
+            <sphereGeometry args={[0.1, 16, 16, 0, Math.PI * 2, Math.PI / 2.45, Math.PI / 1.7]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
+          </mesh>
+          {[-0.11, 0.11].map((x) => (
+            <mesh key={`flip-side-${x}`} castShadow position={[x, 0.83, -0.01]} rotation={[0, 0, x < 0 ? -0.35 : 0.35]}>
+              <boxGeometry args={[0.04, 0.1, 0.028]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
+        </>
+      )}
+    </group>
+  );
+}
 
 function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
@@ -291,102 +388,168 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
         <ringGeometry args={[0.13, 0.17, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
       </mesh>
+      <group scale={style.bodyScale}>
+        <mesh castShadow position={[0, 0.59, 0.02]}>
+          <capsuleGeometry args={[0.125, 0.14, 6, 12]} />
+          <meshStandardMaterial color={style.blouseColor} />
+        </mesh>
+        <mesh ref={chest} castShadow position={[0, 0.45, 0.02]}>
+          <capsuleGeometry args={[0.118, 0.28, 8, 14]} />
+          <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
+        </mesh>
+        <mesh castShadow position={[0, 0.33, 0.06]}>
+          <capsuleGeometry args={[0.095, 0.08, 6, 10]} />
+          <meshStandardMaterial color={palette.bottom} />
+        </mesh>
+        {style.hasVest && (
+          <mesh castShadow position={[0, 0.45, 0.1]}>
+            <capsuleGeometry args={[0.11, 0.24, 8, 12]} />
+            <meshStandardMaterial color={style.vestColor} />
+          </mesh>
+        )}
+        {style.hasJacket && (
+          <mesh castShadow position={[0, 0.45, 0.09]}>
+            <capsuleGeometry args={[0.128, 0.3, 8, 14]} />
+            <meshStandardMaterial color={style.jacketColor} />
+          </mesh>
+        )}
+        {style.accentStripe && (
+          <mesh castShadow position={[0, 0.45, 0.145]}>
+            <boxGeometry args={[0.04, 0.25, 0.02]} />
+            <meshStandardMaterial color="#f2eddd" />
+          </mesh>
+        )}
+        {style.hasTie && (
+          <>
+            <mesh castShadow position={[0, 0.55, 0.145]} rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.035, 0.035, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+            <mesh castShadow position={[0, 0.46, 0.15]}>
+              <boxGeometry args={[0.03, 0.16, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+          </>
+        )}
+        {style.skirt ? (
+          <mesh castShadow position={[0, 0.18, 0.05]}>
+            <cylinderGeometry args={[0.11, 0.16, 0.22, 10]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+        ) : (
+          <>
+            <mesh castShadow position={[-0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+            <mesh castShadow position={[0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+          </>
+        )}
+        {style.hasApron && (
+          <mesh castShadow position={[0, 0.33, 0.13]}>
+            <boxGeometry args={[0.14, 0.18, 0.025]} />
+            <meshStandardMaterial color={style.apronColor} />
+          </mesh>
+        )}
+        {style.neckAccessory && <AvatarAccessory id={style.neckAccessory} />}
+        <mesh castShadow position={[0, 0.68, 0.02]}>
+          <capsuleGeometry args={[0.03, 0.034, 4, 8]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+        <mesh castShadow position={[0, 0.83, -0.01]} scale={style.headScale}>
+          <sphereGeometry args={[0.125, 22, 22]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+        <AvatarHair palette={palette} style={style} />
+        <mesh castShadow position={[0, 0.81, 0.105]} rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.02, 0.05, 8]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+        {[-0.042, 0.042].map((x) => (
+          <group key={`face-${x}`} position={[x, 0.845, 0.108]}>
+            <mesh castShadow>
+              <sphereGeometry args={[0.015, 12, 12]} />
+              <meshStandardMaterial color="#f8f2ea" />
+            </mesh>
+            <mesh castShadow position={[0, 0, 0.008]}>
+              <sphereGeometry args={[0.0065, 10, 10]} />
+              <meshStandardMaterial color="#2e261f" />
+            </mesh>
+            <mesh castShadow position={[0, 0.022, -0.005]} rotation={[0, 0, x < 0 ? 0.2 : -0.2]}>
+              <boxGeometry args={[0.03, 0.006, 0.006]} />
+              <meshStandardMaterial color={palette.hair} />
+            </mesh>
+          </group>
+        ))}
+        <mesh castShadow position={[0, 0.79, 0.116]}>
+          <sphereGeometry args={[0.008, 10, 10]} />
+          <meshStandardMaterial color="#c89678" />
+        </mesh>
+        <mesh castShadow position={[0, 0.748, 0.116]} rotation={[0, 0, 0.04]}>
+          <boxGeometry args={[0.038, 0.007, 0.006]} />
+          <meshStandardMaterial color="#b96d6c" />
+        </mesh>
+        {style.headAccessory && <AvatarAccessory id={style.headAccessory} />}
+        {style.hasHat && (
+          <group position={[0, 0.98, -0.02]}>
+            <mesh castShadow>
+              <cylinderGeometry args={[0.12, 0.12, 0.05, 16]} />
+              <meshStandardMaterial color={style.hatColor} />
+            </mesh>
+            <mesh castShadow position={[0, -0.03, 0]}>
+              <cylinderGeometry args={[0.16, 0.16, 0.012, 18]} />
+              <meshStandardMaterial color={style.hatBrimColor} />
+            </mesh>
+          </group>
+        )}
+      </group>
 
-
-<group scale={style.bodyScale}>
-  <mesh ref={chest} castShadow position={[0, 0.48, 0.02]}>
-    <capsuleGeometry args={[0.1, 0.32, 8, 14]} />
-    <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
-  </mesh>
-  {style.hasJacket && (
-    <mesh castShadow position={[0, 0.48, 0.07]}>
-      <boxGeometry args={[0.25, 0.38, 0.06]} />
-      <meshStandardMaterial color={style.jacketColor} />
-    </mesh>
-  )}
-  {style.accentStripe && (
-    <mesh castShadow position={[0, 0.5, 0.1]}>
-      <boxGeometry args={[0.06, 0.32, 0.02]} />
-      <meshStandardMaterial color="#f4f0df" />
-    </mesh>
-  )}
-  <mesh castShadow position={[0, 0.24, 0.05]}>
-    <boxGeometry args={[0.18, 0.14, 0.15]} />
-    <meshStandardMaterial color={palette.bottom} />
-  </mesh>
-  {style.skirt && (
-    <mesh castShadow position={[0, 0.18, 0.05]}>
-      <coneGeometry args={[0.14, 0.22, 8]} />
-      <meshStandardMaterial color={palette.bottom} />
-    </mesh>
-  )}
-  {style.hasApron && (
-    <mesh castShadow position={[0, 0.34, 0.11]}>
-      <boxGeometry args={[0.14, 0.22, 0.03]} />
-      <meshStandardMaterial color={style.apronColor} />
-    </mesh>
-  )}
-  <mesh castShadow position={[0, 0.68, -0.02]} scale={style.headScale}>
-    <sphereGeometry args={[0.115, 22, 22]} />
-    <meshStandardMaterial color={palette.skin} />
-  </mesh>
-  <mesh castShadow position={[0, 0.78, -0.05]}>
-    <sphereGeometry args={[0.126, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
-    <meshStandardMaterial color={palette.hair} roughness={0.72} />
-  </mesh>
-  <mesh castShadow position={[0, 0.68, 0.095]} rotation={[Math.PI / 2, 0, 0]}>
-    <coneGeometry args={[0.022, 0.05, 8]} />
-    <meshStandardMaterial color={palette.skin} />
-  </mesh>
-  {style.hasHat && (
-    <group position={[0, 0.82, -0.03]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.1, 0.1, 0.06, 16]} />
-        <meshStandardMaterial color={style.hatColor} />
-      </mesh>
-      <mesh castShadow position={[0, -0.03, 0]}>
-        <cylinderGeometry args={[0.14, 0.14, 0.012, 18]} />
-        <meshStandardMaterial color={style.hatBrimColor} />
-      </mesh>
-    </group>
-  )}
-</group>
-
-<group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
-  <mesh castShadow position={[0, -0.12, 0]}>
-    <capsuleGeometry args={[0.032, 0.24, 4, 9]} />
-    <meshStandardMaterial color={palette.top} />
-  </mesh>
-</group>
-<group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
-  <mesh castShadow position={[0, -0.12, 0]}>
-    <capsuleGeometry args={[0.032, 0.24, 4, 9]} />
-    <meshStandardMaterial color={palette.top} />
-  </mesh>
-</group>
-<group ref={leftLeg} position={[-0.058, 0.2, 0.06]}>
-  <mesh castShadow position={[0, -0.11, 0]}>
-    <capsuleGeometry args={[0.036, style.legHeight, 4, 9]} />
-    <meshStandardMaterial color={palette.bottom} />
-  </mesh>
-  <mesh castShadow position={[0, -0.25, 0.06]}>
-    <boxGeometry args={[0.08, 0.04, 0.14]} />
-    <meshStandardMaterial color="#292a30" />
-  </mesh>
-</group>
-<group ref={rightLeg} position={[0.058, 0.2, 0.06]}>
-  <mesh castShadow position={[0, -0.11, 0]}>
-    <capsuleGeometry args={[0.036, style.legHeight, 4, 9]} />
-    <meshStandardMaterial color={palette.bottom} />
-  </mesh>
-  <mesh castShadow position={[0, -0.25, 0.06]}>
-    <boxGeometry args={[0.08, 0.04, 0.14]} />
-    <meshStandardMaterial color="#292a30" />
-  </mesh>
-</group>
+      <group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
+        <mesh castShadow position={[0, -0.12, 0]}>
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
+        </mesh>
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+      </group>
+      <group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
+        <mesh castShadow position={[0, -0.12, 0]}>
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
+        </mesh>
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+      </group>
+      <group ref={leftLeg} position={[-0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
+        </mesh>
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
+        </mesh>
+      </group>
+      <group ref={rightLeg} position={[0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
+        </mesh>
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
+        </mesh>
+      </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0.42, 1.42, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
+      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0.42, 1.56, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -430,86 +593,107 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <ringGeometry args={[0.58, emphasized ? 0.92 : 0.76, 32]} />
-        <meshBasicMaterial color={glow} transparent opacity={emphasized ? 0.32 : 0.18} />
+        <ringGeometry args={[0.6, emphasized ? 0.9 : 0.78, 32]} />
+        <meshBasicMaterial color={glow} transparent opacity={emphasized ? 0.28 : 0.13} />
       </mesh>
 
-      <RoundedBox args={[1.52, 0.1, 0.74]} radius={0.03} smoothness={4} position={[-0.08, 0.5, -0.06]} castShadow receiveShadow>
-        <meshStandardMaterial color="#ece7df" roughness={0.82} />
+      <RoundedBox args={[1.46, 0.09, 0.78]} radius={0.025} smoothness={4} position={[-0.06, 0.48, -0.08]} castShadow receiveShadow>
+        <meshStandardMaterial color="#e3d7c5" roughness={0.86} />
       </RoundedBox>
-      <RoundedBox args={[0.76, 0.1, 1.18]} radius={0.03} smoothness={4} position={[0.46, 0.5, 0.16]} castShadow receiveShadow>
-        <meshStandardMaterial color="#e9e3d9" roughness={0.82} />
+      <RoundedBox args={[0.68, 0.09, 0.98]} radius={0.025} smoothness={4} position={[0.43, 0.48, 0.22]} castShadow receiveShadow>
+        <meshStandardMaterial color="#ddd0bc" roughness={0.86} />
       </RoundedBox>
       {[
-        [-0.72, 0.24, -0.34],
-        [0.38, 0.24, -0.34],
-        [-0.72, 0.24, 0.2],
-        [0.12, 0.24, 0.62],
-        [0.82, 0.24, 0.62],
+        [-0.72, 0.24, -0.37],
+        [0.38, 0.24, -0.37],
+        [-0.72, 0.24, 0.21],
+        [0.13, 0.24, 0.67],
+        [0.77, 0.24, 0.67],
       ].map((leg, i) => (
         <mesh key={i} position={leg as [number, number, number]} castShadow>
           <boxGeometry args={[0.08, 0.48, 0.08]} />
-          <meshStandardMaterial color="#8f8578" />
+          <meshStandardMaterial color="#837768" />
         </mesh>
       ))}
 
-      <RoundedBox args={[0.54, 0.34, 0.08]} radius={0.02} smoothness={4} position={[-0.08, 0.82, -0.29]} castShadow ref={monitor as never}>
-        <meshStandardMaterial color="#d7ddd9" emissive={glow} emissiveIntensity={glowStrength * 0.74} />
-      </RoundedBox>
-      <mesh position={[-0.08, 0.64, -0.29]} castShadow>
-        <boxGeometry args={[0.06, 0.2, 0.06]} />
-        <meshStandardMaterial color="#75808b" />
+      <mesh position={[-0.64, 0.26, 0.14]} castShadow>
+        <boxGeometry args={[0.28, 0.44, 0.46]} />
+        <meshStandardMaterial color="#c2b39f" />
       </mesh>
-      <RoundedBox args={[0.34, 0.26, 0.06]} radius={0.02} smoothness={4} position={[0.33, 0.77, -0.14]} castShadow>
-        <meshStandardMaterial color="#c6ccc8" emissive={glow} emissiveIntensity={glowStrength * 0.4} />
-      </RoundedBox>
-      <mesh position={[0.33, 0.63, -0.14]} castShadow>
-        <boxGeometry args={[0.05, 0.14, 0.05]} />
-        <meshStandardMaterial color="#747d86" />
-      </mesh>
-
-      <mesh position={[-0.22, 0.56, -0.02]} castShadow>
-        <boxGeometry args={[0.3, 0.03, 0.13]} />
-        <meshStandardMaterial color="#d6d0c6" />
-      </mesh>
-      <mesh position={[0.05, 0.56, -0.02]} castShadow>
-        <boxGeometry args={[0.24, 0.03, 0.13]} />
-        <meshStandardMaterial color="#d6d0c6" />
-      </mesh>
-      <mesh position={[0.44, 0.57, 0.32]} castShadow>
-        <cylinderGeometry args={[0.05, 0.05, 0.1, 16]} />
-        <meshStandardMaterial color="#d7b77d" />
-      </mesh>
-      <mesh position={[0.58, 0.58, -0.08]} ref={lamp} castShadow rotation={[0, 0, -0.22]}>
-        <cylinderGeometry args={[0.02, 0.03, 0.34, 16]} />
-        <meshStandardMaterial color="#49515c" emissive={glow} emissiveIntensity={glowStrength * 0.14} />
-      </mesh>
-      <mesh position={[0.66, 0.73, -0.14]} castShadow>
-        <coneGeometry args={[0.09, 0.18, 18]} />
-        <meshStandardMaterial color="#f5f1e4" emissive="#f5f1e4" emissiveIntensity={0.22} />
-      </mesh>
-
-      <mesh position={[-0.56, 0.3, 0.12]} castShadow>
-        <boxGeometry args={[0.3, 0.42, 0.48]} />
-        <meshStandardMaterial color="#c9c0b3" />
-      </mesh>
-      {[0.18, 0.32].map((y, i) => (
-        <mesh key={i} position={[-0.41, y, 0.36]} castShadow>
-          <boxGeometry args={[0.02, 0.08, 0.2]} />
-          <meshStandardMaterial color="#8f8578" />
+      {[0.15, 0.28, 0.41].map((y, i) => (
+        <mesh key={`drawer-${i}`} position={[-0.51, y, 0.32]} castShadow>
+          <boxGeometry args={[0.02, 0.08, 0.16]} />
+          <meshStandardMaterial color="#7e7163" />
         </mesh>
       ))}
 
-      <RoundedBox args={[1.52, 0.46, 0.04]} radius={0.02} smoothness={4} position={[-0.08, 0.82, -0.43]} castShadow>
-        <meshStandardMaterial color="#c8c6c0" />
+      <RoundedBox args={[0.46, 0.34, 0.36]} radius={0.015} smoothness={3} position={[-0.1, 0.82, -0.27]} castShadow ref={monitor as never}>
+        <meshStandardMaterial color="#cdc7b9" roughness={0.62} />
       </RoundedBox>
-      <RoundedBox args={[0.04, 0.46, 1.06]} radius={0.02} smoothness={4} position={[0.84, 0.82, 0.1]} castShadow>
-        <meshStandardMaterial color="#c8c6c0" />
-      </RoundedBox>
+      <mesh position={[-0.1, 0.84, -0.45]} castShadow>
+        <boxGeometry args={[0.32, 0.2, 0.018]} />
+        <meshStandardMaterial color="#9fc8d8" emissive={glow} emissiveIntensity={glowStrength * 0.48} />
+      </mesh>
+      <mesh position={[-0.1, 0.62, -0.24]} castShadow>
+        <boxGeometry args={[0.08, 0.12, 0.08]} />
+        <meshStandardMaterial color="#69645d" />
+      </mesh>
+      <mesh position={[-0.12, 0.54, -0.09]} castShadow>
+        <boxGeometry args={[0.34, 0.03, 0.14]} />
+        <meshStandardMaterial color="#d2c6b5" />
+      </mesh>
 
-      <mesh position={[0.55, 0.58, 0.46]} castShadow>
-        <boxGeometry args={[0.18, 0.04, 0.26]} />
-        <meshStandardMaterial color="#c8b296" />
+      <RoundedBox args={[0.28, 0.24, 0.24]} radius={0.014} smoothness={3} position={[0.3, 0.75, -0.16]} castShadow>
+        <meshStandardMaterial color="#c2bcaf" roughness={0.62} />
+      </RoundedBox>
+      <mesh position={[0.3, 0.76, -0.29]} castShadow>
+        <boxGeometry args={[0.18, 0.12, 0.015]} />
+        <meshStandardMaterial color="#8fb7ca" emissive={glow} emissiveIntensity={glowStrength * 0.22} />
+      </mesh>
+      <mesh position={[0.3, 0.62, -0.15]} castShadow>
+        <boxGeometry args={[0.06, 0.1, 0.06]} />
+        <meshStandardMaterial color="#6c665f" />
+      </mesh>
+
+      <mesh position={[0.58, 0.55, -0.08]} castShadow rotation={[0, 0, -0.28]} ref={lamp}>
+        <boxGeometry args={[0.04, 0.34, 0.04]} />
+        <meshStandardMaterial color="#57534d" emissive={glow} emissiveIntensity={glowStrength * 0.1} />
+      </mesh>
+      <mesh position={[0.66, 0.73, -0.15]} castShadow rotation={[0, 0, 0.22]}>
+        <coneGeometry args={[0.1, 0.16, 4]} />
+        <meshStandardMaterial color="#e8dfcf" emissive="#efe6d7" emissiveIntensity={0.18} />
+      </mesh>
+      <mesh position={[0.53, 0.49, -0.03]} castShadow>
+        <cylinderGeometry args={[0.08, 0.08, 0.025, 14]} />
+        <meshStandardMaterial color="#615950" />
+      </mesh>
+
+      <mesh position={[0.45, 0.55, 0.38]} castShadow>
+        <boxGeometry args={[0.22, 0.04, 0.28]} />
+        <meshStandardMaterial color="#c7b39a" />
+      </mesh>
+      <mesh position={[0.16, 0.55, 0.34]} castShadow>
+        <boxGeometry args={[0.16, 0.04, 0.22]} />
+        <meshStandardMaterial color="#cfbfab" />
+      </mesh>
+      <mesh position={[0.62, 0.54, 0.2]} castShadow>
+        <boxGeometry args={[0.1, 0.08, 0.08]} />
+        <meshStandardMaterial color="#6a6258" />
+      </mesh>
+
+      <RoundedBox args={[1.48, 0.5, 0.06]} radius={0.02} smoothness={4} position={[-0.06, 0.84, -0.47]} castShadow>
+        <meshStandardMaterial color="#b8b6ac" />
+      </RoundedBox>
+      <mesh position={[-0.06, 0.86, -0.43]}>
+        <boxGeometry args={[1.4, 0.32, 0.01]} />
+        <meshStandardMaterial color="#95a8a0" />
+      </mesh>
+      <RoundedBox args={[0.06, 0.5, 1.02]} radius={0.02} smoothness={4} position={[0.8, 0.84, 0.1]} castShadow>
+        <meshStandardMaterial color="#b8b6ac" />
+      </RoundedBox>
+      <mesh position={[0.76, 0.86, 0.1]} rotation={[0, Math.PI / 2, 0]}>
+        <boxGeometry args={[1, 0.32, 0.01]} />
+        <meshStandardMaterial color="#95a8a0" />
       </mesh>
     </>
   );
@@ -518,38 +702,50 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
 function ChairFallback({ glow, glowStrength }: { glow: THREE.Color; glowStrength: number }) {
   return (
     <>
-      <mesh position={[0, 0.29, 0.03]} castShadow>
-        <boxGeometry args={[0.42, 0.08, 0.4]} />
-        <meshStandardMaterial color="#57657a" emissive={glow} emissiveIntensity={glowStrength * 0.08} />
+      <mesh position={[0, 0.3, 0.03]} castShadow>
+        <boxGeometry args={[0.44, 0.09, 0.42]} />
+        <meshStandardMaterial color="#627387" emissive={glow} emissiveIntensity={glowStrength * 0.07} />
       </mesh>
-      <mesh position={[0, 0.56, 0.18]} castShadow>
-        <boxGeometry args={[0.42, 0.46, 0.08]} />
-        <meshStandardMaterial color="#667489" />
+      <mesh position={[0, 0.56, 0.2]} castShadow>
+        <boxGeometry args={[0.44, 0.4, 0.1]} />
+        <meshStandardMaterial color="#6f8197" />
+      </mesh>
+      <mesh position={[0, 0.79, 0.18]} castShadow>
+        <boxGeometry args={[0.3, 0.12, 0.08]} />
+        <meshStandardMaterial color="#7689a0" />
       </mesh>
       {[-0.18, 0.18].map((x, i) => (
-        <mesh key={i} position={[x, 0.34, 0.02]} castShadow>
-          <boxGeometry args={[0.05, 0.18, 0.24]} />
-          <meshStandardMaterial color="#4d596b" />
+        <mesh key={i} position={[x, 0.36, 0.06]} castShadow>
+          <boxGeometry args={[0.06, 0.2, 0.26]} />
+          <meshStandardMaterial color="#536274" />
         </mesh>
       ))}
       <mesh position={[0, 0.14, 0.02]} castShadow>
-        <cylinderGeometry args={[0.05, 0.05, 0.28, 14]} />
-        <meshStandardMaterial color="#5b554f" />
-      </mesh>
-      <mesh position={[0, 0.03, 0.02]} castShadow>
-        <cylinderGeometry args={[0.16, 0.05, 0.04, 16]} />
-        <meshStandardMaterial color="#403b37" />
+        <cylinderGeometry args={[0.045, 0.05, 0.28, 14]} />
+        <meshStandardMaterial color="#5d574f" />
       </mesh>
       {[
-        [-0.16, 0.03, 0.17],
-        [0.16, 0.03, 0.17],
-        [-0.18, 0.03, -0.13],
-        [0.18, 0.03, -0.13],
-        [0, 0.03, -0.2],
+        [-0.22, 0.05, 0.19],
+        [0.22, 0.05, 0.19],
+        [-0.24, 0.05, -0.13],
+        [0.24, 0.05, -0.13],
+        [0, 0.05, -0.23],
+      ].map((leg, i) => (
+        <mesh key={`leg-${i}`} position={leg as [number, number, number]} castShadow>
+          <boxGeometry args={[0.13, 0.02, 0.04]} />
+          <meshStandardMaterial color="#463f39" />
+        </mesh>
+      ))}
+      {[
+        [-0.24, 0.02, 0.19],
+        [0.24, 0.02, 0.19],
+        [-0.26, 0.02, -0.13],
+        [0.26, 0.02, -0.13],
+        [0, 0.02, -0.25],
       ].map((wheel, i) => (
-        <mesh key={i} position={wheel as [number, number, number]} castShadow>
-          <cylinderGeometry args={[0.03, 0.03, 0.04, 12]} />
-          <meshStandardMaterial color="#202026" />
+        <mesh key={`wheel-${i}`} position={wheel as [number, number, number]} castShadow>
+          <cylinderGeometry args={[0.03, 0.03, 0.035, 10]} />
+          <meshStandardMaterial color="#1f2026" />
         </mesh>
       ))}
     </>
@@ -575,7 +771,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
     <group position={position} rotation={[0, rotationY, 0]}>
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
-      <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.16, 0.02, 0.78]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
+      <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
 
       <mesh
         position={[0, 0.6, 0.17]}
@@ -955,53 +1151,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
 
       <OfficeShell manifest={manifest} />
 
-      <group position={[0, 0, 5.25]}>
-        <group position={[-3.28, 0, -0.05]}>
-          <DividerFallback width={2.4} height={1.34} />
-        </group>
-        <group position={[3.28, 0, -0.05]}>
-          <DividerFallback width={2.4} height={1.34} />
-        </group>
-        <group position={[-5.45, 0, -0.9]}>
-          <BookshelfFallback width={1.35} />
-        </group>
-        <group position={[5.45, 0, -0.9]}>
-          <BookshelfFallback width={1.35} />
-        </group>
-      </group>
 
-      <group position={[-6.9, 0, -2.1]}>
-        <WindowBlindsFallback />
-      </group>
-      <group position={[0, 0, -2.1]}>
-        <WindowBlindsFallback />
-      </group>
-      <group position={[6.9, 0, -2.1]}>
-        <WindowBlindsFallback />
-      </group>
-
-      <group position={[-6.2, 0, 4.85]}>
-        <BookshelfFallback width={1.12} />
-      </group>
-      <group position={[6.2, 0, 4.85]}>
-        <BookshelfFallback width={1.12} />
-      </group>
-      <group position={[-6.9, 0, 2.5]}>
-        <OfficeAssetSlot slot="plant" manifest={manifest} fallback={<PlantFallback />} />
-      </group>
-      <group position={[6.9, 0, 2.5]}>
-        <OfficeAssetSlot slot="plant" manifest={manifest} fallback={<PlantFallback />} />
-      </group>
-      <group position={[-5.9, 0, 4.4]}>
-        <OfficeAssetSlot slot="wallFrame" manifest={manifest} fallback={<WallFrameFallback />} />
-      </group>
-      <group position={[5.9, 0, 4.4]}>
-        <OfficeAssetSlot slot="wallFrame" manifest={manifest} fallback={<WallFrameFallback />} />
-      </group>
-      <group position={[6.1, 0, 1.2]}>
-        <OfficeAssetSlot slot="coffeeMachine" manifest={manifest} fallback={<CoffeeMachineFallback />} />
-      </group>
-      <BreakArea manifest={manifest} />
 
       <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.15]} fallback={<HubFallback />} />
       <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.15]} visible />
