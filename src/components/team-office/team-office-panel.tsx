@@ -44,7 +44,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
           <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with a standby line, side work desks, and a front review desk for PILOT handoff.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
-            Idle agents hold in the middle line, active ones break to the side desks with a green diamond, and recent deliveries queue at PILOT’s desk.
+            Project owners stay at their desks, active lanes light up with a green diamond, support lanes idle in the middle line, and recent deliveries queue at PILOT’s desk.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -85,9 +85,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {([
-              { status: 'running', title: 'running', desc: 'worker at side desk with green diamond' },
+              { status: 'running', title: 'running', desc: 'worker actively executing at the desk with green diamond' },
               { status: 'recent', title: 'handoff', desc: 'worker presenting output at PILOT desk' },
-              { status: 'idle', title: 'idle', desc: 'worker standing in the middle ready line' },
+              { status: 'idle', title: 'idle', desc: 'project owners stay seated at desk, support lanes wait in the middle line' },
               { status: 'missing', title: 'offline', desc: 'red marker, no active worker body' },
             ] as const).map((item) => {
               const tone = statusTone(item.status);

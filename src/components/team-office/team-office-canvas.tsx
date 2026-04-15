@@ -62,10 +62,15 @@ function sourceLabel(source: TeamTaskSource) {
   }
 }
 
+function isDeskResidentTopic(topic: TeamTopic) {
+  return topic.configured.role === 'project_owner_and_worker' && topic.live.status !== 'missing';
+}
+
 function actionLabel(topic: TeamTopic) {
   if (topic.live.status === 'running') return sourceLabel(topic.currentTask.source);
   if (topic.live.status === 'recent') return 'delivering';
   if (topic.live.status === 'missing') return 'offline';
+  if (isDeskResidentTopic(topic)) return 'at desk';
   return 'in line';
 }
 
@@ -329,24 +334,39 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
   const palette = useMemo(() => paletteForTopic(topic), [topic]);
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const mode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
+  const deskResident = isDeskResidentTopic(topic);
+  const mode = topic.live.status === 'running'
+    ? 'desk-active'
+    : topic.live.status === 'recent'
+      ? 'delivery'
+      : deskResident
+        ? 'desk-idle'
+        : 'standby';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.getElapsedTime() + seed * 0.27;
     const stride = Math.sin(t * 5.2) * 0.46;
-    const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
-    const facing = mode === 'desk' ? deskFacing : 0;
+    const atDesk = mode === 'desk-active' || mode === 'desk-idle';
+    const anchor = atDesk ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
+    const facing = atDesk ? deskFacing : 0;
+    const baseY = mode === 'desk-idle' ? -0.01 : 0.07;
+    const bob = mode === 'desk-idle' ? (!reducedMotion ? Math.sin(t * 1.6) * 0.004 : 0) : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
 
-    group.current.position.set(anchor[0], 0.07 + (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0), anchor[2]);
+    group.current.position.set(anchor[0], baseY + bob, anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
-      if (mode === 'desk' && !reducedMotion) {
+      if (mode === 'desk-active' && !reducedMotion) {
         leftArm.current.rotation.x = -1.05 + stride * 0.09;
         rightArm.current.rotation.x = -0.95 - stride * 0.09;
         leftLeg.current.rotation.x = 0.12;
         rightLeg.current.rotation.x = 0.02;
+      } else if (mode === 'desk-idle') {
+        leftArm.current.rotation.x = -0.84;
+        rightArm.current.rotation.x = -0.78;
+        leftLeg.current.rotation.x = 0.56;
+        rightLeg.current.rotation.x = 0.56;
       } else if (mode === 'delivery') {
         leftArm.current.rotation.x = -0.2;
         rightArm.current.rotation.x = -0.48;
@@ -361,7 +381,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
     }
 
     if (chest.current) {
-      const emissive = topic.live.status === 'running' ? 0.14 : 0.02;
+      const emissive = topic.live.status === 'running' ? 0.14 : deskResident ? 0.035 : 0.02;
       (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
     }
   });
@@ -1170,7 +1190,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (topic.live.status === 'running') return layout.focusPoint;
+  if (topic.live.status === 'running' || isDeskResidentTopic(topic)) return layout.focusPoint;
   if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
