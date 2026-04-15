@@ -182,14 +182,18 @@ type ProjectBadgeSpec = {
   maxWidth: number;
   maxHeight: number;
   position: [number, number, number];
+  rotationY: number;
 };
 
 function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
   const label = topicDisplayLabel(topic).toLowerCase();
-  const base = { position: [-0.06, 0.76, -0.438] as [number, number, number] };
-  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
-  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
-  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.12, maxHeight: 0.12, ...base };
+  const base = {
+    position: [0.0, 0.31, 0.43] as [number, number, number],
+    rotationY: Math.PI,
+  };
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.11, maxHeight: 0.11, ...base };
   return null;
 }
 
@@ -287,9 +291,9 @@ function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
   const height = Math.min(spec.maxHeight, spec.maxWidth / Math.max(aspect, 0.01));
 
   return (
-    <mesh position={spec.position} renderOrder={19}>
+    <mesh position={spec.position} rotation={[0, spec.rotationY, 0]} renderOrder={19}>
       <planeGeometry args={[width, height]} />
-      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} depthTest={false} toneMapped={false} />
+      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
     </mesh>
   );
 }
