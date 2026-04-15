@@ -2,7 +2,8 @@ import fs from 'fs';
 import type { TeamTopology, TeamTaskConfidence, TeamTaskSource, TeamTopic, TeamTopicLiveStatus } from '@/lib/watch-team';
 
 const ORCHESTRATION_FILE = '/root/.openclaw/workspace/state/orchestration.json';
-const SESSIONS_FILE = '/root/.openclaw/agents/main/sessions/sessions.json';
+const AGENTS_ROOT = '/root/.openclaw/agents';
+const MAIN_SESSIONS_FILE = '/root/.openclaw/agents/main/sessions/sessions.json';
 const RECENT_THRESHOLD_MS = 90 * 60 * 1000;
 
 type SessionIndexEntry = {
@@ -355,8 +356,9 @@ function getSessionEntry(
   sessionsIndex: Record<string, SessionIndexEntry>,
   groupId: string,
   topicId: string,
+  agentId: string,
 ) {
-  const directKey = `agent:main:telegram:group:${groupId}:topic:${topicId}`;
+  const directKey = `agent:${agentId}:telegram:group:${groupId}:topic:${topicId}`;
   if (sessionsIndex[directKey]) return { key: directKey, session: sessionsIndex[directKey] };
 
   const fallback = Object.entries(sessionsIndex).find(([key, value]) => {
@@ -367,17 +369,75 @@ function getSessionEntry(
   return { key: fallback[0], session: fallback[1] };
 }
 
+function listAgentIds() {
+  try {
+    return fs.readdirSync(AGENTS_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return ['main'];
+  }
+}
+
+function loadSessionIndexesByAgent() {
+  const byAgent = new Map<string, Record<string, SessionIndexEntry>>();
+  for (const agentId of listAgentIds()) {
+    const sessionsPath = `${AGENTS_ROOT}/${agentId}/sessions/sessions.json`;
+    byAgent.set(agentId, readJsonSafe<Record<string, SessionIndexEntry>>(sessionsPath, {}));
+  }
+  if (!byAgent.has('main')) {
+    byAgent.set('main', readJsonSafe<Record<string, SessionIndexEntry>>(MAIN_SESSIONS_FILE, {}));
+  }
+  return byAgent;
+}
+
+function resolveSessionFile(agentId: string, topicId: string, session: SessionIndexEntry | undefined) {
+  const sessionsDir = `${AGENTS_ROOT}/${agentId}/sessions`;
+  const explicitPath = session?.sessionFile;
+  if (explicitPath && fs.existsSync(explicitPath)) return explicitPath;
+
+  const sessionId = session?.sessionId;
+  if (sessionId) {
+    const byId = `${sessionsDir}/${sessionId}.jsonl`;
+    if (fs.existsSync(byId)) return byId;
+    const byIdTopic = `${sessionsDir}/${sessionId}-topic-${topicId}.jsonl`;
+    if (fs.existsSync(byIdTopic)) return byIdTopic;
+  }
+
+  try {
+    const topicSuffix = `-topic-${topicId}.jsonl`;
+    const files = fs.readdirSync(sessionsDir)
+      .filter((name) => name.endsWith('.jsonl') && name !== 'sessions.json')
+      .sort((a, b) => {
+        const aMs = fs.statSync(`${sessionsDir}/${a}`).mtimeMs;
+        const bMs = fs.statSync(`${sessionsDir}/${b}`).mtimeMs;
+        return bMs - aMs;
+      });
+
+    const topicFile = files.find((name) => name.endsWith(topicSuffix));
+    if (topicFile) return `${sessionsDir}/${topicFile}`;
+
+    if (files.length > 0) return `${sessionsDir}/${files[0]}`;
+  } catch {
+    // ignore filesystem read errors
+  }
+
+  return null;
+}
+
 export function getTeamTopology(): string {
   const orchestration = readJsonSafe<any>(ORCHESTRATION_FILE, {});
-  const sessionsIndex = readJsonSafe<Record<string, SessionIndexEntry>>(SESSIONS_FILE, {});
+  const sessionIndexesByAgent = loadSessionIndexesByAgent();
   const groupId = String(orchestration?.telegramTeam?.groupId || '');
   const lanes = Array.isArray(orchestration?.telegramTeam?.lanes) ? orchestration.telegramTeam.lanes : [];
 
   const topics: TeamTopic[] = lanes.map((lane: any) => {
     const topicId = String(lane?.topicId || '');
-    const resolved = getSessionEntry(sessionsIndex, groupId, topicId);
+    const agentId = String(lane?.agent || 'main');
+    const sessionsIndex = sessionIndexesByAgent.get(agentId) || {};
+    const resolved = getSessionEntry(sessionsIndex, groupId, topicId, agentId);
     const session = resolved.session;
-    const sessionFile = session?.sessionFile || (session?.sessionId ? `/root/.openclaw/agents/main/sessions/${session.sessionId}-topic-${topicId}.jsonl` : null);
+    const sessionFile = resolveSessionFile(agentId, topicId, session);
     const parsed = parseTopicSession(sessionFile && fs.existsSync(sessionFile) ? sessionFile : null);
     const live = computeLiveStatus(session);
 
@@ -426,7 +486,7 @@ export function getTeamTopology(): string {
     groupId,
     source: {
       orchestrationPath: ORCHESTRATION_FILE,
-      sessionsIndexPath: SESSIONS_FILE,
+      sessionsIndexPath: `${AGENTS_ROOT}/<agent>/sessions/sessions.json`,
     },
     summary,
     topics,

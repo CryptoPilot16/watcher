@@ -36,6 +36,17 @@ const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
 const OPENCLAW_DIR  = '/root/.openclaw';
 const WATCH_STATE_FILE = path.join(process.cwd(), '.watch-state.json');
 
+function listAgentIds(): string[] {
+  const agentsDir = path.join(OPENCLAW_DIR, 'agents');
+  try {
+    return fs.readdirSync(agentsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return ['main'];
+  }
+}
+
 function readWatchState(): { clearedRunFaultAt: number | null; clearedSessionIdleAt: number | null } {
   try {
     const raw = fs.readFileSync(WATCH_STATE_FILE, 'utf8');
@@ -202,12 +213,15 @@ function getOpenClawCron(): string {
 function getOpenClawMeta(): string {
   const configRaw     = run(`cat ${OPENCLAW_DIR}/openclaw.json 2>/dev/null`);
   const authStateRaw  = run(`cat ${OPENCLAW_DIR}/agents/main/agent/auth-state.json 2>/dev/null`);
-  const sessionsRaw   = run(`cat ${OPENCLAW_DIR}/agents/main/sessions/sessions.json 2>/dev/null`);
   const healthRaw     = run(`cat ${OPENCLAW_DIR}/logs/config-health.json 2>/dev/null`);
 
   const config    = parseSafe(configRaw)    || {};
   const authState = parseSafe(authStateRaw) || {};
-  const sessData  = parseSafe(sessionsRaw)  || {};
+  const sessionDataByAgent = listAgentIds().map((agentId) => {
+    const raw = run(`cat ${OPENCLAW_DIR}/agents/${agentId}/sessions/sessions.json 2>/dev/null`);
+    const parsed = parseSafe(raw) || {};
+    return { agentId, parsed };
+  });
   const health    = parseSafe(healthRaw)    || {};
 
   // version + model
@@ -231,15 +245,17 @@ function getOpenClawMeta(): string {
   }));
 
   // sessions
-  const sessions = Object.entries(sessData)
-    .filter(([k]) => !['version'].includes(k))
+  const sessions = sessionDataByAgent
+    .flatMap(({ parsed }) => Object.entries(parsed as Record<string, any>))
+    .filter(([k]) => k !== 'version')
     .map(([key, v]: [string, any]) => ({
       key,
-      status:    v?.status    ?? 'unknown',
+      status:    v?.status    ?? (v?.updatedAt ? 'active' : 'unknown'),
       updatedAt: v?.updatedAt ?? null,
       model:     v?.model     ?? null,
       channel:   v?.channel   ?? null,
-    }));
+    }))
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 
   const configHealthy = (health as any)?.ok !== false && !String(configRaw).startsWith('ERROR');
 

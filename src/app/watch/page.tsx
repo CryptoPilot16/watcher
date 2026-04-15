@@ -404,25 +404,26 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
           {meta.sessions.length === 0 ? (
             <div className="text-[11px] text-[var(--watch-text-muted)]">no sessions</div>
           ) : (
-            meta.sessions
-              .filter(s => s.key.includes('main:main'))
-              .concat(meta.sessions.filter(s => !s.key.includes('main:main')))
-              .slice(0, 3)
-              .map((sess) => {
-                const idleMs = sess.updatedAt ? Date.now() - sess.updatedAt : null;
-                const isStale = idleMs !== null && idleMs > 8 * 3_600_000;
-                const isIdle  = idleMs !== null && idleMs > 2 * 3_600_000;
-                const sessLevel: HealthLevel = isStale ? 'error' : isIdle ? 'warn' : 'ok';
-                const shortKey = sess.key.replace('agent:main:', '');
-                return (
-                  <div key={sess.key} className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] truncate text-[var(--watch-text-bright)]">{shortKey}</span>
-                    <span className="shrink-0 text-[10px] tabular-nums" style={{ color: HEALTH_STYLE[sessLevel].color }}>
-                      {sessionIdleLabel(sess.updatedAt)}
-                    </span>
-                  </div>
-                );
-              })
+            <div className="max-h-40 space-y-1 overflow-auto pr-1">
+              {meta.sessions
+                .filter(s => s.key.includes('main:main'))
+                .concat(meta.sessions.filter(s => !s.key.includes('main:main')))
+                .map((sess) => {
+                  const idleMs = sess.updatedAt ? Date.now() - sess.updatedAt : null;
+                  const isStale = idleMs !== null && idleMs > 8 * 3_600_000;
+                  const isIdle  = idleMs !== null && idleMs > 2 * 3_600_000;
+                  const sessLevel: HealthLevel = isStale ? 'error' : isIdle ? 'warn' : 'ok';
+                  const shortKey = sess.key.replace('agent:main:', '');
+                  return (
+                    <div key={sess.key} className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] truncate text-[var(--watch-text-bright)]">{shortKey}</span>
+                      <span className="shrink-0 text-[10px] tabular-nums" style={{ color: HEALTH_STYLE[sessLevel].color }}>
+                        {sessionIdleLabel(sess.updatedAt)}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
           )}
         </div>
       </div>
