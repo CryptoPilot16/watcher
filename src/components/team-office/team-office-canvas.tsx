@@ -286,10 +286,10 @@ function WorkerAvatarModel({ clip, manifest }: { clip: WorkerAvatarClip; manifes
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topicDisplayLabel(topic));
-  const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
-  const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
-  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
-  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
+  const skin = ['#f5d9c4', '#e7bf9f', '#ca9a76', '#8c5b42'][seed % 4];
+  const hair = ['#201915', '#4b3428', '#2a2f39', '#6a5948', '#e7e2d8'][(seed >> 2) % 5];
+  const top = ['#243447', '#5c6b5d', '#7b4d46', '#4b5874', '#8a6b3f', '#3f5f64', '#5f4e63'][(seed >> 4) % 7];
+  const bottom = ['#2b3038', '#3a414c', '#444d5c', '#323843', '#585f6b'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
 }
 
@@ -323,29 +323,29 @@ function styleForTopic(topic: TeamTopic): WorkerStyle {
   const seed = hashLabel(topicDisplayLabel(topic));
   const archetype = seed % 7;
   return {
-    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
-    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
-    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
-    legHeight: archetype === 5 ? 0.21 : 0.235,
-    armLength: archetype === 4 ? 0.24 : 0.22,
+    bodyScale: archetype === 4 ? [1.02, 1.06, 0.96] : archetype === 5 ? [0.96, 1.01, 0.92] : archetype === 1 ? [0.98, 1.03, 0.94] : [1, 1.04, 0.95],
+    headScale: archetype === 0 ? [1.16, 1.1, 1.06] : archetype === 3 ? [1.12, 1.06, 1.03] : [1.1, 1.04, 1.02],
+    shoulderWidth: archetype === 5 ? 0.118 : archetype === 4 ? 0.138 : 0.128,
+    legHeight: archetype === 5 ? 0.2 : 0.225,
+    armLength: archetype === 4 ? 0.23 : 0.21,
     hasHat: false,
     hatColor: '#2f3340',
     hatBrimColor: '#151515',
     hasApron: false,
     apronColor: '#f3f0ea',
-    hasJacket: archetype === 2 || archetype === 3,
-    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
-    skirt: archetype === 5 || archetype === 6,
+    hasJacket: archetype === 2 || archetype === 3 || archetype === 6,
+    jacketColor: ['#43546c', '#5a5f54', '#e4dfd6', '#64738d', '#73634b', '#575b63', '#32424d'][archetype],
+    skirt: archetype === 5,
     accentStripe: archetype === 0 || archetype === 4,
     hasVest: archetype === 1 || archetype === 4,
-    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
+    vestColor: ['#3f4c64', '#5d5148', '#495851', '#55647f', '#796048', '#5d5657', '#524c69'][archetype],
     hasTie: archetype === 0 || archetype === 2,
-    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
-    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
-    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
-    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
-    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
-    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
+    tieColor: archetype === 0 ? '#c05a4f' : '#4d6b91',
+    blouseColor: ['#efe6da', '#f1ebe1', '#f5f0e8', '#ebe5de', '#efe7db', '#f4eee7', '#e9e0d4'][archetype],
+    sockColor: archetype === 5 ? '#ddd3c7' : '#616978',
+    shoeColor: ['#332c28', '#34303a', '#262d38', '#453830', '#362d27', '#423431', '#2f3140'][archetype],
+    hairStyle: ['part', 'crop', 'bob', 'part', 'crop', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: archetype === 5 ? 1.04 : 0.96,
   };
 }
 
@@ -439,72 +439,60 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
 }
 
 function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForTopic>; style: WorkerStyle }) {
-  const capScale: [number, number, number] = [style.headScale[0] * 1.05, style.headScale[1] * 0.82 * style.hairVolume, style.headScale[2] * 1.02];
+  const capScale: [number, number, number] = [style.headScale[0] * 1.03, style.headScale[1] * 0.74 * style.hairVolume, style.headScale[2] * 0.98];
 
   return (
     <group>
-      <mesh castShadow position={[0, 0.92, -0.045]} scale={capScale}>
-        <sphereGeometry args={[0.122, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.86]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.72} />
+      <mesh castShadow position={[0, 0.935, -0.03]} scale={capScale}>
+        <sphereGeometry args={[0.125, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.9]} />
+        <meshStandardMaterial color={palette.hair} roughness={0.76} />
       </mesh>
-      {style.hairStyle === 'bob' && (
-        <>
-          <mesh castShadow position={[0, 0.835, -0.055]} scale={[style.headScale[0] * 1.02, style.headScale[1] * 0.82, style.headScale[2] * 0.92]}>
-            <sphereGeometry args={[0.108, 18, 18, 0, Math.PI * 2, Math.PI / 2.35, Math.PI / 1.65]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.76} />
-          </mesh>
-          {[-0.1, 0.1].map((x) => (
-            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.025]} scale={[0.88, 1.18, 0.78]}>
-              <sphereGeometry args={[0.042, 12, 12]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.76} />
-            </mesh>
-          ))}
-        </>
-      )}
+
       {style.hairStyle === 'part' && (
         <>
-          <mesh castShadow position={[0, 0.885, 0.012]} rotation={[0.22, 0, 0]}>
-            <boxGeometry args={[0.18, 0.028, 0.05]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          <mesh castShadow position={[0, 0.9, 0.03]} rotation={[0.2, 0, 0]}>
+            <boxGeometry args={[0.16, 0.024, 0.048]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.74} />
           </mesh>
-          <mesh castShadow position={[-0.06, 0.845, 0.022]} rotation={[0.2, 0.2, -0.18]}>
-            <boxGeometry args={[0.065, 0.11, 0.03]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          <mesh castShadow position={[-0.055, 0.855, 0.026]} rotation={[0.16, 0.18, -0.12]}>
+            <boxGeometry args={[0.06, 0.09, 0.028]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.74} />
           </mesh>
         </>
       )}
-      {style.hairStyle === 'bun' && (
-        <>
-          <mesh castShadow position={[0, 0.81, -0.09]}>
-            <sphereGeometry args={[0.06, 14, 14]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.72} />
-          </mesh>
-          {[-0.082, 0.082].map((x) => (
-            <mesh key={`bun-side-${x}`} castShadow position={[x, 0.87, -0.01]} scale={[0.75, 1.15, 0.72]}>
-              <sphereGeometry args={[0.038, 12, 12]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.72} />
-            </mesh>
-          ))}
-        </>
-      )}
+
       {style.hairStyle === 'crop' && (
-        <mesh castShadow position={[0, 0.905, 0.03]} rotation={[0.36, 0, 0]}>
-          <boxGeometry args={[0.19, 0.038, 0.07]} />
-          <meshStandardMaterial color={palette.hair} roughness={0.66} />
+        <mesh castShadow position={[0, 0.912, 0.026]} rotation={[0.3, 0, 0]}>
+          <boxGeometry args={[0.17, 0.03, 0.06]} />
+          <meshStandardMaterial color={palette.hair} roughness={0.7} />
         </mesh>
       )}
-      {style.hairStyle === 'flip' && (
+
+      {style.hairStyle === 'bob' && (
         <>
-          <mesh castShadow position={[0, 0.84, -0.07]} scale={[1, 0.95, 0.9]}>
-            <sphereGeometry args={[0.1, 16, 16, 0, Math.PI * 2, Math.PI / 2.45, Math.PI / 1.7]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.72} />
+          <mesh castShadow position={[0, 0.85, -0.04]} scale={[1, 0.88, 0.9]}>
+            <sphereGeometry args={[0.105, 16, 16, 0, Math.PI * 2, Math.PI / 2.3, Math.PI / 1.72]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.78} />
           </mesh>
-          {[-0.11, 0.11].map((x) => (
-            <mesh key={`flip-side-${x}`} castShadow position={[x, 0.83, -0.01]} rotation={[0, 0, x < 0 ? -0.35 : 0.35]}>
-              <boxGeometry args={[0.04, 0.1, 0.028]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+          {[-0.092, 0.092].map((x) => (
+            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.006]} scale={[0.82, 1.1, 0.74]}>
+              <sphereGeometry args={[0.036, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.78} />
             </mesh>
           ))}
+        </>
+      )}
+
+      {style.hairStyle === 'bun' && (
+        <>
+          <mesh castShadow position={[0, 0.82, -0.09]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.78} />
+          </mesh>
+          <mesh castShadow position={[0, 0.882, 0.016]} rotation={[0.24, 0, 0]}>
+            <boxGeometry args={[0.145, 0.026, 0.04]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.74} />
+          </mesh>
         </>
       )}
     </group>
