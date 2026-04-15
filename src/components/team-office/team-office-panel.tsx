@@ -42,7 +42,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with one forward PILOT desk, a front job row, and a back standby row.</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with side desks, one forward PILOT desk, a front job row, and a back standby row.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
             Anyone attached to a job stays in front of PILOT, active lanes glow there, unassigned lanes wait in the back row, and recent deliveries queue nearest the desk.
           </div>

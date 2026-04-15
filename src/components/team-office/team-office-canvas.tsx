@@ -1157,6 +1157,13 @@ function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
         <meshStandardMaterial color="#d9ece6" roughness={0.98} />
       </mesh>
 
+      {[-4.5, 4.5].map((x) => (
+        <mesh key={`desk-pad-${x}`} position={[x, 0.015, -0.25]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[3.1, 12.5]} />
+          <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
+        </mesh>
+      ))}
+
       <mesh position={[0, 0.015, 4.38]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[6.4, 2.2]} />
         <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
@@ -1216,6 +1223,12 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   ] as const;
 
   return topics.map((topic, index) => {
+    const side = index % 2;
+    const row = Math.floor(index / 2);
+    const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
+    const deskX = side === 0 ? -4.3 : 4.3;
+    const deskZ = (row - (Math.ceil(topics.length / 2) - 1) / 2) * 2.28 - 0.55 + jitter;
+
     const inactiveIndex = inactiveIndexById.get(topic.topicId) ?? index;
     const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
     const inactiveColumn = inactiveIndex % inactiveColumns;
@@ -1234,7 +1247,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
     return {
       topic,
-      position: [0, 0, 0] as [number, number, number],
+      position: [deskX, 0, deskZ] as [number, number, number],
       rotationY: Math.PI,
       workerDeskPosition: taskTablePosition,
       standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
@@ -1285,6 +1298,18 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
 
         return (
           <group key={desk.topic.topicId}>
+            <DeskUnit
+              topic={desk.topic}
+              position={desk.position}
+              rotationY={desk.rotationY}
+              reducedMotion={reducedMotion}
+              seed={index + 1}
+              emphasized={emphasized}
+              manifest={manifest}
+              onHover={() => onHover(desk.topic.topicId)}
+              onLeave={() => onLeave(desk.topic.topicId)}
+              onSelect={() => onSelect(desk.topic.topicId)}
+            />
             <WorkerAvatar
               topic={desk.topic}
               standbyPosition={desk.standbyPosition}
