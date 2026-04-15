@@ -32,31 +32,6 @@ function statusTone(status: 'running' | 'recent' | 'idle' | 'missing') {
   }
 }
 
-function topicEmoji(label: string, role: string) {
-  const normalized = label.toLowerCase();
-  if (normalized.includes('snapmolt')) return '🦀';
-  if (normalized.includes('sky')) return '✈️';
-  if (normalized.includes('odds')) return '🎯';
-  if (normalized.includes('echo') || normalized.includes('gustavo')) return '🗣️';
-  if (normalized.includes('f1')) return '🏎️';
-  if (normalized.includes('house')) return '🧹';
-  if (normalized.includes('assistant')) return '🧠';
-  if (normalized.includes('general')) return '🛰️';
-  if (role === 'generic_coder') return '👨‍💻';
-  if (role === 'project_owner_and_worker') return '🛠️';
-  if (role === 'dispatcher') return '🧠';
-  if (role === 'coordination') return '🛰️';
-  return '🤖';
-}
-
-function rosterActivity(topic: TeamTopology['topics'][number]) {
-  if (topic.live.status === 'running') return topic.currentTask.source === 'none' ? 'working' : topic.currentTask.source;
-  if (topic.live.status === 'recent') return 'handoff';
-  if (topic.currentTask.source !== 'none') return 'assigned';
-  if (topic.live.status === 'missing') return 'offline';
-  return 'standby';
-}
-
 export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
   const topics = sortTeamTopics(topology.topics);
   const active = topics.filter((topic) => topic.live.status === 'running' || topic.live.status === 'recent');
@@ -103,29 +78,6 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
         <span>running {topology.summary.running}</span>
         <span>recent {topology.summary.recent}</span>
         <span>tap workers or desks</span>
-      </div>
-
-      <div className="overflow-x-auto pb-1">
-        <div className="flex min-w-max gap-3">
-          {topics.map((topic) => {
-            const tone = statusTone(topic.live.status);
-            const label = topicDisplayLabel(topic);
-            return (
-              <div
-                key={`roster-${topic.topicId}`}
-                className="w-[132px] rounded-2xl border bg-[rgba(7,12,24,0.84)] px-3 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)]"
-                style={{ borderColor: tone.border }}
-              >
-                <div className="text-center text-[26px] leading-none">{topicEmoji(label, topic.configured.role)}</div>
-                <div className="mt-2 truncate text-center text-[11px] uppercase tracking-[0.12em] text-[var(--watch-text-bright)]">{label}</div>
-                <div className="mt-1 text-center text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">{rosterActivity(topic)}</div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.07)]">
-                  <div className="h-full rounded-full" style={{ width: topic.live.status === 'running' ? '92%' : topic.live.status === 'recent' ? '78%' : topic.currentTask.source !== 'none' ? '58%' : topic.live.status === 'missing' ? '18%' : '36%', background: tone.color }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       <div className="hidden gap-3 xl:grid xl:grid-cols-[1.1fr_1.4fr]">
