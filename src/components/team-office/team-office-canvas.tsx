@@ -1264,8 +1264,8 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
 
     const overviewTarget: [number, number, number] = [0, 1.15, 1.9];
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [7.2, 5.2, 8.4] : [8.2, 6.2, 9.5];
-    const overviewOffset: [number, number, number] = isMobile ? [18.5, 12.6, 19.8] : [22.8, 15.4, 24.8];
+    const focusOffset: [number, number, number] = isMobile ? [8.2, 5.8, 9.6] : [9.4, 6.9, 10.8];
+    const overviewOffset: [number, number, number] = isMobile ? [20.5, 13.8, 21.8] : [25.4, 17.1, 27.6];
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -1511,7 +1511,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
     <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.12)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}>
       <Canvas
         shadows
-        camera={{ position: [22.8, 15.4, 24.8], fov: isMobile ? 46 : 40, near: 0.1, far: 180 }}
+        camera={{ position: [25.4, 17.1, 27.6], fov: isMobile ? 50 : 43, near: 0.1, far: 180 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
           camera.lookAt(0, 1.15, 1.65);
