@@ -66,15 +66,11 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.live.status === 'running' || topic.live.status === 'recent' || topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
-function isDeskResidentTopic(topic: TeamTopic) {
-  return topic.configured.role === 'project_owner_and_worker' && topic.live.status !== 'missing' && hasAssignedTask(topic);
-}
-
 function actionLabel(topic: TeamTopic) {
   if (topic.live.status === 'running') return sourceLabel(topic.currentTask.source);
   if (topic.live.status === 'recent') return 'delivering';
   if (topic.live.status === 'missing') return 'offline';
-  if (isDeskResidentTopic(topic)) return 'at desk';
+  if (hasAssignedTask(topic)) return 'assigned';
   return 'in line';
 }
 
@@ -160,6 +156,8 @@ type DeskLayout = {
   rotationY: number;
   workerDeskPosition: [number, number, number];
   standbyPosition: [number, number, number];
+  taskTablePosition: [number, number, number];
+  taskTableFacing: number;
   deliveryPosition: [number, number, number];
   focusPoint: [number, number, number];
 };
@@ -316,9 +314,11 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
   );
 }
 
-function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
+function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFacing, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
   standbyPosition: [number, number, number];
+  taskTablePosition: [number, number, number];
+  taskTableFacing: number;
   deskPosition: [number, number, number];
   deliveryPosition: [number, number, number];
   deskFacing: number;
@@ -338,24 +338,27 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
   const palette = useMemo(() => paletteForTopic(topic), [topic]);
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const deskResident = isDeskResidentTopic(topic);
+  const assigned = hasAssignedTask(topic);
   const mode = topic.live.status === 'running'
     ? 'desk-active'
     : topic.live.status === 'recent'
       ? 'delivery'
-      : deskResident
-        ? 'desk-idle'
+      : assigned
+        ? 'task-table'
         : 'standby';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.getElapsedTime() + seed * 0.27;
     const stride = Math.sin(t * 5.2) * 0.46;
-    const atDesk = mode === 'desk-active' || mode === 'desk-idle';
-    const anchor = atDesk ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
-    const facing = atDesk ? deskFacing : 0;
-    const baseY = mode === 'desk-idle' ? -0.01 : 0.07;
-    const bob = mode === 'desk-idle' ? (!reducedMotion ? Math.sin(t * 1.6) * 0.004 : 0) : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
+    const atDesk = mode === 'desk-active';
+    const atTaskTable = mode === 'task-table';
+    const anchor = atDesk ? deskPosition : mode === 'delivery' ? deliveryPosition : atTaskTable ? taskTablePosition : standbyPosition;
+    const facing = atDesk ? deskFacing : atTaskTable ? taskTableFacing : 0;
+    const baseY = atDesk ? 0.07 : atTaskTable ? 0.03 : 0.07;
+    const bob = atTaskTable
+      ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
+      : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
 
     group.current.position.set(anchor[0], baseY + bob, anchor[2]);
     group.current.rotation.set(0, facing, 0);
@@ -366,11 +369,11 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
         rightArm.current.rotation.x = -0.95 - stride * 0.09;
         leftLeg.current.rotation.x = 0.12;
         rightLeg.current.rotation.x = 0.02;
-      } else if (mode === 'desk-idle') {
-        leftArm.current.rotation.x = -0.84;
-        rightArm.current.rotation.x = -0.78;
-        leftLeg.current.rotation.x = 0.56;
-        rightLeg.current.rotation.x = 0.56;
+      } else if (mode === 'task-table') {
+        leftArm.current.rotation.x = -0.34;
+        rightArm.current.rotation.x = -0.28;
+        leftLeg.current.rotation.x = 0;
+        rightLeg.current.rotation.x = 0;
       } else if (mode === 'delivery') {
         leftArm.current.rotation.x = -0.2;
         rightArm.current.rotation.x = -0.48;
@@ -385,7 +388,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
     }
 
     if (chest.current) {
-      const emissive = topic.live.status === 'running' ? 0.14 : deskResident ? 0.035 : 0.02;
+      const emissive = topic.live.status === 'running' ? 0.14 : assigned ? 0.05 : 0.02;
       (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
     }
   });
@@ -961,6 +964,41 @@ function SideTableFallback() {
   );
 }
 
+function CommonTaskTableFallback() {
+  return (
+    <>
+      <RoundedBox args={[3.3, 0.12, 1.52]} radius={0.06} smoothness={4} position={[0, 0.76, 0]} castShadow>
+        <meshStandardMaterial color="#d8c1a0" roughness={0.88} />
+      </RoundedBox>
+      <RoundedBox args={[1.1, 0.16, 0.7]} radius={0.04} smoothness={4} position={[0, 0.62, 0]} castShadow>
+        <meshStandardMaterial color="#cfb38d" roughness={0.9} />
+      </RoundedBox>
+      {[-1.34, 1.34].map((x, i) => (
+        <mesh key={`leg-${i}`} position={[x, 0.38, -0.46]} castShadow>
+          <boxGeometry args={[0.16, 0.76, 0.16]} />
+          <meshStandardMaterial color="#8d745d" roughness={0.84} />
+        </mesh>
+      ))}
+      {[-1.34, 1.34].map((x, i) => (
+        <mesh key={`front-leg-${i}`} position={[x, 0.38, 0.46]} castShadow>
+          <boxGeometry args={[0.16, 0.76, 0.16]} />
+          <meshStandardMaterial color="#8d745d" roughness={0.84} />
+        </mesh>
+      ))}
+      {[-0.98, 0, 0.98].map((x, i) => (
+        <mesh key={`paper-${i}`} position={[x, 0.83, i === 1 ? -0.08 : 0.08]} rotation={[-Math.PI / 2, 0, (i - 1) * 0.12]}>
+          <planeGeometry args={[0.42, 0.28]} />
+          <meshStandardMaterial color="#f6f0e5" side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.86, -0.38]} castShadow rotation={[0, 0.18, 0]}>
+        <boxGeometry args={[0.34, 0.1, 0.22]} />
+        <meshStandardMaterial color="#6f8dbc" />
+      </mesh>
+    </>
+  );
+}
+
 function HubFallback() {
   return (
     <>
@@ -1153,14 +1191,35 @@ function BreakArea({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
   );
 }
 
+function CommonTaskTable() {
+  return (
+    <group position={[0, 0, 1.05]}>
+      <CommonTaskTableFallback />
+    </group>
+  );
+}
+
 function buildDeskLayouts(topics: TeamTopic[]) {
   const deskRows = Math.ceil(topics.length / 2);
-  const inactiveTopics = topics.filter((topic) => !['running', 'recent'].includes(topic.live.status));
+  const assignedIdleTopics = topics.filter((topic) => hasAssignedTask(topic) && !['running', 'recent'].includes(topic.live.status));
+  const inactiveTopics = topics.filter((topic) => !hasAssignedTask(topic) && !['running', 'recent'].includes(topic.live.status));
   const inactiveColumns = Math.min(2, Math.max(1, inactiveTopics.length));
   const inactiveRows = Math.max(1, Math.ceil(inactiveTopics.length / inactiveColumns));
   const inactiveSpacingX = 1;
   const inactiveSpacingZ = 0.72;
   const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
+  const assignedIdleIndexById = new Map(assignedIdleTopics.map((topic, index) => [topic.topicId, index]));
+  const commonTableCenter: [number, number, number] = [0, 0, 1.05];
+  const commonTableSlots = [
+    [-1.02, 0, 0.26],
+    [0, 0, 0.48],
+    [1.02, 0, 0.26],
+    [-1.02, 0, -0.4],
+    [0, 0, -0.62],
+    [1.02, 0, -0.4],
+    [-1.72, 0, -0.02],
+    [1.72, 0, -0.02],
+  ] as const;
 
   return topics.map((topic, index) => {
     const side = index % 2;
@@ -1176,6 +1235,13 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
     const standbyZ = 0.94 + (inactiveRow - (inactiveRows - 1) / 2) * inactiveSpacingZ;
 
+    const assignedIndex = assignedIdleIndexById.get(topic.topicId);
+    const slot = assignedIndex === undefined ? [0, 0, -0.62] as const : commonTableSlots[assignedIndex % commonTableSlots.length];
+    const ring = assignedIndex === undefined ? Math.floor(assignedIdleTopics.length / commonTableSlots.length) : Math.floor(assignedIndex / commonTableSlots.length);
+    const spread = 1 + ring * 0.22;
+    const taskTablePosition: [number, number, number] = [commonTableCenter[0] + slot[0] * spread, 0, commonTableCenter[2] + slot[2] * spread];
+    const taskTableFacing = Math.atan2(commonTableCenter[0] - taskTablePosition[0], commonTableCenter[2] - taskTablePosition[2]);
+
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.22;
     const workerDeskPosition: [number, number, number] = rotationY === 0 ? [x + 0.14, 0, z + 0.48] : [x - 0.14, 0, z - 0.48];
@@ -1186,6 +1252,8 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       rotationY,
       workerDeskPosition,
       standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
+      taskTablePosition,
+      taskTableFacing,
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
       focusPoint: [side === 0 ? x + 0.75 : x - 0.75, 0.92, z + 0.02] as [number, number, number],
     };
@@ -1194,8 +1262,9 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (topic.live.status === 'running' || isDeskResidentTopic(topic)) return layout.focusPoint;
+  if (topic.live.status === 'running') return layout.focusPoint;
   if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
+  if (hasAssignedTask(topic)) return [layout.taskTablePosition[0], 0.92, layout.taskTablePosition[2]] as [number, number, number];
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
@@ -1221,8 +1290,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
       <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
       <OfficeShell manifest={manifest} />
-
-
+      <CommonTaskTable />
 
       <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.15]} fallback={<HubFallback />} />
       <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.15]} visible />
@@ -1247,6 +1315,8 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
             <WorkerAvatar
               topic={desk.topic}
               standbyPosition={desk.standbyPosition}
+              taskTablePosition={desk.taskTablePosition}
+              taskTableFacing={desk.taskTableFacing}
               deskPosition={desk.workerDeskPosition}
               deliveryPosition={desk.deliveryPosition}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
