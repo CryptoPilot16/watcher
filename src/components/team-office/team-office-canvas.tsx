@@ -1,10 +1,10 @@
 'use client';
 
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, Float, OrbitControls, RoundedBox, useAnimations, useFBX, useGLTF } from '@react-three/drei';
+import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { SkeletonUtils, type OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { topicDisplayLabel, type TeamTaskSource, type TeamTopic } from '@/lib/watch-team';
 import {
@@ -77,205 +77,6 @@ function hashLabel(label: string) {
   let hash = 0;
   for (let i = 0; i < label.length; i += 1) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
   return hash;
-}
-
-const WORKER_AVATAR_ASSET_ROOT = '/assets/avatars';
-const WORKER_AVATAR_MODEL_URL = `${WORKER_AVATAR_ASSET_ROOT}/models/watcher-avatar.glb`;
-const WORKER_AVATAR_TYPING_URL = `${WORKER_AVATAR_ASSET_ROOT}/animations/typing.fbx`;
-const WORKER_AVATAR_STANDING_URL = `${WORKER_AVATAR_ASSET_ROOT}/animations/standing-idle.fbx`;
-const WORKER_AVATAR_PRESENTING_URL = WORKER_AVATAR_STANDING_URL;
-const WORKER_AVATAR_MANIFEST_URL = `${WORKER_AVATAR_ASSET_ROOT}/manifest.local.json`;
-
-type WorkerMode = 'desk' | 'delivery' | 'standby';
-type WorkerAvatarClip = 'Typing' | 'Standing' | 'Presenting';
-
-type WorkerAvatarAssetEntry = {
-  url: string;
-  scale?: number | [number, number, number];
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-};
-
-type WorkerAvatarManifest = {
-  model?: WorkerAvatarAssetEntry;
-  animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>>;
-  stateMap: Record<WorkerMode, WorkerAvatarClip>;
-};
-
-const DEFAULT_WORKER_AVATAR_MANIFEST: WorkerAvatarManifest = {
-  model: {
-    url: WORKER_AVATAR_MODEL_URL,
-    position: [0, -1.02, 0.03],
-    rotation: [0, Math.PI, 0],
-    scale: 0.98,
-  },
-  animations: {
-    Typing: { url: WORKER_AVATAR_TYPING_URL },
-    Standing: { url: WORKER_AVATAR_STANDING_URL },
-    Presenting: { url: WORKER_AVATAR_PRESENTING_URL },
-  },
-  stateMap: {
-    desk: 'Typing',
-    standby: 'Standing',
-    delivery: 'Presenting',
-  },
-};
-
-function clipForWorkerMode(mode: WorkerMode): WorkerAvatarClip {
-  if (mode === 'desk') return 'Typing';
-  if (mode === 'delivery') return 'Presenting';
-  return 'Standing';
-}
-
-function asVector3(value: unknown): [number, number, number] | undefined {
-  if (!Array.isArray(value) || value.length !== 3) return undefined;
-  if (!value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))) return undefined;
-  return value as [number, number, number];
-}
-
-function asScale(value: unknown): number | [number, number, number] | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  return asVector3(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function withWorkerAvatarAssetPath(fileName: string) {
-  return `${WORKER_AVATAR_ASSET_ROOT}/${fileName.replace(/^\/+/, '')}`;
-}
-
-function toWorkerAvatarAssetEntry(value: unknown): WorkerAvatarAssetEntry | null {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return { url: withWorkerAvatarAssetPath(value.trim()) };
-  }
-
-  if (!isRecord(value)) return null;
-
-  const file = typeof value.file === 'string' ? value.file.trim() : '';
-  const explicitUrl = typeof value.url === 'string' ? value.url.trim() : '';
-  const url = explicitUrl || (file ? withWorkerAvatarAssetPath(file) : '');
-  if (!url) return null;
-
-  const entry: WorkerAvatarAssetEntry = { url };
-  const scale = asScale(value.scale);
-  const position = asVector3(value.position);
-  const rotation = asVector3(value.rotation);
-
-  if (scale !== undefined) entry.scale = scale;
-  if (position) entry.position = position;
-  if (rotation) entry.rotation = rotation;
-
-  return entry;
-}
-
-function parseWorkerAvatarLocalManifest(value: unknown): WorkerAvatarManifest | null {
-  if (!isRecord(value)) return null;
-
-  const model = toWorkerAvatarAssetEntry(value.model);
-  const animationsBlock = isRecord(value.animations) ? value.animations : {};
-  const animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>> = {};
-
-  (['Typing', 'Standing', 'Presenting'] as WorkerAvatarClip[]).forEach((clip) => {
-    const entry = toWorkerAvatarAssetEntry(animationsBlock[clip]);
-    if (entry) animations[clip] = entry;
-  });
-
-  const stateMapBlock = isRecord(value.stateMap) ? value.stateMap : {};
-  const stateMap: Record<WorkerMode, WorkerAvatarClip> = {
-    desk: stateMapBlock.desk === 'Standing' || stateMapBlock.desk === 'Presenting' ? stateMapBlock.desk : 'Typing',
-    standby: stateMapBlock.standby === 'Typing' || stateMapBlock.standby === 'Presenting' ? stateMapBlock.standby : 'Standing',
-    delivery: stateMapBlock.delivery === 'Typing' || stateMapBlock.delivery === 'Standing' ? stateMapBlock.delivery : 'Presenting',
-  };
-
-  if (!model) return null;
-
-  return { model, animations, stateMap };
-}
-
-async function loadWorkerAvatarLocalManifest(signal?: AbortSignal): Promise<WorkerAvatarManifest | null> {
-  try {
-    const response = await fetch(WORKER_AVATAR_MANIFEST_URL, {
-      cache: 'no-store',
-      signal,
-    });
-
-    if (!response.ok) return null;
-
-    const payload = (await response.json()) as unknown;
-    return parseWorkerAvatarLocalManifest(payload);
-  } catch {
-    return null;
-  }
-}
-
-function resolveWorkerAvatarManifest(manifest?: WorkerAvatarManifest | null): WorkerAvatarManifest {
-  return {
-    model: {
-      ...DEFAULT_WORKER_AVATAR_MANIFEST.model,
-      ...(manifest?.model ?? {}),
-    },
-    animations: {
-      Typing: {
-        ...DEFAULT_WORKER_AVATAR_MANIFEST.animations.Typing,
-        ...(manifest?.animations.Typing ?? {}),
-      },
-      Standing: {
-        ...DEFAULT_WORKER_AVATAR_MANIFEST.animations.Standing,
-        ...(manifest?.animations.Standing ?? {}),
-      },
-      Presenting: {
-        ...DEFAULT_WORKER_AVATAR_MANIFEST.animations.Presenting,
-        ...(manifest?.animations.Presenting ?? {}),
-      },
-    },
-    stateMap: {
-      ...DEFAULT_WORKER_AVATAR_MANIFEST.stateMap,
-      ...(manifest?.stateMap ?? {}),
-    },
-  };
-}
-
-function hasWorkerAvatarManifest(manifest?: WorkerAvatarManifest | null): manifest is WorkerAvatarManifest {
-  const resolved = resolveWorkerAvatarManifest(manifest);
-  return Boolean(
-    resolved.model && resolved.animations.Typing && resolved.animations.Standing && resolved.animations.Presenting,
-  );
-}
-
-function preloadWorkerAvatarAssets(manifest?: WorkerAvatarManifest | null) {
-  const resolved = resolveWorkerAvatarManifest(manifest);
-  useGLTF.preload(resolved.model!.url);
-  useFBX.preload(resolved.animations.Typing!.url);
-  useFBX.preload(resolved.animations.Standing!.url);
-  useFBX.preload(resolved.animations.Presenting!.url);
-}
-
-type WorkerAvatarAssetBoundaryProps = {
-  fallback: ReactNode;
-  children: ReactNode;
-};
-
-type WorkerAvatarAssetBoundaryState = {
-  hasError: boolean;
-};
-
-class WorkerAvatarAssetBoundary extends Component<WorkerAvatarAssetBoundaryProps, WorkerAvatarAssetBoundaryState> {
-  state: WorkerAvatarAssetBoundaryState = {
-    hasError: false,
-  };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch() {}
-
-  render() {
-    if (this.state.hasError) return this.props.fallback;
-    return this.props.children;
-  }
 }
 
 
@@ -506,91 +307,39 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
   );
 }
 
-function WorkerAvatarModel({ clip }: { clip: WorkerAvatarClip }) {
-  const group = useRef<THREE.Group>(null);
-  const gltf = useGLTF(WORKER_AVATAR_MODEL_URL);
-  const typingSource = useFBX(WORKER_AVATAR_TYPING_URL) as THREE.Group & { animations: THREE.AnimationClip[] };
-  const standingSource = useFBX(WORKER_AVATAR_STANDING_URL) as THREE.Group & { animations: THREE.AnimationClip[] };
-  const presentingSource = useFBX(WORKER_AVATAR_PRESENTING_URL) as THREE.Group & { animations: THREE.AnimationClip[] };
-
-  const scene = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
-  const clips = useMemo(() => {
-    const namedClips: THREE.AnimationClip[] = [];
-    const typing = typingSource.animations?.[0];
-    const standing = standingSource.animations?.[0];
-    const presenting = presentingSource.animations?.[0];
-
-    if (typing) {
-      const next = typing.clone();
-      next.name = 'Typing';
-      namedClips.push(next);
-    }
-    if (standing) {
-      const next = standing.clone();
-      next.name = 'Standing';
-      namedClips.push(next);
-    }
-    if (presenting) {
-      const next = presenting.clone();
-      next.name = 'Presenting';
-      namedClips.push(next);
-    }
-
-    return namedClips;
-  }, [typingSource.animations, standingSource.animations, presentingSource.animations]);
-
-  const { actions } = useAnimations(clips, group);
-
-  useEffect(() => {
-    scene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-      }
-    });
-  }, [scene]);
-
-  useEffect(() => {
-    const action = actions[clip] ?? actions.Standing ?? Object.values(actions)[0];
-    if (!action) return;
-    action.reset().fadeIn(0.35).play();
-    return () => {
-      action.fadeOut(0.25);
-    };
-  }, [actions, clip]);
-
-  return (
-    <group ref={group} position={[0, -1.02, 0.03]} rotation={[0, Math.PI, 0]} scale={0.98}>
-      <primitive object={scene} />
-    </group>
-  );
-}
-
-function PrimitiveWorkerFigure({
-  topic,
-  palette,
-  style,
-  accent,
-  mode,
-  reducedMotion,
-  seed,
-}: {
+function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
-  palette: ReturnType<typeof paletteForTopic>;
-  style: WorkerStyle;
-  accent: THREE.Color;
-  mode: WorkerMode;
+  standbyPosition: [number, number, number];
+  deskPosition: [number, number, number];
+  deliveryPosition: [number, number, number];
+  deskFacing: number;
   reducedMotion: boolean;
   seed: number;
+  emphasized: boolean;
+  onHover: () => void;
+  onLeave: () => void;
+  onSelect: () => void;
 }) {
+  const group = useRef<THREE.Group>(null);
   const leftArm = useRef<THREE.Group>(null);
   const rightArm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
   const chest = useRef<THREE.Mesh>(null);
+  const palette = useMemo(() => paletteForTopic(topic), [topic]);
+  const style = useMemo(() => styleForTopic(topic), [topic]);
+  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
+  const mode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
 
   useFrame(({ clock }) => {
+    if (!group.current) return;
     const t = clock.getElapsedTime() + seed * 0.27;
     const stride = Math.sin(t * 5.2) * 0.46;
+    const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
+    const facing = mode === 'desk' ? deskFacing : 0;
+
+    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
+    group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
       if (mode === 'desk' && !reducedMotion) {
@@ -617,8 +366,27 @@ function PrimitiveWorkerFigure({
     }
   });
 
+  if (topic.live.status === 'missing') {
+    return (
+      <group position={[standbyPosition[0], 0.1, standbyPosition[2]]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.09, 0.14, 18]} />
+          <meshBasicMaterial color="#7f8791" transparent opacity={0.38} />
+        </mesh>
+        <mesh position={[0, 0.08, 0]}>
+          <cylinderGeometry args={[0.04, 0.05, 0.14, 12]} />
+          <meshStandardMaterial color="#8d96a1" emissive="#d8dde4" emissiveIntensity={0.08} />
+        </mesh>
+      </group>
+    );
+  }
+
   return (
-    <group position={[0, 0.26, 0]}>
+    <group ref={group}>
+      <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.13, 0.17, 18]} />
+        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
+      </mesh>
       <group scale={style.bodyScale}>
         <mesh castShadow position={[0, 0.59, 0.02]}>
           <capsuleGeometry args={[0.125, 0.14, 6, 12]} />
@@ -786,79 +554,6 @@ function PrimitiveWorkerFigure({
           <meshStandardMaterial color={style.shoeColor} />
         </mesh>
       </group>
-    </group>
-  );
-}
-
-function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
-  topic: TeamTopic;
-  standbyPosition: [number, number, number];
-  deskPosition: [number, number, number];
-  deliveryPosition: [number, number, number];
-  deskFacing: number;
-  reducedMotion: boolean;
-  seed: number;
-  emphasized: boolean;
-  onHover: () => void;
-  onLeave: () => void;
-  onSelect: () => void;
-}) {
-  const group = useRef<THREE.Group>(null);
-  const palette = useMemo(() => paletteForTopic(topic), [topic]);
-  const style = useMemo(() => styleForTopic(topic), [topic]);
-  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const mode: WorkerMode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
-  const avatarClip = clipForWorkerMode(mode);
-
-  useFrame(({ clock }) => {
-    if (!group.current) return;
-    const t = clock.getElapsedTime() + seed * 0.27;
-    const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
-    const facing = mode === 'desk' ? deskFacing : 0;
-
-    group.current.position.set(anchor[0], !reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0, anchor[2]);
-    group.current.rotation.set(0, facing, 0);
-  });
-
-  if (topic.live.status === 'missing') {
-    return (
-      <group position={[standbyPosition[0], 0.1, standbyPosition[2]]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.09, 0.14, 18]} />
-          <meshBasicMaterial color="#7f8791" transparent opacity={0.38} />
-        </mesh>
-        <mesh position={[0, 0.08, 0]}>
-          <cylinderGeometry args={[0.04, 0.05, 0.14, 12]} />
-          <meshStandardMaterial color="#8d96a1" emissive="#d8dde4" emissiveIntensity={0.08} />
-        </mesh>
-      </group>
-    );
-  }
-
-  const fallbackFigure = (
-    <PrimitiveWorkerFigure
-      topic={topic}
-      palette={palette}
-      style={style}
-      accent={accent}
-      mode={mode}
-      reducedMotion={reducedMotion}
-      seed={seed}
-    />
-  );
-
-  return (
-    <group ref={group}>
-      <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.13, 0.17, 18]} />
-        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
-      </mesh>
-
-      <WorkerAvatarAssetBoundary fallback={fallbackFigure}>
-        <Suspense fallback={fallbackFigure}>
-          <WorkerAvatarModel clip={avatarClip} />
-        </Suspense>
-      </WorkerAvatarAssetBoundary>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
       <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
@@ -882,159 +577,6 @@ function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryP
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
-  );
-}
-
-function cloneNamedClip(source: THREE.Group, name: WorkerAvatarClip) {
-  const clip = source.animations?.[0];
-  if (!clip) return null;
-  const next = clip.clone();
-  next.name = name;
-  return next;
-}
-
-function RiggedWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect, manifest }: {
-  topic: TeamTopic;
-  standbyPosition: [number, number, number];
-  deskPosition: [number, number, number];
-  deliveryPosition: [number, number, number];
-  deskFacing: number;
-  reducedMotion: boolean;
-  seed: number;
-  emphasized: boolean;
-  onHover: () => void;
-  onLeave: () => void;
-  onSelect: () => void;
-  manifest: WorkerAvatarManifest;
-}) {
-  const group = useRef<THREE.Group>(null);
-  const avatarRef = useRef<THREE.Group>(null);
-  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const mode: WorkerMode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
-  const gltf = useGLTF(manifest.model!.url);
-  const typing = useFBX(manifest.animations.Typing!.url);
-  const standing = useFBX(manifest.animations.Standing!.url);
-  const presenting = useFBX(manifest.animations.Presenting!.url);
-
-  const scene = useMemo(() => {
-    const clone = SkeletonUtils.clone(gltf.scene) as THREE.Group;
-    clone.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-      child.castShadow = true;
-      child.receiveShadow = true;
-    });
-    return clone;
-  }, [gltf.scene]);
-
-  const clips = useMemo(
-    () => [
-      cloneNamedClip(typing, 'Typing'),
-      cloneNamedClip(standing, 'Standing'),
-      cloneNamedClip(presenting, 'Presenting'),
-    ].filter(Boolean) as THREE.AnimationClip[],
-    [presenting, standing, typing],
-  );
-
-  const { actions } = useAnimations(clips, avatarRef);
-
-  useEffect(() => {
-    const clipName = manifest.stateMap[mode] ?? clipForWorkerMode(mode);
-    if (!actions) return;
-
-    Object.entries(actions).forEach(([name, action]) => {
-      if (!action) return;
-      if (name === clipName) {
-        action.reset().fadeIn(0.22).play();
-      } else {
-        action.fadeOut(0.18);
-      }
-    });
-
-    return () => {
-      Object.values(actions).forEach((action) => action?.stop());
-    };
-  }, [actions, manifest.stateMap, mode]);
-
-  useFrame(({ clock }) => {
-    if (!group.current) return;
-    const t = clock.getElapsedTime() + seed * 0.27;
-    const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
-    const facing = mode === 'desk' ? deskFacing : 0;
-
-    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
-    group.current.rotation.set(0, facing, 0);
-  });
-
-  return (
-    <group ref={group}>
-      <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.13, 0.17, 18]} />
-        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
-      </mesh>
-
-      <group ref={avatarRef}>
-        <primitive
-          object={scene}
-          position={manifest.model?.position ?? [0, 0, 0]}
-          rotation={manifest.model?.rotation ?? [0, 0, 0]}
-          scale={manifest.model?.scale ?? 1}
-        />
-      </group>
-
-      <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.42, 1.56, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
-
-      <mesh
-        position={[0, 0.9, 0]}
-        onPointerOver={(event) => {
-          event.stopPropagation();
-          onHover();
-        }}
-        onPointerOut={(event) => {
-          event.stopPropagation();
-          onLeave();
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect();
-        }}
-      >
-        <capsuleGeometry args={[0.24, 1.22, 6, 12]} />
-        <meshBasicMaterial transparent opacity={0} />
-      </mesh>
-    </group>
-  );
-}
-
-function WorkerAvatar(props: {
-  topic: TeamTopic;
-  standbyPosition: [number, number, number];
-  deskPosition: [number, number, number];
-  deliveryPosition: [number, number, number];
-  deskFacing: number;
-  reducedMotion: boolean;
-  seed: number;
-  emphasized: boolean;
-  onHover: () => void;
-  onLeave: () => void;
-  onSelect: () => void;
-  manifest?: WorkerAvatarManifest | null;
-}) {
-  const fallback = <PrimitiveWorkerAvatar {...props} />;
-
-  if (props.topic.live.status === 'missing' || !hasWorkerAvatarManifest(props.manifest)) {
-    return fallback;
-  }
-
-  const resolvedManifest = resolveWorkerAvatarManifest(props.manifest);
-  const key = `${resolvedManifest.model!.url}:${resolvedManifest.animations.Typing!.url}:${resolvedManifest.animations.Standing!.url}:${resolvedManifest.animations.Presenting!.url}`;
-
-  return (
-    <WorkerAvatarAssetBoundary key={key} fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <RiggedWorkerAvatar {...props} manifest={resolvedManifest} />
-      </Suspense>
-    </WorkerAvatarAssetBoundary>
   );
 }
 
@@ -1931,7 +1473,6 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
 
   useEffect(() => {
     preloadOfficeAssets(resolvedAssetManifest);
-    preloadWorkerAvatarAssets();
   }, [resolvedAssetManifest]);
 
   const deskLayouts = useMemo(() => buildDeskLayouts(topics), [topics]);
