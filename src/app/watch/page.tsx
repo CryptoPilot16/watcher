@@ -315,7 +315,6 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
   turns: SessionTurn[];
   sessionRunning: boolean;
 }) {
-  const s = HEALTH_STYLE[health.level];
   const modelShort = meta.model.replace('openai-codex/', '').replace('anthropic/', '');
 
   return (
@@ -339,34 +338,8 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
         </div>
       </div>
 
-      {/* Overall health card */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Big status */}
-        <div
-          className="flex flex-col gap-2 rounded border p-4 sm:col-span-2 lg:col-span-1"
-          style={{ borderColor: s.border, background: s.bg }}
-        >
-          <div className="text-[10px] uppercase tracking-[0.25em] text-[var(--watch-text-muted)]">overall</div>
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}aa` }} />
-            <span className="text-lg font-semibold tracking-[0.15em] uppercase" style={{ color: s.color }}>
-              {health.label}
-            </span>
-          </div>
-          {health.issues.length === 0 && (
-            <div className="text-[10px] text-[var(--watch-text-muted)]">all systems nominal</div>
-          )}
-          {health.issues.map((issue, i) => (
-            <div
-              key={i}
-              className="text-[10px] leading-5"
-              style={{ color: issue.level === 'error' ? '#f87171' : '#fbbf24' }}
-            >
-              {issue.level === 'error' ? '✕ ' : '△ '}{issue.message}
-            </div>
-          ))}
-        </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {/* Version & model */}
         <div className="flex flex-col gap-2 rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4">
           <div className="text-[10px] uppercase tracking-[0.25em] text-[var(--watch-text-muted)]">agent</div>
