@@ -186,10 +186,10 @@ type ProjectBadgeSpec = {
 
 function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
   const label = topicDisplayLabel(topic).toLowerCase();
-  const base = { position: [0.05, 0.84, -0.438] as [number, number, number] };
-  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy.svg', maxWidth: 0.24, maxHeight: 0.12, ...base };
-  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes.svg', maxWidth: 0.24, maxHeight: 0.12, ...base };
-  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.16, maxHeight: 0.16, ...base };
+  const base = { position: [-0.06, 0.76, -0.438] as [number, number, number] };
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
+  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
+  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.12, maxHeight: 0.12, ...base };
   return null;
 }
 
@@ -289,7 +289,7 @@ function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
   return (
     <mesh position={spec.position} renderOrder={19}>
       <planeGeometry args={[width, height]} />
-      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
+      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} depthTest={false} toneMapped={false} />
     </mesh>
   );
 }
