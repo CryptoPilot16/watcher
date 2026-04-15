@@ -66,6 +66,11 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.live.status === 'running' || topic.live.status === 'recent' || topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
+function staysAtDesk(topic: TeamTopic) {
+  const label = topicDisplayLabel(topic).toLowerCase();
+  return topic.configured.role === 'housekeeping_monitor' || label.includes('sky');
+}
+
 function actionLabel(topic: TeamTopic) {
   if (topic.live.status === 'running') return sourceLabel(topic.currentTask.source);
   if (topic.live.status === 'recent') return 'delivering';
@@ -412,9 +417,9 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
-  const isHousekeeping = topic.configured.role === 'housekeeping_monitor';
-  const showHousekeepingAlert = isHousekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
-  const mode = isHousekeeping
+  const anchoredAtDesk = staysAtDesk(topic);
+  const showHousekeepingAlert = topic.configured.role === 'housekeeping_monitor' && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
+  const mode = anchoredAtDesk
     ? 'desk-watch'
     : topic.live.status === 'recent'
       ? 'delivery'
@@ -1332,7 +1337,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (topic.configured.role === 'housekeeping_monitor') return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
+  if (staysAtDesk(topic)) return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
   if (topic.live.status === 'running') return layout.focusPoint;
   if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
   if (hasAssignedTask(topic)) return [layout.taskTablePosition[0], 0.92, layout.taskTablePosition[2]] as [number, number, number];
@@ -1387,7 +1392,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               standbyPosition={desk.standbyPosition}
               taskTablePosition={desk.taskTablePosition}
               taskTableFacing={desk.taskTableFacing}
-              deskPosition={desk.topic.configured.role === 'housekeeping_monitor' ? desk.deskSeatPosition : desk.workerDeskPosition}
+              deskPosition={staysAtDesk(desk.topic) ? desk.deskSeatPosition : desk.workerDeskPosition}
               deliveryPosition={desk.deliveryPosition}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
               reducedMotion={reducedMotion}
