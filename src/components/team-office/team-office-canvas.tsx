@@ -165,6 +165,21 @@ type DeskLayout = {
 
 type CameraMode = 'overview' | 'focus' | 'free';
 
+type ProjectBadgeSpec = {
+  label: string;
+  accent: string;
+  symbol: string;
+};
+
+function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
+  const label = topicDisplayLabel(topic).toLowerCase();
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', symbol: '✈' };
+  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', symbol: '◉' };
+  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', symbol: '◎' };
+  if (label.includes('snapmolt')) return { label: 'SNAPMOLT', accent: '#ff7a59', symbol: '🦀' };
+  return null;
+}
+
 function buildNameTexture(name: string, accent: string) {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
@@ -218,6 +233,74 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   return (
     <sprite position={position} scale={[1.24, 0.3, 1]} renderOrder={20}>
       <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
+    </sprite>
+  );
+}
+
+function buildProjectBadgeTexture(spec: ProjectBadgeSpec) {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 112;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(12, 12, 16, 0.84)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+
+  const x = 6;
+  const y = 6;
+  const w = canvas.width - 12;
+  const h = canvas.height - 12;
+  const radius = 18;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = spec.accent;
+  ctx.beginPath();
+  ctx.arc(50, 56, 28, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#101114';
+  ctx.font = '700 30px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(spec.symbol, 50, 58);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = spec.accent;
+  ctx.font = '700 15px JetBrains Mono, monospace';
+  ctx.fillText('PROJECT', 92, 42);
+  ctx.fillStyle = '#f4efe8';
+  ctx.font = '700 24px JetBrains Mono, monospace';
+  ctx.fillText(spec.label, 92, 70);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function ProjectDeskBadge({ topic, position }: { topic: TeamTopic; position: [number, number, number] }) {
+  const spec = useMemo(() => projectBadgeSpec(topic), [topic]);
+  const texture = useMemo(() => (spec ? buildProjectBadgeTexture(spec) : null), [spec]);
+  if (!spec || !texture) return null;
+
+  return (
+    <sprite position={position} scale={[1.32, 0.58, 1]} renderOrder={18}>
+      <spriteMaterial map={texture} transparent depthWrite={false} />
     </sprite>
   );
 }
@@ -827,6 +910,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
+      <ProjectDeskBadge topic={topic} position={[0.02, 1.08, -0.02]} />
 
       <mesh
         position={[0, 0.6, 0.17]}
