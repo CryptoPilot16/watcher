@@ -67,9 +67,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with a middle common table, side work desks, and a front review desk for PILOT handoff.</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with one forward PILOT desk, a front job row, and a back standby row.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
-            Assigned workers gather at the middle table, active lanes move to their desks with a green diamond, unassigned lanes wait in the back row, and recent deliveries queue at PILOT’s desk.
+            Anyone attached to a job stays in front of PILOT, active lanes glow there, unassigned lanes wait in the back row, and recent deliveries queue nearest the desk.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -133,9 +133,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {([
-              { status: 'running', title: 'running', desc: 'worker actively executing at the desk with green diamond' },
-              { status: 'recent', title: 'handoff', desc: 'worker presenting output at PILOT desk' },
-              { status: 'idle', title: 'idle', desc: 'assigned workers wait at the common table, unassigned lanes wait in the back row' },
+              { status: 'running', title: 'running', desc: 'worker actively executing in front of the PILOT desk with green diamond' },
+              { status: 'recent', title: 'handoff', desc: 'worker presenting output nearest the PILOT desk' },
+              { status: 'idle', title: 'idle', desc: 'job-linked workers wait in front of PILOT, unassigned lanes wait in the back row' },
               { status: 'missing', title: 'offline', desc: 'red marker, no active worker body' },
             ] as const).map((item) => {
               const tone = statusTone(item.status);
