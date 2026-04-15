@@ -1559,10 +1559,8 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           zoomSpeed={1.35}
           panSpeed={1.2}
           rotateSpeed={0.9}
-          minPolarAngle={0.42}
-          maxPolarAngle={1.55}
-          minAzimuthAngle={-Math.PI}
-          maxAzimuthAngle={Math.PI}
+          minPolarAngle={0.18}
+          maxPolarAngle={Math.PI - 0.08}
           target={[0, 1.15, 1.65]}
           screenSpacePanning
           touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
