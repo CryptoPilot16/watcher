@@ -85,7 +85,6 @@ function topicHeadline(topic: TeamTopic) {
 
 function topicProgress(topic: TeamTopic) {
   if (typeof topic.currentTask.progress === 'number') return Math.max(0, Math.min(1, topic.currentTask.progress));
-  if (topic.live.status === 'recent') return 1;
   return null;
 }
 
@@ -347,24 +346,26 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
     fill.current.position.y = -0.26 + clamped * 0.26;
   });
 
-  if (exactProgress === null) return null;
+  if (exactProgress === null || topic.live.status !== 'running') return null;
 
-  const fillColor = topic.live.status === 'recent' ? '#ffd86e' : '#7dffad';
-  const glowColor = topic.live.status === 'recent' ? '#ffe7a7' : '#92ffb7';
+  const fillColor = '#7dffad';
+  const glowColor = '#92ffb7';
 
   return (
     <group position={[0, 2.06, 0.02]}>
-      <RoundedBox args={[0.17, 0.66, 0.05]} radius={0.08} smoothness={4}>
-        <meshBasicMaterial color="#111319" transparent opacity={0.92} depthWrite={false} />
-      </RoundedBox>
-      <RoundedBox args={[0.11, 0.6, 0.03]} radius={0.06} smoothness={4} position={[0, 0, 0.01]}>
-        <meshBasicMaterial color="#20252b" transparent opacity={0.96} depthWrite={false} />
-      </RoundedBox>
-      <mesh ref={fill} position={[0, 0, 0.02]}>
-        <boxGeometry args={[0.078, 0.52, 0.024]} />
-        <meshBasicMaterial color={fillColor} transparent opacity={0.95} />
+      <mesh position={[0, 0, 0]}>
+        <planeGeometry args={[0.17, 0.66]} />
+        <meshBasicMaterial color="#111319" transparent opacity={0.92} depthWrite={false} side={THREE.FrontSide} />
       </mesh>
-      <pointLight color={glowColor} intensity={0.65} distance={1.4} position={[0, 0.08, 0.24]} />
+      <mesh position={[0, 0, 0.001]}>
+        <planeGeometry args={[0.11, 0.6]} />
+        <meshBasicMaterial color="#20252b" transparent opacity={0.96} depthWrite={false} side={THREE.FrontSide} />
+      </mesh>
+      <mesh ref={fill} position={[0, 0, 0.002]}>
+        <planeGeometry args={[0.078, 0.52]} />
+        <meshBasicMaterial color={fillColor} transparent opacity={0.95} side={THREE.FrontSide} />
+      </mesh>
+      <pointLight color={glowColor} intensity={0.45} distance={1.1} position={[0, 0.08, 0.24]} />
     </group>
   );
 }
