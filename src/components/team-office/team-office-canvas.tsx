@@ -542,7 +542,7 @@ function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryP
     const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
     const facing = mode === 'desk' ? deskFacing : 0;
 
-    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
+    group.current.position.set(anchor[0], 0.09 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
@@ -813,7 +813,7 @@ function WorkerAvatar(props: {
   return (
     <WorkerAvatarAssetBoundary key={key} fallback={fallback}>
       <Suspense fallback={fallback}>
-        <group position={[anchor[0], 0.26, anchor[2]]} rotation={[0, facing, 0]}>
+        <group position={[anchor[0], 0.09, anchor[2]]} rotation={[0, facing, 0]}>
           <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.13, 0.17, 18]} />
             <meshBasicMaterial color={statusColor(props.topic.live.status)} transparent opacity={props.topic.live.status === 'running' ? 0.48 : 0.2} />
@@ -1266,7 +1266,7 @@ function HubFallback() {
         </mesh>
       ))}
 
-      <group position={[0, 0.02, -0.88]}>
+      <group position={[0, 0.02, -0.88]} rotation={[0, Math.PI, 0]}>
         <mesh position={[0, 0.28, 0]} castShadow>
           <boxGeometry args={[0.6, 0.09, 0.56]} />
           <meshStandardMaterial color="#637589" />
