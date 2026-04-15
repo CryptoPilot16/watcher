@@ -19,10 +19,11 @@
 .codex
 /tmp/
 
-# local-only private TS1 office assets
+# local-only private office assets
 public/assets/office/private/*
 !public/assets/office/private/.gitkeep
 !public/assets/office/private/manifest.local.example.json
+!public/assets/office/private/avatar-rig.manifest.local.example.json
 
 # debug
 npm-debug.log*

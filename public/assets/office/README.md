@@ -30,3 +30,21 @@ Shape:
 Example starter: `public/assets/office/private/manifest.local.example.json`.
 
 When present, local overrides are loaded at runtime and merged on top of the public/procedural manifest.
+
+## Private Rigged Worker Avatars
+
+Watcher also supports optional local rigged worker avatars via:
+
+- `public/assets/office/private/avatar-rig.manifest.local.json` (git-ignored)
+
+Shape:
+
+- `model`: GLB entry for the worker rig
+- `animations.Typing`: FBX clip used while a worker is actively running
+- `animations.Standing`: FBX idle/stand clip for waiting workers
+- `animations.Presenting`: FBX clip for recent/reporting workers
+- `stateMap` (optional): remap `desk`, `standby`, `delivery` to those clip names
+
+Use `public/assets/office/private/avatar-rig.manifest.local.example.json` as the starter template.
+
+All avatar files should stay under `public/assets/office/private/` unless the asset license clearly allows redistribution.
