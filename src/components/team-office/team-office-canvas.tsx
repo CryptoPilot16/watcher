@@ -1203,10 +1203,10 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   const deskRows = Math.ceil(topics.length / 2);
   const assignedIdleTopics = topics.filter((topic) => hasAssignedTask(topic) && !['running', 'recent'].includes(topic.live.status));
   const inactiveTopics = topics.filter((topic) => !hasAssignedTask(topic) && !['running', 'recent'].includes(topic.live.status));
-  const inactiveColumns = Math.min(2, Math.max(1, inactiveTopics.length));
+  const inactiveColumns = Math.min(3, Math.max(1, inactiveTopics.length));
   const inactiveRows = Math.max(1, Math.ceil(inactiveTopics.length / inactiveColumns));
-  const inactiveSpacingX = 1;
-  const inactiveSpacingZ = 0.72;
+  const inactiveSpacingX = 0.96;
+  const inactiveSpacingZ = 0.82;
   const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
   const assignedIdleIndexById = new Map(assignedIdleTopics.map((topic, index) => [topic.topicId, index]));
   const commonTableCenter: [number, number, number] = [0, 0, 1.05];
@@ -1233,7 +1233,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
     const inactiveColumn = inactiveIndex % inactiveColumns;
     const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
-    const standbyZ = 0.94 + (inactiveRow - (inactiveRows - 1) / 2) * inactiveSpacingZ;
+    const standbyZ = -3.55 + inactiveRow * inactiveSpacingZ;
 
     const assignedIndex = assignedIdleIndexById.get(topic.topicId);
     const slot = assignedIndex === undefined ? [0, 0, -0.62] as const : commonTableSlots[assignedIndex % commonTableSlots.length];
