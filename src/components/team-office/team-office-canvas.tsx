@@ -82,10 +82,10 @@ function hashLabel(label: string) {
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topicDisplayLabel(topic));
-  const skin = ['#f3d4bc', '#e2b893', '#c68f69', '#8b593f'][seed % 4];
-  const hair = ['#171410', '#3a2c22', '#26292f', '#5a4a3c'][(seed >> 2) % 4];
-  const top = ['#55624c', '#667257', '#4d5a45', '#72715f', '#60705a', '#4f5d49', '#6a6d52'][(seed >> 4) % 7];
-  const bottom = ['#30372e', '#3d4437', '#343c33', '#47463b', '#2e332d'][(seed >> 6) % 5];
+  const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
+  const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
+  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
+  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
 }
 
@@ -119,29 +119,29 @@ function styleForTopic(topic: TeamTopic): WorkerStyle {
   const seed = hashLabel(topicDisplayLabel(topic));
   const archetype = seed % 7;
   return {
-    bodyScale: archetype === 4 ? [1.03, 1.12, 0.98] : archetype === 5 ? [0.98, 1.06, 0.95] : [1.01, 1.08, 0.96],
-    headScale: archetype === 0 ? [1.18, 1.12, 1.08] : archetype === 3 ? [1.14, 1.08, 1.04] : [1.12, 1.06, 1.02],
-    shoulderWidth: archetype === 5 ? 0.134 : archetype === 4 ? 0.15 : 0.142,
-    legHeight: 0.24,
-    armLength: archetype === 4 ? 0.25 : 0.235,
-    hasHat: true,
-    hatColor: ['#4a5842', '#5a6448', '#414b39', '#666451', '#56624c', '#454d3f', '#646851'][archetype],
-    hatBrimColor: ['#2c3228', '#31392d', '#262c23', '#3c3a31', '#343d30', '#272d25', '#3a3d2f'][archetype],
+    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
+    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
+    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
+    legHeight: archetype === 5 ? 0.21 : 0.235,
+    armLength: archetype === 4 ? 0.24 : 0.22,
+    hasHat: false,
+    hatColor: '#2f3340',
+    hatBrimColor: '#151515',
     hasApron: false,
     apronColor: '#f3f0ea',
-    hasJacket: true,
-    jacketColor: ['#637158', '#70775c', '#56624d', '#797564', '#68745d', '#535d4a', '#73775d'][archetype],
-    skirt: false,
-    accentStripe: archetype % 2 === 0,
-    hasVest: true,
-    vestColor: ['#495341', '#5a5e47', '#424b3b', '#666351', '#505945', '#444b3d', '#5b5f49'][archetype],
-    hasTie: false,
-    tieColor: '#506b9f',
-    blouseColor: ['#cfc8b5', '#c6c0ad', '#b9b49f', '#d3ccb8', '#c7c2af', '#bbb49e', '#d0c8b2'][archetype],
-    sockColor: '#596252',
-    shoeColor: ['#252822', '#2c2e28', '#20231e', '#35362f', '#2b3027', '#232720', '#31332a'][archetype],
-    hairStyle: ['crop', 'crop', 'part', 'crop', 'part', 'crop', 'part'][archetype] as WorkerStyle['hairStyle'],
-    hairVolume: 0.92,
+    hasJacket: archetype === 2 || archetype === 3,
+    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
+    skirt: archetype === 5 || archetype === 6,
+    accentStripe: archetype === 0 || archetype === 4,
+    hasVest: archetype === 1 || archetype === 4,
+    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
+    hasTie: archetype === 0 || archetype === 2,
+    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
+    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
+    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
+    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
+    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
   };
 }
 
@@ -160,21 +160,21 @@ type CameraMode = 'overview' | 'focus' | 'free';
 function buildNameTexture(name: string, accent: string) {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = 260;
-  canvas.height = 64;
+  canvas.width = 220;
+  canvas.height = 52;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'rgba(10, 10, 14, 0.78)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-  ctx.lineWidth = 1.5;
+  ctx.fillStyle = 'rgba(10, 10, 14, 0.72)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1.25;
 
   const x = 4;
   const y = 4;
   const w = canvas.width - 8;
   const h = canvas.height - 8;
-  const radius = 12;
+  const radius = 10;
 
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -191,12 +191,12 @@ function buildNameTexture(name: string, accent: string) {
   ctx.stroke();
 
   ctx.fillStyle = accent;
-  ctx.fillRect(12, 11, 7, h - 14);
+  ctx.fillRect(11, 10, 6, h - 12);
 
-  ctx.font = '600 22px JetBrains Mono, monospace';
+  ctx.font = '600 18px JetBrains Mono, monospace';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#f7f3eb';
-  ctx.fillText(name, 28, canvas.height / 2 + 1);
+  ctx.fillText(name, 24, canvas.height / 2 + 1);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
@@ -208,7 +208,7 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   if (!texture || !visible) return null;
 
   return (
-    <sprite position={position} scale={[1.62, 0.4, 1]} renderOrder={20}>
+    <sprite position={position} scale={[1.24, 0.3, 1]} renderOrder={20}>
       <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
     </sprite>
   );
@@ -368,10 +368,14 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
 
   if (topic.live.status === 'missing') {
     return (
-      <group position={[standbyPosition[0], 0.2, standbyPosition[2]]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[0.14, 0.19, 0.24, 16]} />
-          <meshStandardMaterial color="#3a1515" emissive="#ff6b6b" emissiveIntensity={0.8} />
+      <group position={[standbyPosition[0], 0.1, standbyPosition[2]]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.09, 0.14, 18]} />
+          <meshBasicMaterial color="#7f8791" transparent opacity={0.38} />
+        </mesh>
+        <mesh position={[0, 0.08, 0]}>
+          <cylinderGeometry args={[0.04, 0.05, 0.14, 12]} />
+          <meshStandardMaterial color="#8d96a1" emissive="#d8dde4" emissiveIntensity={0.08} />
         </mesh>
       </group>
     );
@@ -552,7 +556,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.42, 1.56, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
+      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -1560,15 +1564,15 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={3.8}
-          maxDistance={56}
-          zoomSpeed={1.5}
-          panSpeed={1.35}
-          rotateSpeed={1.08}
-          minPolarAngle={0.24}
-          maxPolarAngle={2.45}
-          minAzimuthAngle={-Math.PI * 2}
-          maxAzimuthAngle={Math.PI * 2}
+          minDistance={5.2}
+          maxDistance={48}
+          zoomSpeed={1.35}
+          panSpeed={1.2}
+          rotateSpeed={0.9}
+          minPolarAngle={0.42}
+          maxPolarAngle={1.55}
+          minAzimuthAngle={-Math.PI}
+          maxAzimuthAngle={Math.PI}
           target={[0, 1.15, 1.65]}
           screenSpacePanning
           touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
