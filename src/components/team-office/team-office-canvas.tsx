@@ -1084,7 +1084,7 @@ function HubFallback() {
         </mesh>
       ))}
 
-      <group position={[0, 0.02, -0.88]}>
+      <group position={[0, 0.02, -0.88]} rotation={[0, Math.PI, 0]}>
         <mesh position={[0, 0.28, 0]} castShadow>
           <boxGeometry args={[0.6, 0.09, 0.56]} />
           <meshStandardMaterial color="#637589" />
