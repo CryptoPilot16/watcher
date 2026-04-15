@@ -343,25 +343,22 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
     if (!fill.current || exactProgress === null) return;
     const clamped = Math.max(0.06, Math.min(1, exactProgress));
     fill.current.scale.y = clamped;
-    fill.current.position.y = -0.25 + clamped * 0.25;
+    fill.current.position.y = -0.23 + clamped * 0.23;
   });
 
   if (exactProgress === null || topic.live.status !== 'running') return null;
 
   return (
-    <group position={[0, 2.06, 0.02]}>
-      <RoundedBox args={[0.18, 0.68, 0.08]} radius={0.085} smoothness={4}>
-        <meshStandardMaterial color="#1d1728" roughness={0.42} metalness={0.08} />
+    <group position={[0, 2.04, 0.02]}>
+      <RoundedBox args={[0.125, 0.58, 0.06]} radius={0.06} smoothness={6}>
+        <meshBasicMaterial color="#5f4f8a" />
       </RoundedBox>
-      <RoundedBox args={[0.12, 0.6, 0.052]} radius={0.06} smoothness={4} position={[0, 0, 0.008]}>
-        <meshStandardMaterial color="#2b2435" roughness={0.58} metalness={0.04} />
+      <RoundedBox args={[0.097, 0.55, 0.05]} radius={0.05} smoothness={6} position={[0, 0, 0.002]}>
+        <meshBasicMaterial color="#16181b" />
       </RoundedBox>
-      <mesh ref={fill} position={[0, 0, 0.018]}>
-        <boxGeometry args={[0.082, 0.5, 0.032]} />
-        <meshStandardMaterial color="#7dffad" emissive="#5eff8c" emissiveIntensity={0.5} roughness={0.28} metalness={0.02} />
-      </mesh>
-      <pointLight color="#7dffad" intensity={0.35} distance={1.0} position={[0, 0.06, 0.22]} />
-      <pointLight color="#7dffad" intensity={0.22} distance={0.9} position={[0, 0.06, -0.22]} />
+      <RoundedBox ref={fill as never} args={[0.068, 0.46, 0.03]} radius={0.03} smoothness={6} position={[0, 0, 0.008]}>
+        <meshBasicMaterial color="#8dff36" />
+      </RoundedBox>
     </group>
   );
 }
