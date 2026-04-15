@@ -332,7 +332,7 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
           )}
         </div>
         <div className="overflow-hidden rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
-          <div className="max-h-[50vh] overflow-y-auto">
+          <div className="max-h-[84vh] sm:max-h-[62vh] overflow-y-auto">
             <LiveSessionFeed turns={turns} sessionRunning={sessionRunning} />
           </div>
         </div>
@@ -702,7 +702,7 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-3 sm:overflow-visible sm:pb-0 xl:grid-cols-5">
         {[
           { label: 'topics', value: topology.summary.totalTopics },
           { label: 'running', value: topology.summary.running },
@@ -710,9 +710,12 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
           { label: 'idle', value: topology.summary.idle },
           { label: 'missing', value: topology.summary.missingSession },
         ].map((item) => (
-          <div key={item.label} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
+          <div
+            key={item.label}
+            className="min-w-[92px] rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-3 py-2.5 sm:min-w-0 sm:px-4 sm:py-3"
+          >
             <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--watch-text-muted)]">{item.label}</div>
-            <div className="mt-2 text-2xl font-semibold text-[var(--watch-text-bright)]">{item.value}</div>
+            <div className="mt-1.5 text-xl font-semibold text-[var(--watch-text-bright)] sm:mt-2 sm:text-2xl">{item.value}</div>
           </div>
         ))}
       </div>
@@ -752,23 +755,21 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
                   <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{sourceLabel(topic)}</div>
                 </div>
 
-                <div className="mt-3 grid gap-2 text-[10px] text-[var(--watch-text-muted)] sm:grid-cols-2">
-                  <div>
-                    <span className="uppercase tracking-[0.14em]">agent</span>
-                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.configured.agent || 'main'}</div>
-                  </div>
-                  <div>
-                    <span className="uppercase tracking-[0.14em]">runtime</span>
-                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.configured.runtime || 'main'}</div>
-                  </div>
-                  <div>
-                    <span className="uppercase tracking-[0.14em]">updated</span>
-                    <div className="mt-1 text-[11px] text-[var(--watch-text-bright)]">{topic.live.freshnessLabel}</div>
-                  </div>
-                  <div>
-                    <span className="uppercase tracking-[0.14em]">last tool</span>
-                    <div className="mt-1 truncate text-[11px] text-[var(--watch-text-bright)]">{topic.recent.lastToolName || '—'}</div>
-                  </div>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--watch-text-muted)]">
+                  {[
+                    ['agent', topic.configured.agent || 'main'],
+                    ['runtime', topic.configured.runtime || 'main'],
+                    ['updated', topic.live.freshnessLabel],
+                    ['last tool', topic.recent.lastToolName || '—'],
+                  ].map(([label, value]) => (
+                    <span
+                      key={label}
+                      className="inline-flex max-w-full items-center gap-1 rounded-sm border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-2 py-1"
+                    >
+                      <span className="shrink-0 uppercase tracking-[0.14em]">{label}</span>
+                      <span className="max-w-[34vw] truncate text-[11px] text-[var(--watch-text-bright)] sm:max-w-none">{value}</span>
+                    </span>
+                  ))}
                 </div>
               </div>
             ))}

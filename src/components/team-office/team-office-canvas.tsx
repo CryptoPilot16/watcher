@@ -66,9 +66,22 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.live.status === 'running' || topic.live.status === 'recent' || topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
+function isAssistantTopic(topic: TeamTopic) {
+  const display = topicDisplayLabel(topic).toLowerCase();
+  const configured = topic.configured.label.toLowerCase();
+  return display.includes('assistant') || configured.includes('assistant');
+}
+
+function isHousekeepingTopic(topic: TeamTopic) {
+  const display = topicDisplayLabel(topic).toLowerCase();
+  const configured = topic.configured.label.toLowerCase();
+  const role = topic.configured.role.toLowerCase();
+  return role.includes('housekeeping') || configured.includes('house keeping') || display.includes('house keeping') || display.includes('housekeeping');
+}
+
 function staysAtDesk(topic: TeamTopic) {
   const label = topicDisplayLabel(topic).toLowerCase();
-  return topic.configured.role === 'housekeeping_monitor' || label.includes('sky');
+  return isHousekeepingTopic(topic) || label.includes('sky');
 }
 
 function actionLabel(topic: TeamTopic) {
@@ -171,6 +184,7 @@ type DeskLayout = {
   deliveryPosition: [number, number, number];
   focusPoint: [number, number, number];
   deskSeatPosition: [number, number, number];
+  deskStandPosition: [number, number, number];
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
@@ -256,13 +270,27 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
 
 function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
   const spec = useMemo(() => projectBadgeSpec(topic), [topic]);
-  const [texture, setTexture] = useState<THREE.Texture | null>(null);
-  const [aspect, setAspect] = useState(1);
+  const [imageTexture, setImageTexture] = useState<THREE.Texture | null>(null);
+  const [imageAspect, setImageAspect] = useState(1);
+
+  const fallbackLabel = topicDisplayLabel(topic).toUpperCase();
+  const fallbackAccent = statusColor(topic.live.status);
+  const fallbackTexture = useMemo(() => {
+    if (spec) return null;
+    return buildNameTexture(fallbackLabel, fallbackAccent);
+  }, [spec, fallbackLabel, fallbackAccent]);
+
+  const fallbackAspect = useMemo(() => {
+    if (!fallbackTexture) return 1;
+    const imageWidth = Number((fallbackTexture.image as { width?: number })?.width || 1);
+    const imageHeight = Number((fallbackTexture.image as { height?: number })?.height || 1);
+    return imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 1;
+  }, [fallbackTexture]);
 
   useEffect(() => {
     if (!spec) {
-      setTexture(null);
-      setAspect(1);
+      setImageTexture(null);
+      setImageAspect(1);
       return;
     }
 
@@ -274,27 +302,42 @@ function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
         loaded.needsUpdate = true;
         const imageWidth = Number((loaded.image as { width?: number })?.width || 1);
         const imageHeight = Number((loaded.image as { height?: number })?.height || 1);
-        setAspect(imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 1);
-        setTexture(loaded);
+        setImageAspect(imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 1);
+        setImageTexture(loaded);
       },
       undefined,
       () => {
-        setTexture(null);
-        setAspect(1);
+        setImageTexture(null);
+        setImageAspect(1);
       },
     );
   }, [spec]);
 
-  if (!spec || !texture) return null;
+  const texture = spec ? imageTexture : fallbackTexture;
+  if (!texture) return null;
 
-  const width = Math.min(spec.maxWidth, spec.maxHeight * aspect);
-  const height = Math.min(spec.maxHeight, spec.maxWidth / Math.max(aspect, 0.01));
+  const maxWidth = spec?.maxWidth ?? 0.24;
+  const maxHeight = spec?.maxHeight ?? 0.062;
+  const position = spec?.position ?? ([0.0, 0.31, 0.43] as [number, number, number]);
+  const rotationY = spec?.rotationY ?? Math.PI;
+  const aspect = spec ? imageAspect : fallbackAspect;
+  const width = Math.min(maxWidth, maxHeight * aspect);
+  const height = Math.min(maxHeight, maxWidth / Math.max(aspect, 0.01));
+
+  const mirroredPosition: [number, number, number] = [position[0], position[1], -position[2]];
+  const mirroredRotationY = rotationY + Math.PI;
 
   return (
-    <mesh position={spec.position} rotation={[0, spec.rotationY, 0]} renderOrder={19}>
-      <planeGeometry args={[width, height]} />
-      <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
-    </mesh>
+    <>
+      <mesh position={position} rotation={[0, rotationY, 0]} renderOrder={19}>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
+      </mesh>
+      <mesh position={mirroredPosition} rotation={[0, mirroredRotationY, 0]} renderOrder={19}>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial map={texture} transparent alphaTest={0.08} side={THREE.FrontSide} depthWrite={false} toneMapped={false} />
+      </mesh>
+    </>
   );
 }
 
@@ -342,15 +385,17 @@ function AlertDiamond({ visible }: { visible: boolean }) {
 function AgentProgressBar({ topic }: { topic: TeamTopic }) {
   const fill = useRef<THREE.Mesh>(null);
   const exactProgress = topicProgress(topic);
+  const fallbackPhase = useMemo(() => (hashLabel(topicDisplayLabel(topic)) % 360) * (Math.PI / 180), [topic]);
 
-  useFrame(() => {
-    if (!fill.current || exactProgress === null) return;
-    const clamped = Math.max(0.06, Math.min(1, exactProgress));
+  useFrame(({ clock }) => {
+    if (!fill.current || topic.live.status !== 'running') return;
+    const fallback = 0.42 + ((Math.sin(clock.getElapsedTime() * 1.9 + fallbackPhase) + 1) / 2) * 0.5;
+    const clamped = Math.max(0.06, Math.min(1, exactProgress ?? fallback));
     fill.current.scale.y = clamped;
     fill.current.position.y = -0.23 + clamped * 0.23;
   });
 
-  if (exactProgress === null || topic.live.status !== 'running') return null;
+  if (topic.live.status !== 'running') return null;
 
   return (
     <group position={[0, 2.04, 0.02]}>
@@ -440,17 +485,37 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
   );
 }
 
-function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFacing, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
+function WorkerAvatar({
+  topic,
+  standbyPosition,
+  taskTablePosition,
+  taskTableFacing,
+  deskSeatPosition,
+  deskStandPosition,
+  deliveryPosition,
+  disciplineTargetPosition,
+  deskFacing,
+  reducedMotion,
+  seed,
+  emphasized,
+  selected,
+  onHover,
+  onLeave,
+  onSelect,
+}: {
   topic: TeamTopic;
   standbyPosition: [number, number, number];
   taskTablePosition: [number, number, number];
   taskTableFacing: number;
-  deskPosition: [number, number, number];
+  deskSeatPosition: [number, number, number];
+  deskStandPosition: [number, number, number];
   deliveryPosition: [number, number, number];
+  disciplineTargetPosition: [number, number, number] | null;
   deskFacing: number;
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
+  selected: boolean;
   onHover: () => void;
   onLeave: () => void;
   onSelect: () => void;
@@ -461,19 +526,38 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
   const chest = useRef<THREE.Mesh>(null);
-  const palette = useMemo(() => paletteForTopic(topic), [topic]);
+  const moveTarget = useRef(new THREE.Vector3());
+  const basePalette = useMemo(() => paletteForTopic(topic), [topic]);
+  const palette = useMemo(() => {
+    if (topic.live.status !== 'missing') return basePalette;
+    return {
+      skin: '#d6ccc2',
+      hair: '#514a48',
+      top: '#8d7276',
+      bottom: '#666772',
+    };
+  }, [basePalette, topic.live.status]);
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
+  const offline = topic.live.status === 'missing';
+  const housekeeping = isHousekeepingTopic(topic);
   const anchoredAtDesk = staysAtDesk(topic);
-  const showHousekeepingAlert = topic.configured.role === 'housekeeping_monitor' && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
-  const mode = anchoredAtDesk
-    ? 'desk-watch'
-    : topic.live.status === 'recent'
-      ? 'delivery'
-      : assigned
-        ? 'job-front'
-        : 'standby';
+  const activeDeskWork = anchoredAtDesk && topic.live.status === 'running';
+  const showHousekeepingAlert = isHousekeepingTopic(topic) && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
+  const disciplineMode = housekeeping && topic.live.status === 'recent' && Boolean(disciplineTargetPosition);
+  const mode = disciplineMode
+    ? 'discipline'
+    : activeDeskWork
+      ? 'desk-watch'
+      : (anchoredAtDesk || offline)
+        ? 'desk-stand'
+        : topic.live.status === 'recent'
+          ? 'delivery'
+          : assigned
+            ? 'job-front'
+            : 'standby';
+  const showHockeyStick = mode === 'discipline' || (selected && (isAssistantTopic(topic) || housekeeping));
 
   useFrame(({ clock }) => {
     if (!group.current) return;
@@ -481,8 +565,27 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
     const stride = Math.sin(t * 5.2) * 0.46;
     const atFront = mode === 'job-front';
     const atDesk = mode === 'desk-watch';
-    const anchor = mode === 'delivery' ? deliveryPosition : atDesk ? deskPosition : atFront ? taskTablePosition : standbyPosition;
-    const facing = atDesk ? deskFacing : atFront ? taskTableFacing : 0;
+    const atDeskStand = mode === 'desk-stand';
+    const atDiscipline = mode === 'discipline';
+    const disciplineAnchor = disciplineTargetPosition || taskTablePosition;
+    const anchor = atDiscipline
+      ? disciplineAnchor
+      : mode === 'delivery'
+        ? deliveryPosition
+        : atDesk
+          ? deskSeatPosition
+          : atDeskStand
+            ? deskStandPosition
+            : atFront
+              ? taskTablePosition
+              : standbyPosition;
+    const facing = atDiscipline
+      ? Math.atan2(disciplineAnchor[0] - deskStandPosition[0], disciplineAnchor[2] - deskStandPosition[2])
+      : (atDesk || atDeskStand)
+        ? deskFacing
+        : atFront
+          ? taskTableFacing
+          : 0;
     const baseY = atFront ? 0.06 : atDesk ? 0.04 : 0.07;
     const bob = atFront
       ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
@@ -490,11 +593,21 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
         ? (!reducedMotion ? Math.sin(t * 1.2) * 0.003 : 0)
         : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
 
-    group.current.position.set(anchor[0], baseY + bob, anchor[2]);
+    moveTarget.current.set(anchor[0], baseY + bob, anchor[2]);
+    if (atDiscipline && !reducedMotion) {
+      group.current.position.lerp(moveTarget.current, 0.14);
+    } else {
+      group.current.position.copy(moveTarget.current);
+    }
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
-      if (mode === 'job-front' && topic.live.status === 'running' && !reducedMotion) {
+      if (mode === 'discipline') {
+        leftArm.current.rotation.x = -0.54 + (reducedMotion ? 0 : stride * 0.28);
+        rightArm.current.rotation.x = -0.78 - (reducedMotion ? 0 : stride * 0.24);
+        leftLeg.current.rotation.x = reducedMotion ? 0 : stride * 0.4;
+        rightLeg.current.rotation.x = reducedMotion ? 0 : -stride * 0.4;
+      } else if (mode === 'job-front' && topic.live.status === 'running' && !reducedMotion) {
         leftArm.current.rotation.x = -0.76 + stride * 0.07;
         rightArm.current.rotation.x = -0.68 - stride * 0.07;
         leftLeg.current.rotation.x = 0;
@@ -514,6 +627,11 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
         rightArm.current.rotation.x = -1.02;
         leftLeg.current.rotation.x = 1.18;
         rightLeg.current.rotation.x = 1.18;
+      } else if (mode === 'desk-stand') {
+        leftArm.current.rotation.x = -0.46;
+        rightArm.current.rotation.x = -0.34;
+        leftLeg.current.rotation.x = reducedMotion ? 0 : stride * 0.08;
+        rightLeg.current.rotation.x = reducedMotion ? 0 : -stride * 0.08;
       } else {
         leftArm.current.rotation.x = -0.48;
         rightArm.current.rotation.x = -0.38;
@@ -528,15 +646,11 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
     }
   });
 
-  if (topic.live.status === 'missing') {
-    return null;
-  }
-
   return (
     <group ref={group}>
       <mesh position={[0, 0.012, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.13, 0.17, 18]} />
-        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
+        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : topic.live.status === 'missing' ? 0.34 : 0.2} />
       </mesh>
       <group scale={style.bodyScale}>
         <mesh castShadow position={[0, 0.59, 0.02]}>
@@ -684,6 +798,22 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
           <sphereGeometry args={[0.043, 12, 12]} />
           <meshStandardMaterial color={palette.skin} />
         </mesh>
+        {showHockeyStick && (
+          <group position={[0.03, -0.33, 0.06]} rotation={[0.1, 0.05, -0.9]}>
+            <mesh castShadow position={[0, -0.24, 0]}>
+              <cylinderGeometry args={[0.015, 0.017, 0.68, 12]} />
+              <meshStandardMaterial color="#d8b887" roughness={0.62} />
+            </mesh>
+            <mesh castShadow position={[0, -0.57, 0.07]} rotation={[0, 0.2, 0]}>
+              <boxGeometry args={[0.045, 0.05, 0.2]} />
+              <meshStandardMaterial color="#16181f" roughness={0.45} />
+            </mesh>
+            <mesh castShadow position={[0, 0.09, 0]}>
+              <cylinderGeometry args={[0.018, 0.018, 0.05, 12]} />
+              <meshStandardMaterial color="#21242d" roughness={0.48} />
+            </mesh>
+          </group>
+        )}
       </group>
       <group ref={leftLeg} position={[-0.06, 0.2, 0.06]}>
         <mesh castShadow position={[0, -0.11, 0]}>
@@ -733,21 +863,37 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
   );
 }
 
-function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
+function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, activeDeskWork }: {
   glow: THREE.Color;
   glowStrength: number;
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
+  activeDeskWork: boolean;
 }) {
   const monitor = useRef<THREE.Mesh>(null);
   const lamp = useRef<THREE.Mesh>(null);
+  const screen = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
-    if (reducedMotion) return;
     const t = clock.getElapsedTime() + seed * 0.22;
-    if (monitor.current) monitor.current.rotation.z = Math.sin(t * 0.7) * 0.012;
-    if (lamp.current) lamp.current.rotation.z = -0.22 + Math.sin(t * 2.2) * 0.03;
+    if (!reducedMotion) {
+      if (monitor.current) monitor.current.rotation.z = Math.sin(t * 0.7) * 0.012;
+      if (lamp.current) lamp.current.rotation.z = -0.22 + Math.sin(t * 2.2) * 0.03;
+    }
+
+    if (screen.current) {
+      const material = screen.current.material as THREE.MeshStandardMaterial;
+      material.emissive.copy(glow);
+      if (activeDeskWork) {
+        const pulse = reducedMotion ? 0.95 : 0.82 + Math.sin(t * 4.2) * 0.18;
+        material.color.set('#d6fbff');
+        material.emissiveIntensity = Math.max(glowStrength * 0.72, pulse);
+      } else {
+        material.color.set('#9fc8d8');
+        material.emissiveIntensity = glowStrength * 0.48;
+      }
+    }
   });
 
   return (
@@ -790,7 +936,7 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized }: {
       <RoundedBox args={[0.46, 0.34, 0.36]} radius={0.015} smoothness={3} position={[-0.1, 0.82, -0.27]} castShadow ref={monitor as never}>
         <meshStandardMaterial color="#cdc7b9" roughness={0.62} />
       </RoundedBox>
-      <mesh position={[-0.1, 0.84, -0.45]} castShadow>
+      <mesh position={[-0.1, 0.84, -0.45]} castShadow ref={screen as never}>
         <boxGeometry args={[0.32, 0.2, 0.018]} />
         <meshStandardMaterial color="#9fc8d8" emissive={glow} emissiveIntensity={glowStrength * 0.48} />
       </mesh>
@@ -926,10 +1072,11 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
 }) {
   const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const glowStrength = statusGlow(topic.live.status);
+  const activeDeskWork = topic.live.status === 'running' && staysAtDesk(topic);
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
+      <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} activeDeskWork={activeDeskWork} />} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
       <ProjectDeskBadge topic={topic} />
@@ -1361,12 +1508,18 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const deliveryZ = 3.34;
     const rotationY = Math.PI;
     const chairLocalOffset: [number, number, number] = [0.08, 0, 0.48];
+    const standingLocalOffset: [number, number, number] = [0.08, 0, 0.88];
     const sinY = Math.sin(rotationY);
     const cosY = Math.cos(rotationY);
     const deskSeatPosition: [number, number, number] = [
       deskX + chairLocalOffset[0] * cosY - chairLocalOffset[2] * sinY,
       0,
       deskZ + chairLocalOffset[0] * sinY + chairLocalOffset[2] * cosY,
+    ];
+    const deskStandPosition: [number, number, number] = [
+      deskX + standingLocalOffset[0] * cosY - standingLocalOffset[2] * sinY,
+      0,
+      deskZ + standingLocalOffset[0] * sinY + standingLocalOffset[2] * cosY,
     ];
 
     return {
@@ -1380,13 +1533,17 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
       focusPoint: [taskTablePosition[0], 0.92, taskTablePosition[2] + 0.12] as [number, number, number],
       deskSeatPosition,
+      deskStandPosition,
     };
   });
 }
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (staysAtDesk(topic)) return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
+  if (staysAtDesk(topic)) {
+    const anchor = topic.live.status === 'running' ? layout.deskSeatPosition : layout.deskStandPosition;
+    return [anchor[0], 0.92, anchor[2]] as [number, number, number];
+  }
   if (topic.live.status === 'running') return layout.focusPoint;
   if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
   if (hasAssignedTask(topic)) return [layout.taskTablePosition[0], 0.92, layout.taskTablePosition[2]] as [number, number, number];
@@ -1441,12 +1598,20 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               standbyPosition={desk.standbyPosition}
               taskTablePosition={desk.taskTablePosition}
               taskTableFacing={desk.taskTableFacing}
-              deskPosition={staysAtDesk(desk.topic) ? desk.deskSeatPosition : desk.workerDeskPosition}
+              deskSeatPosition={desk.deskSeatPosition}
+              deskStandPosition={desk.deskStandPosition}
               deliveryPosition={desk.deliveryPosition}
+              disciplineTargetPosition={isHousekeepingTopic(desk.topic)
+                ? (
+                  deskLayouts.find((candidate) => candidate.topic.topicId !== desk.topic.topicId && candidate.topic.live.status !== 'idle' && candidate.topic.live.status !== 'missing')
+                    ?.taskTablePosition || null
+                )
+                : null}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
               reducedMotion={reducedMotion}
               seed={index + 1}
               emphasized={emphasized}
+              selected={selectedTopicId === desk.topic.topicId}
               onHover={() => onHover(desk.topic.topicId)}
               onLeave={() => onLeave(desk.topic.topicId)}
               onSelect={() => onSelect(desk.topic.topicId)}

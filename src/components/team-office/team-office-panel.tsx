@@ -88,7 +88,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
               { status: 'running', title: 'running', desc: 'worker actively executing in front of the PILOT desk with green diamond' },
               { status: 'recent', title: 'handoff', desc: 'worker presenting output nearest the PILOT desk' },
               { status: 'idle', title: 'idle', desc: 'job-linked workers wait in front of PILOT, unassigned lanes wait in the back row' },
-              { status: 'missing', title: 'offline', desc: 'red marker, no active worker body' },
+              { status: 'missing', title: 'offline', desc: 'agent stays visible at desk with an offline marker' },
             ] as const).map((item) => {
               const tone = statusTone(item.status);
               return (
