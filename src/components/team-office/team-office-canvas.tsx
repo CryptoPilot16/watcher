@@ -336,40 +336,35 @@ function AlertDiamond({ visible }: { visible: boolean }) {
   );
 }
 
-function AgentProgressBar({ topic, emphasized }: { topic: TeamTopic; emphasized: boolean }) {
-  const shell = useRef<THREE.Group>(null);
+function AgentProgressBar({ topic }: { topic: TeamTopic }) {
   const fill = useRef<THREE.Mesh>(null);
   const exactProgress = topicProgress(topic);
-  const shouldShow = topic.live.status === 'running' || topic.live.status === 'recent' || exactProgress !== null || emphasized;
 
-  useFrame(({ clock }) => {
-    if (!shell.current || !fill.current || !shouldShow) return;
-    const t = clock.getElapsedTime();
-    const animated = 0.26 + ((Math.sin(t * 2.2) + 1) / 2) * 0.48;
-    const progress = exactProgress ?? (topic.live.status === 'running' ? animated : topic.live.status === 'recent' ? 1 : 0.12);
-    const clamped = Math.max(0.06, Math.min(1, progress));
+  useFrame(() => {
+    if (!fill.current || exactProgress === null) return;
+    const clamped = Math.max(0.06, Math.min(1, exactProgress));
     fill.current.scale.y = clamped;
     fill.current.position.y = -0.26 + clamped * 0.26;
   });
 
-  if (!shouldShow) return null;
+  if (exactProgress === null) return null;
 
   const fillColor = topic.live.status === 'recent' ? '#ffd86e' : '#7dffad';
   const glowColor = topic.live.status === 'recent' ? '#ffe7a7' : '#92ffb7';
 
   return (
-    <group ref={shell} position={[0.26, 2.04, -0.02]}>
-      <RoundedBox args={[0.19, 0.66, 0.05]} radius={0.08} smoothness={4}>
+    <group position={[0, 2.06, 0.02]}>
+      <RoundedBox args={[0.17, 0.66, 0.05]} radius={0.08} smoothness={4}>
         <meshBasicMaterial color="#111319" transparent opacity={0.92} depthWrite={false} />
       </RoundedBox>
-      <RoundedBox args={[0.135, 0.6, 0.03]} radius={0.06} smoothness={4} position={[0, 0, 0.01]}>
+      <RoundedBox args={[0.11, 0.6, 0.03]} radius={0.06} smoothness={4} position={[0, 0, 0.01]}>
         <meshBasicMaterial color="#20252b" transparent opacity={0.96} depthWrite={false} />
       </RoundedBox>
       <mesh ref={fill} position={[0, 0, 0.02]}>
-        <boxGeometry args={[0.1, 0.52, 0.024]} />
+        <boxGeometry args={[0.078, 0.52, 0.024]} />
         <meshBasicMaterial color={fillColor} transparent opacity={0.95} />
       </mesh>
-      <pointLight color={glowColor} intensity={0.65} distance={1.6} position={[0, 0.06, 0.28]} />
+      <pointLight color={glowColor} intensity={0.65} distance={1.4} position={[0, 0.08, 0.24]} />
     </group>
   );
 }
@@ -714,7 +709,7 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <AgentProgressBar topic={topic} emphasized={emphasized} />
+      <AgentProgressBar topic={topic} />
       <AlertDiamond visible={showHousekeepingAlert} />
       <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
 
