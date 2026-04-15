@@ -82,11 +82,11 @@ function hashLabel(label: string) {
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topicDisplayLabel(topic));
-  const skin = ['#f0c7a2', '#dfb186', '#c38a63', '#8a5c42', '#5e3e2f'][seed % 5];
-  const skinShadow = ['#dca67b', '#c99367', '#ab714e', '#6e4836', '#4c3125'][seed % 5];
-  const hair = ['#161218', '#231b16', '#503629', '#6a5748', '#d7d1c7'][(seed >> 2) % 5];
-  const iris = ['#33516a', '#567347', '#6a4c2f', '#2d2f38', '#4d6673'][(seed >> 4) % 5];
-  return { skin, skinShadow, hair, iris };
+  const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
+  const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
+  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
+  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
+  return { skin, hair, top, bottom };
 }
 
 type WorkerStyle = {
@@ -95,53 +95,53 @@ type WorkerStyle = {
   shoulderWidth: number;
   legHeight: number;
   armLength: number;
-  hoodieColor: string;
-  hoodieShadowColor: string;
-  undershirtColor: string;
-  jeansColor: string;
-  jeansDetailColor: string;
-  sneakerColor: string;
-  sneakerSoleColor: string;
-  accentColor: string;
-  accessoryDark: string;
-  hairStyle: 'messy' | 'part' | 'bun' | 'crop' | 'bob';
+  hasHat: boolean;
+  hatColor: string;
+  hatBrimColor: string;
+  hasApron: boolean;
+  apronColor: string;
+  hasJacket: boolean;
+  jacketColor: string;
+  skirt: boolean;
+  accentStripe: boolean;
+  hasVest: boolean;
+  vestColor: string;
+  hasTie: boolean;
+  tieColor: string;
+  blouseColor: string;
+  sockColor: string;
+  shoeColor: string;
+  hairStyle: 'bob' | 'part' | 'bun' | 'crop' | 'flip';
   hairVolume: number;
-  hasGlasses: boolean;
-  hasHeadphones: boolean;
-  hasLanyard: boolean;
-  hasBadge: boolean;
-  hasWatch: boolean;
-  hasStubble: boolean;
-  hasLaptop: boolean;
 };
 
 function styleForTopic(topic: TeamTopic): WorkerStyle {
   const seed = hashLabel(topicDisplayLabel(topic));
-  const archetype = seed % 8;
+  const archetype = seed % 7;
   return {
-    bodyScale: archetype === 5 ? [0.95, 1.02, 0.94] : archetype === 2 ? [1.03, 1.06, 0.98] : [1, 1.04, 0.96],
-    headScale: archetype === 1 ? [1.2, 1.15, 1.08] : archetype === 6 ? [1.15, 1.1, 1.06] : [1.17, 1.12, 1.08],
-    shoulderWidth: archetype === 2 ? 0.15 : archetype === 5 ? 0.12 : 0.136,
-    legHeight: archetype === 5 ? 0.205 : 0.225,
-    armLength: archetype === 2 ? 0.24 : 0.22,
-    hoodieColor: ['#171821', '#1f1a24', '#1a1d29', '#232029', '#1d1f24', '#242631', '#171a20', '#21242c'][archetype],
-    hoodieShadowColor: ['#101118', '#15121a', '#11131c', '#17151d', '#14161a', '#171924', '#111319', '#181a22'][archetype],
-    undershirtColor: ['#252733', '#2b2d38', '#23252f', '#2a2934', '#262832', '#30323d', '#232631', '#282b35'][archetype],
-    jeansColor: ['#1a2136', '#1c2439', '#222838', '#182033', '#252b3b', '#1f2331', '#202638', '#182334'][archetype],
-    jeansDetailColor: ['#121827', '#131a29', '#181d2a', '#101726', '#1b2030', '#181b28', '#141a29', '#111a28'][archetype],
-    sneakerColor: ['#1d1f27', '#23262e', '#1f2129', '#232129', '#1f232a', '#272a31', '#1b1d25', '#242832'][archetype],
-    sneakerSoleColor: ['#f0f0f3', '#e8e7ec', '#f2f1f6', '#e5e4eb', '#efeff2', '#faf8f4', '#ececf0', '#f2f2f4'][archetype],
-    accentColor: ['#ff6a00', '#3478f6', '#ff8f3a', '#00c2a8', '#ff6a00', '#7c5cff', '#ff6a00', '#4ea1ff'][archetype],
-    accessoryDark: ['#23232c', '#252833', '#1f222c', '#282631', '#22242a', '#2b2e38', '#1f2128', '#262933'][archetype],
-    hairStyle: ['messy', 'crop', 'part', 'bob', 'messy', 'bun', 'crop', 'part'][archetype] as WorkerStyle['hairStyle'],
-    hairVolume: archetype === 3 ? 1.08 : archetype === 5 ? 1.02 : 0.98,
-    hasGlasses: archetype === 0 || archetype === 2 || archetype === 4 || archetype === 7,
-    hasHeadphones: archetype === 0 || archetype === 1 || archetype === 6,
-    hasLanyard: archetype === 0 || archetype === 3 || archetype === 4 || archetype === 7,
-    hasBadge: archetype === 0 || archetype === 3 || archetype === 7,
-    hasWatch: archetype !== 5,
-    hasStubble: archetype === 0 || archetype === 2 || archetype === 6,
-    hasLaptop: archetype === 1 || archetype === 4,
+    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
+    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
+    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
+    legHeight: archetype === 5 ? 0.21 : 0.235,
+    armLength: archetype === 4 ? 0.24 : 0.22,
+    hasHat: false,
+    hatColor: '#2f3340',
+    hatBrimColor: '#151515',
+    hasApron: false,
+    apronColor: '#f3f0ea',
+    hasJacket: archetype === 2 || archetype === 3,
+    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
+    skirt: archetype === 5 || archetype === 6,
+    accentStripe: archetype === 0 || archetype === 4,
+    hasVest: archetype === 1 || archetype === 4,
+    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
+    hasTie: archetype === 0 || archetype === 2,
+    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
+    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
+    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
+    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
+    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
   };
 }
 
@@ -235,81 +235,72 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
 }
 
 function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForTopic>; style: WorkerStyle }) {
-  const capScale: [number, number, number] = [style.headScale[0] * 1.03, style.headScale[1] * 0.76 * style.hairVolume, style.headScale[2] * 1.01];
+  const capScale: [number, number, number] = [style.headScale[0] * 1.05, style.headScale[1] * 0.82 * style.hairVolume, style.headScale[2] * 1.02];
 
   return (
     <group>
-      <mesh castShadow position={[0, 0.97, -0.015]} scale={capScale}>
-        <boxGeometry args={[0.34, 0.13, 0.3]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.82} />
+      <mesh castShadow position={[0, 0.92, -0.045]} scale={capScale}>
+        <sphereGeometry args={[0.122, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.86]} />
+        <meshStandardMaterial color={palette.hair} roughness={0.72} />
       </mesh>
-      <mesh castShadow position={[0, 0.87, -0.1]}>
-        <boxGeometry args={[0.3, 0.18, 0.08]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.84} />
-      </mesh>
-
-      {style.hairStyle === 'messy' && (
-        <>
-          <mesh castShadow position={[-0.11, 1.01, 0.1]} rotation={[0, 0, -0.24]}>
-            <boxGeometry args={[0.12, 0.08, 0.08]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.78} />
-          </mesh>
-          <mesh castShadow position={[0.08, 1.03, 0.11]} rotation={[0, 0, 0.18]}>
-            <boxGeometry args={[0.1, 0.1, 0.08]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.78} />
-          </mesh>
-          <mesh castShadow position={[0.18, 0.98, 0.08]} rotation={[0, 0, 0.1]}>
-            <boxGeometry args={[0.08, 0.08, 0.06]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.78} />
-          </mesh>
-        </>
-      )}
-
-      {style.hairStyle === 'part' && (
-        <>
-          <mesh castShadow position={[0, 0.94, 0.08]} rotation={[0.18, 0, 0]}>
-            <boxGeometry args={[0.22, 0.032, 0.08]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.8} />
-          </mesh>
-          <mesh castShadow position={[-0.1, 0.9, 0.03]} rotation={[0.12, 0.2, -0.16]}>
-            <boxGeometry args={[0.08, 0.14, 0.06]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.82} />
-          </mesh>
-        </>
-      )}
-
-      {style.hairStyle === 'crop' && (
-        <mesh castShadow position={[0, 0.98, 0.06]} rotation={[0.28, 0, 0]}>
-          <boxGeometry args={[0.24, 0.04, 0.1]} />
-          <meshStandardMaterial color={palette.hair} roughness={0.78} />
-        </mesh>
-      )}
-
       {style.hairStyle === 'bob' && (
         <>
-          <mesh castShadow position={[0, 0.89, -0.01]}>
-            <boxGeometry args={[0.29, 0.18, 0.2]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.84} />
+          <mesh castShadow position={[0, 0.835, -0.055]} scale={[style.headScale[0] * 1.02, style.headScale[1] * 0.82, style.headScale[2] * 0.92]}>
+            <sphereGeometry args={[0.108, 18, 18, 0, Math.PI * 2, Math.PI / 2.35, Math.PI / 1.65]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.76} />
           </mesh>
-          {[-0.12, 0.12].map((x) => (
-            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.87, 0.02]}>
-              <boxGeometry args={[0.06, 0.16, 0.08]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.84} />
+          {[-0.1, 0.1].map((x) => (
+            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.025]} scale={[0.88, 1.18, 0.78]}>
+              <sphereGeometry args={[0.042, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.76} />
             </mesh>
           ))}
         </>
       )}
-
+      {style.hairStyle === 'part' && (
+        <>
+          <mesh castShadow position={[0, 0.885, 0.012]} rotation={[0.22, 0, 0]}>
+            <boxGeometry args={[0.18, 0.028, 0.05]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+          <mesh castShadow position={[-0.06, 0.845, 0.022]} rotation={[0.2, 0.2, -0.18]}>
+            <boxGeometry args={[0.065, 0.11, 0.03]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+        </>
+      )}
       {style.hairStyle === 'bun' && (
         <>
-          <mesh castShadow position={[0, 0.81, -0.12]}>
-            <boxGeometry args={[0.1, 0.1, 0.08]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.84} />
+          <mesh castShadow position={[0, 0.81, -0.09]}>
+            <sphereGeometry args={[0.06, 14, 14]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
           </mesh>
-          <mesh castShadow position={[0, 0.93, 0.06]} rotation={[0.2, 0, 0]}>
-            <boxGeometry args={[0.18, 0.03, 0.06]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.8} />
+          {[-0.082, 0.082].map((x) => (
+            <mesh key={`bun-side-${x}`} castShadow position={[x, 0.87, -0.01]} scale={[0.75, 1.15, 0.72]}>
+              <sphereGeometry args={[0.038, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {style.hairStyle === 'crop' && (
+        <mesh castShadow position={[0, 0.905, 0.03]} rotation={[0.36, 0, 0]}>
+          <boxGeometry args={[0.19, 0.038, 0.07]} />
+          <meshStandardMaterial color={palette.hair} roughness={0.66} />
+        </mesh>
+      )}
+      {style.hairStyle === 'flip' && (
+        <>
+          <mesh castShadow position={[0, 0.84, -0.07]} scale={[1, 0.95, 0.9]}>
+            <sphereGeometry args={[0.1, 16, 16, 0, Math.PI * 2, Math.PI / 2.45, Math.PI / 1.7]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
           </mesh>
+          {[-0.11, 0.11].map((x) => (
+            <mesh key={`flip-side-${x}`} castShadow position={[x, 0.83, -0.01]} rotation={[0, 0, x < 0 ? -0.35 : 0.35]}>
+              <boxGeometry args={[0.04, 0.1, 0.028]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
         </>
       )}
     </group>
@@ -347,30 +338,31 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
     const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
     const facing = mode === 'desk' ? deskFacing : 0;
 
-    group.current.position.set(anchor[0], 0.065 + (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0), anchor[2]);
+    group.current.position.set(anchor[0], 0.07 + (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0), anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
       if (mode === 'desk' && !reducedMotion) {
-        leftArm.current.rotation.x = -1.02 + stride * 0.08;
-        rightArm.current.rotation.x = -0.92 - stride * 0.08;
-        leftLeg.current.rotation.x = 0.1;
+        leftArm.current.rotation.x = -1.05 + stride * 0.09;
+        rightArm.current.rotation.x = -0.95 - stride * 0.09;
+        leftLeg.current.rotation.x = 0.12;
         rightLeg.current.rotation.x = 0.02;
       } else if (mode === 'delivery') {
-        leftArm.current.rotation.x = -0.16;
-        rightArm.current.rotation.x = -0.44;
+        leftArm.current.rotation.x = -0.2;
+        rightArm.current.rotation.x = -0.48;
         leftLeg.current.rotation.x = 0;
         rightLeg.current.rotation.x = 0;
       } else {
-        leftArm.current.rotation.x = -0.42;
-        rightArm.current.rotation.x = -0.34;
+        leftArm.current.rotation.x = -0.48;
+        rightArm.current.rotation.x = -0.38;
         leftLeg.current.rotation.x = 0;
         rightLeg.current.rotation.x = 0;
       }
     }
 
     if (chest.current) {
-      (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = topic.live.status === 'running' ? 0.12 : 0.03;
+      const emissive = topic.live.status === 'running' ? 0.14 : 0.02;
+      (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
     }
   });
 
@@ -381,297 +373,182 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
   return (
     <group ref={group}>
       <mesh position={[0, 0.012, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.15, 0.19, 24]} />
-        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.18} />
+        <ringGeometry args={[0.13, 0.17, 18]} />
+        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
       </mesh>
-      <mesh position={[0, 0.014, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.22, 0.228, 28]} />
-        <meshBasicMaterial color={style.accentColor} transparent opacity={0.08} />
-      </mesh>
-
       <group scale={style.bodyScale}>
-        {style.hasLaptop && (
-          <group position={[-0.26, 0.45, 0.08]} rotation={[-0.14, 0, 0.15]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.18, 0.03, 0.13]} />
-              <meshStandardMaterial color={style.accessoryDark} roughness={0.45} metalness={0.45} />
-            </mesh>
-            <mesh castShadow position={[0, 0.025, 0]}>
-              <boxGeometry args={[0.18, 0.012, 0.13]} />
-              <meshStandardMaterial color={style.accentColor} emissive={style.accentColor} emissiveIntensity={0.18} roughness={0.3} />
-            </mesh>
-          </group>
-        )}
-
-        <mesh castShadow position={[0, 0.78, 0]}>
-          <boxGeometry args={[0.42, 0.14, 0.22]} />
-          <meshStandardMaterial color={style.jeansColor} roughness={0.88} />
+        <mesh castShadow position={[0, 0.59, 0.02]}>
+          <capsuleGeometry args={[0.125, 0.14, 6, 12]} />
+          <meshStandardMaterial color={style.blouseColor} />
         </mesh>
-        <mesh castShadow position={[0, 0.75, 0.12]}>
-          <boxGeometry args={[0.08, 0.05, 0.03]} />
-          <meshStandardMaterial color="#b5b6ba" roughness={0.32} metalness={0.72} />
+        <mesh ref={chest} castShadow position={[0, 0.45, 0.02]}>
+          <capsuleGeometry args={[0.118, 0.28, 8, 14]} />
+          <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
         </mesh>
-
-        <mesh castShadow position={[0, 1.08, 0.01]}>
-          <boxGeometry args={[0.46, 0.32, 0.26]} />
-          <meshStandardMaterial color={style.hoodieColor} roughness={0.86} />
+        <mesh castShadow position={[0, 0.33, 0.06]}>
+          <capsuleGeometry args={[0.095, 0.08, 6, 10]} />
+          <meshStandardMaterial color={palette.bottom} />
         </mesh>
-        <mesh castShadow position={[0, 1.25, 0]}>
-          <boxGeometry args={[0.5, 0.14, 0.26]} />
-          <meshStandardMaterial color={style.hoodieColor} roughness={0.84} />
-        </mesh>
-        <mesh castShadow position={[0, 1.32, 0.09]}>
-          <boxGeometry args={[0.22, 0.06, 0.05]} />
-          <meshStandardMaterial color={style.undershirtColor} roughness={0.82} />
-        </mesh>
-        <mesh ref={chest} castShadow position={[0, 1.05, 0.14]}>
-          <boxGeometry args={[0.03, 0.38, 0.03]} />
-          <meshStandardMaterial color={style.accentColor} emissive={style.accentColor} roughness={0.6} />
-        </mesh>
-        <mesh castShadow position={[0, 0.92, 0.155]}>
-          <boxGeometry args={[0.28, 0.09, 0.03]} />
-          <meshStandardMaterial color={style.hoodieShadowColor} roughness={0.9} />
-        </mesh>
-        {[-0.05, 0.05].map((x) => (
-          <group key={`string-${x}`} position={[x, 1.22, 0.15]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.016, 0.16, 0.016]} />
-              <meshStandardMaterial color={style.accentColor} roughness={0.74} />
-            </mesh>
-            <mesh castShadow position={[0, -0.1, 0]}>
-              <boxGeometry args={[0.02, 0.03, 0.02]} />
-              <meshStandardMaterial color={style.accentColor} roughness={0.68} />
-            </mesh>
-          </group>
-        ))}
-
-        {style.hasLanyard && (
-          <mesh castShadow position={[0.12, 1.08, 0.15]}>
-            <boxGeometry args={[0.028, 0.32, 0.02]} />
-            <meshStandardMaterial color={style.accentColor} roughness={0.78} />
+        {style.hasVest && (
+          <mesh castShadow position={[0, 0.45, 0.1]}>
+            <capsuleGeometry args={[0.11, 0.24, 8, 12]} />
+            <meshStandardMaterial color={style.vestColor} />
           </mesh>
         )}
-        {style.hasBadge && (
-          <group position={[0.12, 0.88, 0.16]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.14, 0.18, 0.02]} />
-              <meshStandardMaterial color="#ebebee" roughness={0.4} />
-            </mesh>
-            <mesh castShadow position={[0, 0.05, 0.01]}>
-              <boxGeometry args={[0.1, 0.035, 0.02]} />
-              <meshStandardMaterial color={style.accentColor} roughness={0.64} emissive={style.accentColor} emissiveIntensity={0.12} />
-            </mesh>
-          </group>
-        )}
-
-        {[-0.31, 0.31].map((x) => (
-          <mesh key={`shoulder-${x}`} castShadow position={[x, 1.24, 0]}>
-            <sphereGeometry args={[0.09, 12, 10]} />
-            <meshStandardMaterial color={style.hoodieColor} roughness={0.84} />
-          </mesh>
-        ))}
-
-        <mesh castShadow position={[0, 1.44, 0]}>
-          <cylinderGeometry args={[0.05, 0.06, 0.12, 8]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.78} />
-        </mesh>
-        <mesh castShadow position={[0, 1.67, -0.01]} scale={style.headScale}>
-          <boxGeometry args={[0.3, 0.34, 0.28]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.78} />
-        </mesh>
-        <mesh castShadow position={[0, 1.5, 0]}>
-          <boxGeometry args={[0.26, 0.05, 0.22]} />
-          <meshStandardMaterial color={palette.skinShadow} roughness={0.84} />
-        </mesh>
-        {[-0.17, 0.17].map((x) => (
-          <mesh key={`ear-${x}`} castShadow position={[x, 1.67, 0]}>
-            <boxGeometry args={[0.035, 0.07, 0.05]} />
-            <meshStandardMaterial color={palette.skin} roughness={0.8} />
-          </mesh>
-        ))}
-
-        {[-0.07, 0.07].map((x) => (
-          <mesh key={`socket-${x}`} castShadow position={[x, 1.69, 0.15]}>
-            <boxGeometry args={[0.08, 0.05, 0.03]} />
-            <meshStandardMaterial color={palette.skinShadow} roughness={0.82} />
-          </mesh>
-        ))}
-        {[-0.07, 0.07].map((x) => (
-          <group key={`eye-${x}`} position={[x, 1.695, 0.165]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.06, 0.032, 0.02]} />
-              <meshStandardMaterial color="#e8e8e8" roughness={0.45} />
-            </mesh>
-            <mesh castShadow position={[0, 0, 0.01]}>
-              <boxGeometry args={[0.026, 0.026, 0.015]} />
-              <meshStandardMaterial color={palette.iris} roughness={0.5} />
-            </mesh>
-            <mesh castShadow position={[0, 0, 0.018]}>
-              <boxGeometry args={[0.014, 0.014, 0.012]} />
-              <meshStandardMaterial color="#090909" roughness={0.5} />
-            </mesh>
-          </group>
-        ))}
-        {[-0.07, 0.07].map((x) => (
-          <mesh key={`brow-${x}`} castShadow position={[x, 1.77, 0.14]}>
-            <boxGeometry args={[0.07, 0.015, 0.025]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.9} />
-          </mesh>
-        ))}
-        <mesh castShadow position={[0, 1.62, 0.17]}>
-          <boxGeometry args={[0.035, 0.08, 0.05]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.82} />
-        </mesh>
-        <mesh castShadow position={[0, 1.58, 0.18]}>
-          <boxGeometry args={[0.05, 0.025, 0.03]} />
-          <meshStandardMaterial color={palette.skinShadow} roughness={0.84} />
-        </mesh>
-        <mesh castShadow position={[0, 1.48, 0.16]}>
-          <boxGeometry args={[0.09, 0.016, 0.02]} />
-          <meshStandardMaterial color="#a76a59" roughness={0.84} />
-        </mesh>
-        {style.hasStubble && (
-          <mesh castShadow position={[0, 1.42, 0.155]}>
-            <boxGeometry args={[0.16, 0.04, 0.025]} />
-            <meshStandardMaterial color={palette.skinShadow} roughness={0.9} />
+        {style.hasJacket && (
+          <mesh castShadow position={[0, 0.45, 0.09]}>
+            <capsuleGeometry args={[0.128, 0.3, 8, 14]} />
+            <meshStandardMaterial color={style.jacketColor} />
           </mesh>
         )}
-
+        {style.accentStripe && (
+          <mesh castShadow position={[0, 0.45, 0.145]}>
+            <boxGeometry args={[0.04, 0.25, 0.02]} />
+            <meshStandardMaterial color="#f2eddd" />
+          </mesh>
+        )}
+        {style.hasTie && (
+          <>
+            <mesh castShadow position={[0, 0.55, 0.145]} rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.035, 0.035, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+            <mesh castShadow position={[0, 0.46, 0.15]}>
+              <boxGeometry args={[0.03, 0.16, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+          </>
+        )}
+        {style.skirt ? (
+          <mesh castShadow position={[0, 0.18, 0.05]}>
+            <cylinderGeometry args={[0.11, 0.16, 0.22, 10]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+        ) : (
+          <>
+            <mesh castShadow position={[-0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+            <mesh castShadow position={[0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+          </>
+        )}
+        {style.hasApron && (
+          <mesh castShadow position={[0, 0.33, 0.13]}>
+            <boxGeometry args={[0.14, 0.18, 0.025]} />
+            <meshStandardMaterial color={style.apronColor} />
+          </mesh>
+        )}
+        <mesh castShadow position={[0, 0.68, 0.02]}>
+          <capsuleGeometry args={[0.03, 0.034, 4, 8]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+        <mesh castShadow position={[0, 0.83, -0.01]} scale={style.headScale}>
+          <sphereGeometry args={[0.125, 22, 22]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
         <AvatarHair palette={palette} style={style} />
-
-        {style.hasGlasses && (
-          <>
-            {[-0.07, 0.07].map((x) => (
-              <mesh key={`glasses-${x}`} castShadow position={[x, 1.695, 0.18]}>
-                <boxGeometry args={[0.09, 0.07, 0.02]} />
-                <meshStandardMaterial color={style.accessoryDark} roughness={0.34} metalness={0.56} />
-              </mesh>
-            ))}
-            <mesh castShadow position={[0, 1.705, 0.18]}>
-              <boxGeometry args={[0.04, 0.015, 0.02]} />
-              <meshStandardMaterial color={style.accessoryDark} roughness={0.34} metalness={0.56} />
-            </mesh>
-            {[-0.12, 0.12].map((x) => (
-              <mesh key={`temple-${x}`} castShadow position={[x, 1.69, 0.09]}>
-                <boxGeometry args={[0.02, 0.015, 0.12]} />
-                <meshStandardMaterial color={style.accessoryDark} roughness={0.36} metalness={0.56} />
-              </mesh>
-            ))}
-          </>
-        )}
-
-        {style.hasHeadphones && (
-          <>
-            <mesh castShadow position={[0, 1.36, 0.08]}>
-              <boxGeometry args={[0.26, 0.025, 0.03]} />
-              <meshStandardMaterial color={style.accessoryDark} roughness={0.4} metalness={0.28} />
-            </mesh>
-            {[-0.14, 0.14].map((x) => (
-              <group key={`cup-${x}`} position={[x, 1.34, 0.08]}>
-                <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.055, 0.055, 0.04, 10]} />
-                  <meshStandardMaterial color="#353640" roughness={0.72} />
-                </mesh>
-                <mesh castShadow rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.022]}>
-                  <cylinderGeometry args={[0.035, 0.035, 0.014, 10]} />
-                  <meshStandardMaterial color={style.accentColor} roughness={0.56} emissive={style.accentColor} emissiveIntensity={0.16} />
-                </mesh>
-              </group>
-            ))}
-          </>
-        )}
-      </group>
-
-      <group ref={leftArm} position={[-style.shoulderWidth, 1.18, 0.02]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <boxGeometry args={[0.13, style.armLength + 0.02, 0.14]} />
-          <meshStandardMaterial color={style.hoodieColor} roughness={0.84} />
+        <mesh castShadow position={[0, 0.818, 0.1]} scale={[0.56, 0.66, 0.28]}>
+          <sphereGeometry args={[0.082, 18, 18]} />
+          <meshStandardMaterial color={palette.skin} />
         </mesh>
-        <mesh castShadow position={[0, -0.29, 0]}>
-          <boxGeometry args={[0.1, 0.16, 0.11]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.8} />
+        {[-0.046, 0.046].map((x) => (
+          <group key={`face-${x}`} position={[x, 0.842, 0.112]}>
+            <mesh castShadow scale={[1.26, 1, 0.82]}>
+              <sphereGeometry args={[0.0155, 12, 12]} />
+              <meshStandardMaterial color="#fffdf8" />
+            </mesh>
+            <mesh castShadow position={[0, -0.001, 0.008]} scale={[1.12, 1.12, 0.9]}>
+              <sphereGeometry args={[0.0068, 10, 10]} />
+              <meshStandardMaterial color="#2b241f" />
+            </mesh>
+            <mesh castShadow position={[0, 0.024, -0.004]} rotation={[0, 0, x < 0 ? 0.16 : -0.16]}>
+              <boxGeometry args={[0.028, 0.005, 0.005]} />
+              <meshStandardMaterial color={palette.hair} />
+            </mesh>
+          </group>
+        ))}
+        {[-0.118, 0.118].map((x) => (
+          <mesh key={`ear-${x}`} castShadow position={[x, 0.81, 0.004]} scale={[0.8, 1.05, 0.7]}>
+            <sphereGeometry args={[0.022, 10, 10]} />
+            <meshStandardMaterial color={palette.skin} />
+          </mesh>
+        ))}
+        <mesh castShadow position={[0, 0.792, 0.122]} scale={[0.75, 1.05, 0.9]}>
+          <sphereGeometry args={[0.009, 10, 10]} />
+          <meshStandardMaterial color="#ca9a80" />
         </mesh>
-        {style.hasWatch && (
-          <>
-            <mesh castShadow position={[0, -0.235, 0]}>
-              <boxGeometry args={[0.11, 0.04, 0.12]} />
-              <meshStandardMaterial color={style.accessoryDark} roughness={0.34} metalness={0.62} />
+        <mesh castShadow position={[0, 0.752, 0.118]} rotation={[0.02, 0, 0.04]}>
+          <boxGeometry args={[0.042, 0.006, 0.006]} />
+          <meshStandardMaterial color="#ad6768" />
+        </mesh>
+        {style.hasHat && (
+          <group position={[0, 0.965, -0.01]}>
+            <mesh castShadow scale={[1.04, 0.72, 1.02]}>
+              <sphereGeometry args={[0.132, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
+              <meshStandardMaterial color={style.hatColor} roughness={0.82} />
             </mesh>
-            <mesh castShadow position={[0, -0.22, 0.04]}>
-              <boxGeometry args={[0.06, 0.016, 0.05]} />
-              <meshStandardMaterial color={style.accentColor} emissive={style.accentColor} emissiveIntensity={0.22} roughness={0.22} />
+            <mesh castShadow position={[0, -0.012, 0.086]} rotation={[0.28, 0, 0]}>
+              <boxGeometry args={[0.16, 0.02, 0.09]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
             </mesh>
-          </>
+            <mesh castShadow position={[0, -0.055, -0.055]}>
+              <boxGeometry args={[0.16, 0.05, 0.12]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
+            </mesh>
+          </group>
         )}
       </group>
-      <group ref={rightArm} position={[style.shoulderWidth, 1.18, 0.02]}>
+
+      <group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
         <mesh castShadow position={[0, -0.12, 0]}>
-          <boxGeometry args={[0.13, style.armLength + 0.02, 0.14]} />
-          <meshStandardMaterial color={style.hoodieColor} roughness={0.84} />
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
         </mesh>
-        <mesh castShadow position={[0, -0.29, 0]}>
-          <boxGeometry args={[0.1, 0.16, 0.11]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.8} />
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
         </mesh>
       </group>
-      <group ref={leftLeg} position={[-0.14, 0.76, 0]}>
+      <group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
         <mesh castShadow position={[0, -0.12, 0]}>
-          <boxGeometry args={[0.16, style.legHeight + 0.1, 0.18]} />
-          <meshStandardMaterial color={style.jeansColor} roughness={0.88} />
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
         </mesh>
-        <mesh castShadow position={[0, -0.24, 0]}>
-          <boxGeometry args={[0.17, 0.08, 0.19]} />
-          <meshStandardMaterial color={style.jeansDetailColor} roughness={0.9} />
-        </mesh>
-        <mesh castShadow position={[0, -0.37, 0]}>
-          <boxGeometry args={[0.15, 0.16, 0.16]} />
-          <meshStandardMaterial color={style.jeansColor} roughness={0.88} />
-        </mesh>
-        <mesh castShadow position={[0, -0.5, 0.02]}>
-          <boxGeometry args={[0.18, 0.05, 0.24]} />
-          <meshStandardMaterial color={style.sneakerColor} roughness={0.58} metalness={0.12} />
-        </mesh>
-        <mesh castShadow position={[0, -0.535, 0.02]}>
-          <boxGeometry args={[0.19, 0.025, 0.25]} />
-          <meshStandardMaterial color={style.sneakerSoleColor} roughness={0.74} />
-        </mesh>
-        <mesh castShadow position={[0, -0.475, 0.1]}>
-          <boxGeometry args={[0.14, 0.03, 0.06]} />
-          <meshStandardMaterial color={style.accentColor} roughness={0.58} emissive={style.accentColor} emissiveIntensity={0.12} />
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
         </mesh>
       </group>
-      <group ref={rightLeg} position={[0.14, 0.76, 0]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <boxGeometry args={[0.16, style.legHeight + 0.1, 0.18]} />
-          <meshStandardMaterial color={style.jeansColor} roughness={0.88} />
+      <group ref={leftLeg} position={[-0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
         </mesh>
-        <mesh castShadow position={[0, -0.24, 0]}>
-          <boxGeometry args={[0.17, 0.08, 0.19]} />
-          <meshStandardMaterial color={style.jeansDetailColor} roughness={0.9} />
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
         </mesh>
-        <mesh castShadow position={[0, -0.37, 0]}>
-          <boxGeometry args={[0.15, 0.16, 0.16]} />
-          <meshStandardMaterial color={style.jeansColor} roughness={0.88} />
+      </group>
+      <group ref={rightLeg} position={[0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
         </mesh>
-        <mesh castShadow position={[0, -0.5, 0.02]}>
-          <boxGeometry args={[0.18, 0.05, 0.24]} />
-          <meshStandardMaterial color={style.sneakerColor} roughness={0.58} metalness={0.12} />
-        </mesh>
-        <mesh castShadow position={[0, -0.535, 0.02]}>
-          <boxGeometry args={[0.19, 0.025, 0.25]} />
-          <meshStandardMaterial color={style.sneakerSoleColor} roughness={0.74} />
-        </mesh>
-        <mesh castShadow position={[0, -0.475, 0.1]}>
-          <boxGeometry args={[0.14, 0.03, 0.06]} />
-          <meshStandardMaterial color={style.accentColor} roughness={0.58} emissive={style.accentColor} emissiveIntensity={0.12} />
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
         </mesh>
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 2.02, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
+      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
 
       <mesh
-        position={[0, 0.98, 0]}
+        position={[0, 0.7, 0]}
         onPointerOver={(event) => {
           event.stopPropagation();
           onHover();
@@ -685,7 +562,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
           onSelect();
         }}
       >
-        <capsuleGeometry args={[0.26, 1.45, 6, 12]} />
+        <capsuleGeometry args={[0.22, 0.95, 6, 12]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
