@@ -5,6 +5,7 @@ const ORCHESTRATION_FILE = '/root/.openclaw/workspace/state/orchestration.json';
 const AGENTS_ROOT = '/root/.openclaw/agents';
 const MAIN_SESSIONS_FILE = '/root/.openclaw/agents/main/sessions/sessions.json';
 const RECENT_THRESHOLD_MS = 90 * 60 * 1000;
+const RECENT_DELIVERY_MS = 15 * 60 * 1000;
 
 type SessionIndexEntry = {
   sessionId?: string;
@@ -12,6 +13,10 @@ type SessionIndexEntry = {
   updatedAt?: number;
   status?: string;
   channel?: string;
+  acp?: {
+    state?: string;
+    lastActivityAt?: number;
+  };
   deliveryContext?: {
     threadId?: number;
   };
@@ -333,22 +338,36 @@ function computeLiveStatus(session: SessionIndexEntry | undefined): TeamTopic['l
     };
   }
 
-  const updatedAt = typeof session.updatedAt === 'number' ? session.updatedAt : null;
+  const updatedAt = typeof session.updatedAt === 'number'
+    ? session.updatedAt
+    : typeof session.acp?.lastActivityAt === 'number'
+      ? session.acp.lastActivityAt
+      : null;
   const idleMs = updatedAt ? Math.max(0, Date.now() - updatedAt) : null;
+  const acpState = typeof session.acp?.state === 'string' ? session.acp.state.toLowerCase() : null;
+  const baseStatus = typeof session.status === 'string' ? session.status.toLowerCase() : null;
+  const sessionStatus = acpState || baseStatus;
+  const isRunning = baseStatus === 'running' || acpState === 'running' || acpState === 'busy';
+  const isRecentDelivery = Boolean(
+    baseStatus && ['done', 'failed', 'succeeded', 'cancelled'].includes(baseStatus) && idleMs !== null && idleMs <= RECENT_DELIVERY_MS,
+  );
+
   let status: TeamTopicLiveStatus = 'idle';
 
-  if (session.status === 'running') {
+  if (isRunning) {
     status = 'running';
-  } else if (idleMs !== null && idleMs <= RECENT_THRESHOLD_MS) {
+  } else if (isRecentDelivery) {
     status = 'recent';
+  } else if (idleMs !== null && idleMs > RECENT_THRESHOLD_MS && !sessionStatus) {
+    status = 'missing';
   }
 
   return {
     status,
-    sessionStatus: session.status ?? null,
+    sessionStatus,
     updatedAt,
     idleMs,
-    freshnessLabel: session.status === 'running' ? 'live now' : timeAgo(updatedAt),
+    freshnessLabel: isRunning ? 'live now' : timeAgo(updatedAt),
   };
 }
 
