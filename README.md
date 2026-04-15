@@ -107,3 +107,39 @@ is negligible (~66 MB RAM, sub-millisecond I/O per request).
 - if unavailable, falls back to standard tracked-message flow
 - state stored in `.watch-telegram-state.json`
 - `WATCH_TELEGRAM_CHAT_ID` blank → auto-uses latest chat that messaged the bot
+
+## Telegram Team Memory + Lane Settings
+
+The Telegram team is tuned for **parallel speed with specialization**, not for giving every topic huge drifting chat history.
+
+### Operating model
+
+- **Assistant (topic 22)** = default owner / dispatcher / integrator
+- **General (topic 1)** = coordination / overview / advisor lane
+- **House Keeping (topic 5)** = audit, standards, and supervision
+- **Generic coder lanes (topics 7, 15, 18, 21)** = focused implementation workers
+- **Project lanes (Skybuddy 38, OddsGap 39)** = persistent project-specific brains
+
+### Memory architecture
+
+Durable team and project context now lives in workspace files:
+
+- `state/team-memory.json` — shared team memory policy
+- `state/lanes/*.json` — one structured state file per lane
+- `state/projects/*.json` — one structured state file per active project
+- `memory/projects/*.md` — durable per-project notes
+
+### Rules
+
+- More chat history is **not** the goal. Better routing plus better external memory is the goal.
+- Owner/project lanes keep broader context, but should write decisions back to files before context gets heavy.
+- Worker lanes should stay narrower, verify work, write the result to files, then compact/reset sooner.
+- All lanes should report outcome-first and finish tasks with a clear `DONE` signal.
+
+### Watcher project note
+
+- Project catalog path: `/opt/cryptopilotdev/projects/watcher`
+- Current live runtime repo: `/opt/watcher`
+- Workspace project state: `state/projects/watcher.json`
+- Workspace durable memory note: `memory/projects/watcher.md`
+

@@ -34,7 +34,7 @@ function parseSafe(raw: string): any {
 
 const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
 const OPENCLAW_DIR  = '/root/.openclaw';
-const WATCH_STATE_FILE = path.join(process.cwd(), '.watch-state.json');
+const WATCH_STATE_FILE = path.join(process.cwd(), '.state', 'watch-state.json');
 
 function listAgentIds(): string[] {
   const agentsDir = path.join(OPENCLAW_DIR, 'agents');

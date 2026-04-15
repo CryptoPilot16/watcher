@@ -39,7 +39,7 @@ type TelegramUpdate = {
   };
 };
 
-const STATE_FILE = path.join(process.cwd(), '.watch-telegram-state.json');
+const STATE_FILE = path.join(process.cwd(), '.state', 'watch-telegram-state.json');
 const MAX_MESSAGE_LENGTH = 4096;
 const DEFAULT_DRAFT_ID = 1;
 

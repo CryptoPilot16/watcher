@@ -33,8 +33,7 @@ yarn-error.log*
 # local env files
 .env.local
 .env.*.local
-.watch-telegram-state.json
-.watch-state.json
+/.state/
 
 # vercel
 .vercel
