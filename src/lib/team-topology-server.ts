@@ -371,11 +371,21 @@ function computeLiveStatus(session: SessionIndexEntry | undefined): TeamTopic['l
   };
 }
 
+function latestSessionEntry(sessionsIndex: Record<string, SessionIndexEntry>) {
+  return Object.entries(sessionsIndex)
+    .sort(([, a], [, b]) => {
+      const aTs = typeof a?.updatedAt === 'number' ? a.updatedAt : typeof a?.acp?.lastActivityAt === 'number' ? a.acp.lastActivityAt : 0;
+      const bTs = typeof b?.updatedAt === 'number' ? b.updatedAt : typeof b?.acp?.lastActivityAt === 'number' ? b.acp.lastActivityAt : 0;
+      return bTs - aTs;
+    })[0];
+}
+
 function getSessionEntry(
   sessionsIndex: Record<string, SessionIndexEntry>,
   groupId: string,
   topicId: string,
   agentId: string,
+  agentLaneCount: number,
 ) {
   const directKey = `agent:${agentId}:telegram:group:${groupId}:topic:${topicId}`;
   if (sessionsIndex[directKey]) return { key: directKey, session: sessionsIndex[directKey] };
@@ -384,8 +394,14 @@ function getSessionEntry(
     return key.includes(`topic:${topicId}`) || value?.deliveryContext?.threadId === Number(topicId);
   });
 
-  if (!fallback) return { key: directKey, session: undefined };
-  return { key: fallback[0], session: fallback[1] };
+  if (fallback) return { key: fallback[0], session: fallback[1] };
+
+  if (agentLaneCount === 1) {
+    const latest = latestSessionEntry(sessionsIndex);
+    if (latest) return { key: latest[0], session: latest[1] };
+  }
+
+  return { key: directKey, session: undefined };
 }
 
 function listAgentIds() {
@@ -450,11 +466,17 @@ export function getTeamTopology(): string {
   const groupId = String(orchestration?.telegramTeam?.groupId || '');
   const lanes = Array.isArray(orchestration?.telegramTeam?.lanes) ? orchestration.telegramTeam.lanes : [];
 
+  const laneCountByAgent = lanes.reduce((map: Record<string, number>, lane: any) => {
+    const agentId = String(lane?.agent || 'main');
+    map[agentId] = (map[agentId] || 0) + 1;
+    return map;
+  }, {});
+
   const topics: TeamTopic[] = lanes.map((lane: any) => {
     const topicId = String(lane?.topicId || '');
     const agentId = String(lane?.agent || 'main');
     const sessionsIndex = sessionIndexesByAgent.get(agentId) || {};
-    const resolved = getSessionEntry(sessionsIndex, groupId, topicId, agentId);
+    const resolved = getSessionEntry(sessionsIndex, groupId, topicId, agentId, laneCountByAgent[agentId] || 0);
     const session = resolved.session;
     const sessionFile = resolveSessionFile(agentId, topicId, session);
     const parsed = parseTopicSession(sessionFile && fs.existsSync(sessionFile) ? sessionFile : null);
