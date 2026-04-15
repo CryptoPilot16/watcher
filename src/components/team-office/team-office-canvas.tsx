@@ -1084,32 +1084,6 @@ function HubFallback() {
         </mesh>
       ))}
 
-      <group position={[0, 0.02, -0.88]} rotation={[0, Math.PI, 0]}>
-        <mesh position={[0, 0.28, 0]} castShadow>
-          <boxGeometry args={[0.6, 0.09, 0.56]} />
-          <meshStandardMaterial color="#637589" />
-        </mesh>
-        <mesh position={[0, 0.58, 0.18]} castShadow>
-          <boxGeometry args={[0.58, 0.46, 0.12]} />
-          <meshStandardMaterial color="#6c7f95" />
-        </mesh>
-        <mesh position={[0, 0.14, 0]} castShadow>
-          <cylinderGeometry args={[0.05, 0.06, 0.28, 14]} />
-          <meshStandardMaterial color="#5d574f" />
-        </mesh>
-        {[
-          [-0.27, 0.04, 0.22],
-          [0.27, 0.04, 0.22],
-          [-0.29, 0.04, -0.16],
-          [0.29, 0.04, -0.16],
-          [0, 0.04, -0.28],
-        ].map((leg, i) => (
-          <mesh key={`pilot-chair-${i}`} position={leg as [number, number, number]} castShadow>
-            <boxGeometry args={[0.14, 0.02, 0.04]} />
-            <meshStandardMaterial color="#433d38" />
-          </mesh>
-        ))}
-      </group>
     </>
   );
 }
