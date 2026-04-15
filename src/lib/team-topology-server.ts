@@ -30,6 +30,8 @@ type TopicSignal = {
   source: TeamTaskSource;
   confidence: TeamTaskConfidence;
   updatedAt: string | null;
+  progress: number | null;
+  progressLabel: string | null;
   score: number;
 };
 
@@ -156,21 +158,56 @@ function cleanUserText(rawText: string) {
   };
 }
 
+function clampProgress(value: number | null | undefined) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return Math.max(0, Math.min(1, value));
+}
+
+function parseProgressFromText(text: string | null | undefined) {
+  const normalized = String(text || '').trim();
+  if (!normalized) return { progress: null, progressLabel: null };
+
+  const percentMatch = normalized.match(/\b(100|[1-9]?\d)%\b/);
+  if (percentMatch) {
+    const pct = Number(percentMatch[1]);
+    return { progress: clampProgress(pct / 100), progressLabel: `${pct}%` };
+  }
+
+  const fractionMatch = normalized.match(/\b(\d{1,2})\s*(?:\/|of)\s*(\d{1,2})\b/i);
+  if (fractionMatch) {
+    const done = Number(fractionMatch[1]);
+    const total = Number(fractionMatch[2]);
+    if (total > 0) {
+      return { progress: clampProgress(done / total), progressLabel: `${done}/${total}` };
+    }
+  }
+
+  return { progress: null, progressLabel: null };
+}
+
 function parseSignalFromUpdatePlan(obj: any, timestamp: string): TopicSignal | null {
   const details = obj?.message?.details || {};
   const plan = Array.isArray(details?.plan) ? details.plan : [];
   if (plan.length === 0) return null;
 
+  const completedCount = plan.filter((step: any) => step?.status === 'completed').length;
+  const inProgressCount = plan.filter((step: any) => step?.status === 'in_progress').length;
+  const totalCount = plan.filter((step: any) => step?.step).length || plan.length;
   const inProgress = plan.find((step: any) => step?.status === 'in_progress');
   const completed = [...plan].reverse().find((step: any) => step?.status === 'completed');
-  const step = inProgress || completed;
+  const step = inProgress || completed || plan[0];
   if (!step?.step) return null;
+
+  const progress = totalCount > 0 ? clampProgress((completedCount + (inProgressCount > 0 ? 0.5 : 0)) / totalCount) : null;
+  const progressLabel = totalCount > 0 ? `${Math.min(completedCount, totalCount)}/${totalCount}` : null;
 
   return {
     snippet: truncate(step.step, 160),
     source: 'plan',
     confidence: 'high',
     updatedAt: timestamp || null,
+    progress,
+    progressLabel,
     score: 300,
   };
 }
@@ -179,11 +216,14 @@ function parseSignalFromYield(obj: any): TopicSignal | null {
   const timestamp = obj?.timestamp || null;
   const direct = truncate(obj?.message?.details?.message || obj?.content || '', 160);
   if (!direct) return null;
+  const { progress, progressLabel } = parseProgressFromText(direct);
   return {
     snippet: direct,
     source: 'yield',
     confidence: 'high',
     updatedAt: timestamp,
+    progress,
+    progressLabel,
     score: 280,
   };
 }
@@ -201,6 +241,8 @@ function parseTopicSession(sessionFile: string | null): TopicSessionParse {
     source: 'none',
     confidence: 'low',
     updatedAt: null,
+    progress: null,
+    progressLabel: null,
     score: 0,
   };
 
@@ -254,11 +296,14 @@ function parseTopicSession(sessionFile: string | null): TopicSessionParse {
       }
       if (cleaned.text) {
         lastUserText = cleaned.text;
+        const { progress, progressLabel } = parseProgressFromText(cleaned.text);
         currentTask = maybePickSignal(currentTask, {
           snippet: cleaned.text,
           source: 'user',
           confidence: 'medium',
           updatedAt: timestamp,
+          progress,
+          progressLabel,
           score: 180,
         });
       }
@@ -279,11 +324,14 @@ function parseTopicSession(sessionFile: string | null): TopicSessionParse {
       const cleaned = cleanAssistantText(assistantTextParts.join(' '));
       if (cleaned) {
         lastAssistantText = cleaned;
+        const { progress, progressLabel } = parseProgressFromText(cleaned);
         currentTask = maybePickSignal(currentTask, {
           snippet: cleaned,
           source: 'assistant',
           confidence: 'low',
           updatedAt: timestamp,
+          progress,
+          progressLabel,
           score: 100,
         });
       }
@@ -311,6 +359,8 @@ function parseTopicSession(sessionFile: string | null): TopicSessionParse {
           source: 'tool',
           confidence: 'low',
           updatedAt: timestamp,
+          progress: null,
+          progressLabel: null,
           score: 80,
         });
       }
@@ -505,6 +555,8 @@ export function getTeamTopology(): string {
         source: parsed.currentTask.source,
         updatedAt: parsed.currentTask.updatedAt,
         confidence: parsed.currentTask.confidence,
+        progress: parsed.currentTask.progress,
+        progressLabel: parsed.currentTask.progressLabel,
       },
       recent: {
         lastUserText: parsed.lastUserText,

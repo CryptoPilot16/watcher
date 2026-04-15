@@ -31,6 +31,8 @@ export type TeamTopic = {
     source: TeamTaskSource;
     updatedAt: string | null;
     confidence: TeamTaskConfidence;
+    progress: number | null;
+    progressLabel: string | null;
   };
   recent: {
     lastUserText: string | null;
