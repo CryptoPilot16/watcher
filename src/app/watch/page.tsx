@@ -33,6 +33,7 @@ import {
 import {
   parseTeamTopology,
   sortTeamTopics,
+  topicDisplayLabel,
   type TeamTopic,
   type TeamTopology,
 } from '@/lib/watch-team';
@@ -750,7 +751,7 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
               <div key={topic.topicId} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{topic.configured.label}</div>
+                    <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{topicDisplayLabel(topic)}</div>
                     <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
                       {topic.telegram.currentTopicName || `topic ${topic.topicId}`} · {topic.configured.role.replace(/_/g, ' ')}
                     </div>
@@ -809,7 +810,7 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
               activeTasks.map((topic) => (
                 <div key={topic.topicId} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--watch-accent-strong)]">{topic.configured.label}</div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--watch-accent-strong)]">{topicDisplayLabel(topic)}</div>
                     <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{topic.currentTask.confidence}</span>
                   </div>
                   <div className="mt-2 text-xs leading-6 text-[var(--watch-text-bright)]">{topic.currentTask.snippet}</div>

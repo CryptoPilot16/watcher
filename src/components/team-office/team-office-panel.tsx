@@ -1,6 +1,6 @@
 'use client';
 
-import { sortTeamTopics, type TeamTopology } from '@/lib/watch-team';
+import { sortTeamTopics, topicDisplayLabel, type TeamTopology } from '@/lib/watch-team';
 import { TeamOfficeCanvas } from './team-office-canvas';
 
 function statusTone(status: 'running' | 'recent' | 'idle' | 'missing') {
@@ -68,7 +68,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
                 background: topic.live.status === 'running' ? 'rgba(103,232,249,0.12)' : 'rgba(251,191,36,0.10)',
               }}
             >
-              {topic.configured.label}
+              {topicDisplayLabel(topic)}
             </div>
           ))}
         </div>
@@ -114,7 +114,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
                 <div key={topic.topicId} className="rounded-lg border px-3 py-3" style={{ borderColor: tone.border, background: 'rgba(255,255,255,0.02)' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-[11px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)]">{topic.configured.label}</div>
+                      <div className="truncate text-[11px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)]">{topicDisplayLabel(topic)}</div>
                       <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{topic.currentTask.source === 'none' ? 'waiting' : topic.currentTask.source}</div>
                     </div>
                     <span className="rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-[0.14em]" style={{ color: tone.color, background: tone.background }}>

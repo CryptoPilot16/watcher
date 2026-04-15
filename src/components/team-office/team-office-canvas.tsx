@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { AvatarAccessory, type AvatarAccessoryId } from './avatar-accessory-pipeline';
 import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
-import type { TeamTaskSource, TeamTopic } from '@/lib/watch-team';
+import { topicDisplayLabel, type TeamTaskSource, type TeamTopic } from '@/lib/watch-team';
 import {
   loadOfficeLocalAssetManifest,
   OfficeAssetSlot,
@@ -82,11 +81,11 @@ function hashLabel(label: string) {
 
 
 function paletteForTopic(topic: TeamTopic) {
-  const seed = hashLabel(topic.configured.label);
+  const seed = hashLabel(topicDisplayLabel(topic));
   const skin = ['#f3d4bc', '#e2b893', '#c68f69', '#8b593f'][seed % 4];
-  const hair = ['#1f1814', '#4f2f22', '#2e3240', '#6a5440'][(seed >> 2) % 4];
-  const top = ['#7d91bb', '#8c6d58', '#6d7f66', '#5f7395', '#b28b4a', '#9a5c4f', '#7f6d96'][(seed >> 4) % 7];
-  const bottom = ['#394252', '#484850', '#4e5d6f', '#454d59', '#5b687e'][(seed >> 6) % 5];
+  const hair = ['#171410', '#3a2c22', '#26292f', '#5a4a3c'][(seed >> 2) % 4];
+  const top = ['#55624c', '#667257', '#4d5a45', '#72715f', '#60705a', '#4f5d49', '#6a6d52'][(seed >> 4) % 7];
+  const bottom = ['#30372e', '#3d4437', '#343c33', '#47463b', '#2e332d'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
 }
 
@@ -114,39 +113,35 @@ type WorkerStyle = {
   shoeColor: string;
   hairStyle: 'bob' | 'part' | 'bun' | 'crop' | 'flip';
   hairVolume: number;
-  headAccessory?: AvatarAccessoryId;
-  neckAccessory?: AvatarAccessoryId;
 };
 
 function styleForTopic(topic: TeamTopic): WorkerStyle {
-  const seed = hashLabel(topic.configured.label);
+  const seed = hashLabel(topicDisplayLabel(topic));
   const archetype = seed % 7;
   return {
-    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
-    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
-    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
-    legHeight: archetype === 5 ? 0.21 : 0.235,
-    armLength: archetype === 4 ? 0.24 : 0.22,
-    hasHat: [0, 3, 4, 6].includes(archetype),
-    hatColor: ['#ffffff', '#151820', '#314b88', '#f0c84e', '#f0c84e', '#efe7db', '#5a7fd2'][archetype],
-    hatBrimColor: ['#d74f52', '#2f3340', '#2f3340', '#b6892d', '#c89a3b', '#151515', '#2f7aa6'][archetype],
-    hasApron: archetype === 5,
+    bodyScale: archetype === 4 ? [1.03, 1.12, 0.98] : archetype === 5 ? [0.98, 1.06, 0.95] : [1.01, 1.08, 0.96],
+    headScale: archetype === 0 ? [1.18, 1.12, 1.08] : archetype === 3 ? [1.14, 1.08, 1.04] : [1.12, 1.06, 1.02],
+    shoulderWidth: archetype === 5 ? 0.134 : archetype === 4 ? 0.15 : 0.142,
+    legHeight: 0.24,
+    armLength: archetype === 4 ? 0.25 : 0.235,
+    hasHat: true,
+    hatColor: ['#4a5842', '#5a6448', '#414b39', '#666451', '#56624c', '#454d3f', '#646851'][archetype],
+    hatBrimColor: ['#2c3228', '#31392d', '#262c23', '#3c3a31', '#343d30', '#272d25', '#3a3d2f'][archetype],
+    hasApron: false,
     apronColor: '#f3f0ea',
-    hasJacket: archetype === 2 || archetype === 3,
-    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
-    skirt: archetype === 5 || archetype === 6,
-    accentStripe: archetype === 0 || archetype === 4,
-    hasVest: archetype === 1 || archetype === 4,
-    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
-    hasTie: archetype === 0 || archetype === 2,
-    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
-    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
-    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
-    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
-    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
-    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
-    headAccessory: archetype === 1 || archetype === 3 ? 'sunglasses1' : undefined,
-    neckAccessory: archetype === 5 || archetype === 6 ? 'pearlNecklace' : undefined,
+    hasJacket: true,
+    jacketColor: ['#637158', '#70775c', '#56624d', '#797564', '#68745d', '#535d4a', '#73775d'][archetype],
+    skirt: false,
+    accentStripe: archetype % 2 === 0,
+    hasVest: true,
+    vestColor: ['#495341', '#5a5e47', '#424b3b', '#666351', '#505945', '#444b3d', '#5b5f49'][archetype],
+    hasTie: false,
+    tieColor: '#506b9f',
+    blouseColor: ['#cfc8b5', '#c6c0ad', '#b9b49f', '#d3ccb8', '#c7c2af', '#bbb49e', '#d0c8b2'][archetype],
+    sockColor: '#596252',
+    shoeColor: ['#252822', '#2c2e28', '#20231e', '#35362f', '#2b3027', '#232720', '#31332a'][archetype],
+    hairStyle: ['crop', 'crop', 'part', 'crop', 'part', 'crop', 'part'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: 0.92,
   };
 }
 
@@ -454,7 +449,6 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
             <meshStandardMaterial color={style.apronColor} />
           </mesh>
         )}
-        {style.neckAccessory && <AvatarAccessory id={style.neckAccessory} />}
         <mesh castShadow position={[0, 0.68, 0.02]}>
           <capsuleGeometry args={[0.03, 0.034, 4, 8]} />
           <meshStandardMaterial color={palette.skin} />
@@ -464,44 +458,53 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
           <meshStandardMaterial color={palette.skin} />
         </mesh>
         <AvatarHair palette={palette} style={style} />
-        <mesh castShadow position={[0, 0.81, 0.105]} rotation={[Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.02, 0.05, 8]} />
+        <mesh castShadow position={[0, 0.818, 0.1]} scale={[0.56, 0.66, 0.28]}>
+          <sphereGeometry args={[0.082, 18, 18]} />
           <meshStandardMaterial color={palette.skin} />
         </mesh>
-        {[-0.042, 0.042].map((x) => (
-          <group key={`face-${x}`} position={[x, 0.845, 0.108]}>
-            <mesh castShadow>
-              <sphereGeometry args={[0.015, 12, 12]} />
-              <meshStandardMaterial color="#f8f2ea" />
+        {[-0.046, 0.046].map((x) => (
+          <group key={`face-${x}`} position={[x, 0.842, 0.112]}>
+            <mesh castShadow scale={[1.26, 1, 0.82]}>
+              <sphereGeometry args={[0.0155, 12, 12]} />
+              <meshStandardMaterial color="#fffdf8" />
             </mesh>
-            <mesh castShadow position={[0, 0, 0.008]}>
-              <sphereGeometry args={[0.0065, 10, 10]} />
-              <meshStandardMaterial color="#2e261f" />
+            <mesh castShadow position={[0, -0.001, 0.008]} scale={[1.12, 1.12, 0.9]}>
+              <sphereGeometry args={[0.0068, 10, 10]} />
+              <meshStandardMaterial color="#2b241f" />
             </mesh>
-            <mesh castShadow position={[0, 0.022, -0.005]} rotation={[0, 0, x < 0 ? 0.2 : -0.2]}>
-              <boxGeometry args={[0.03, 0.006, 0.006]} />
+            <mesh castShadow position={[0, 0.024, -0.004]} rotation={[0, 0, x < 0 ? 0.16 : -0.16]}>
+              <boxGeometry args={[0.028, 0.005, 0.005]} />
               <meshStandardMaterial color={palette.hair} />
             </mesh>
           </group>
         ))}
-        <mesh castShadow position={[0, 0.79, 0.116]}>
-          <sphereGeometry args={[0.008, 10, 10]} />
-          <meshStandardMaterial color="#c89678" />
+        {[-0.118, 0.118].map((x) => (
+          <mesh key={`ear-${x}`} castShadow position={[x, 0.81, 0.004]} scale={[0.8, 1.05, 0.7]}>
+            <sphereGeometry args={[0.022, 10, 10]} />
+            <meshStandardMaterial color={palette.skin} />
+          </mesh>
+        ))}
+        <mesh castShadow position={[0, 0.792, 0.122]} scale={[0.75, 1.05, 0.9]}>
+          <sphereGeometry args={[0.009, 10, 10]} />
+          <meshStandardMaterial color="#ca9a80" />
         </mesh>
-        <mesh castShadow position={[0, 0.748, 0.116]} rotation={[0, 0, 0.04]}>
-          <boxGeometry args={[0.038, 0.007, 0.006]} />
-          <meshStandardMaterial color="#b96d6c" />
+        <mesh castShadow position={[0, 0.752, 0.118]} rotation={[0.02, 0, 0.04]}>
+          <boxGeometry args={[0.042, 0.006, 0.006]} />
+          <meshStandardMaterial color="#ad6768" />
         </mesh>
-        {style.headAccessory && <AvatarAccessory id={style.headAccessory} />}
         {style.hasHat && (
-          <group position={[0, 0.98, -0.02]}>
-            <mesh castShadow>
-              <cylinderGeometry args={[0.12, 0.12, 0.05, 16]} />
-              <meshStandardMaterial color={style.hatColor} />
+          <group position={[0, 0.965, -0.01]}>
+            <mesh castShadow scale={[1.04, 0.72, 1.02]}>
+              <sphereGeometry args={[0.132, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
+              <meshStandardMaterial color={style.hatColor} roughness={0.82} />
             </mesh>
-            <mesh castShadow position={[0, -0.03, 0]}>
-              <cylinderGeometry args={[0.16, 0.16, 0.012, 18]} />
-              <meshStandardMaterial color={style.hatBrimColor} />
+            <mesh castShadow position={[0, -0.012, 0.086]} rotation={[0.28, 0, 0]}>
+              <boxGeometry args={[0.16, 0.02, 0.09]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
+            </mesh>
+            <mesh castShadow position={[0, -0.055, -0.055]}>
+              <boxGeometry args={[0.16, 0.05, 0.12]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
             </mesh>
           </group>
         )}
@@ -549,7 +552,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topic.configured.label} color={statusColor(topic.live.status)} position={[0.42, 1.56, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
+      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.42, 1.56, 0.04]} visible={emphasized || topic.live.status !== 'idle'} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -944,32 +947,82 @@ function SideTableFallback() {
 function HubFallback() {
   return (
     <>
-      <RoundedBox args={[2.9, 0.16, 1.42]} radius={0.06} smoothness={4} position={[0, 0.08, 0]} castShadow>
-        <meshStandardMaterial color="#edf2f6" />
+      <RoundedBox args={[3.2, 0.1, 1.55]} radius={0.05} smoothness={4} position={[0, 0.47, 0]} castShadow>
+        <meshStandardMaterial color="#ddd4c5" roughness={0.9} />
       </RoundedBox>
-      {[-1.15, 1.15].map((x, i) => (
-        <mesh key={i} position={[x, 0.24, -0.42]} castShadow>
-          <boxGeometry args={[0.16, 0.48, 0.16]} />
-          <meshStandardMaterial color="#9f7753" />
+      <RoundedBox args={[3.08, 0.42, 0.16]} radius={0.04} smoothness={4} position={[0, 0.24, 0.69]} castShadow>
+        <meshStandardMaterial color="#cfc4b3" roughness={0.92} />
+      </RoundedBox>
+      {[-1.35, 1.35].map((x, i) => (
+        <mesh key={i} position={[x, 0.23, -0.56]} castShadow>
+          <boxGeometry args={[0.14, 0.46, 0.14]} />
+          <meshStandardMaterial color="#8b7968" />
         </mesh>
       ))}
-      <mesh position={[0, 0.82, -0.24]} castShadow>
-        <RoundedBox args={[0.92, 0.44, 0.08]} radius={0.02} smoothness={4}>
-          <meshStandardMaterial color="#c8d3df" emissive="#7dffad" emissiveIntensity={0.08} />
-        </RoundedBox>
+      {[-1.35, 1.35].map((x, i) => (
+        <mesh key={`front-${i}`} position={[x, 0.23, 0.56]} castShadow>
+          <boxGeometry args={[0.14, 0.46, 0.14]} />
+          <meshStandardMaterial color="#8b7968" />
+        </mesh>
+      ))}
+
+      <RoundedBox args={[0.96, 0.52, 0.1]} radius={0.03} smoothness={4} position={[0, 0.84, -0.34]} castShadow>
+        <meshStandardMaterial color="#c3cdd7" emissive="#9cd3ff" emissiveIntensity={0.08} />
+      </RoundedBox>
+      <mesh position={[0, 0.66, -0.28]} castShadow>
+        <boxGeometry args={[0.1, 0.28, 0.12]} />
+        <meshStandardMaterial color="#646c75" />
       </mesh>
-      <mesh position={[0, 0.62, -0.24]} castShadow>
-        <boxGeometry args={[0.08, 0.38, 0.08]} />
-        <meshStandardMaterial color="#64707d" />
+      <mesh position={[0, 0.85, -0.395]} castShadow>
+        <boxGeometry args={[0.78, 0.34, 0.02]} />
+        <meshStandardMaterial color="#9fc9d9" emissive="#9fc9d9" emissiveIntensity={0.38} />
       </mesh>
-      <mesh position={[-0.72, 0.57, 0.12]} castShadow>
-        <boxGeometry args={[0.42, 0.04, 0.22]} />
-        <meshStandardMaterial color="#d8dde4" />
+
+      <mesh position={[-0.92, 0.53, -0.12]} castShadow>
+        <boxGeometry args={[0.42, 0.04, 0.26]} />
+        <meshStandardMaterial color="#d6d7d4" />
       </mesh>
-      <mesh position={[0.72, 0.57, 0.12]} castShadow>
-        <boxGeometry args={[0.42, 0.04, 0.22]} />
-        <meshStandardMaterial color="#d8dde4" />
+      <mesh position={[0.92, 0.53, -0.08]} castShadow>
+        <boxGeometry args={[0.48, 0.04, 0.28]} />
+        <meshStandardMaterial color="#d6d7d4" />
       </mesh>
+      <mesh position={[1.16, 0.57, 0.42]} castShadow>
+        <boxGeometry args={[0.62, 0.22, 0.72]} />
+        <meshStandardMaterial color="#c9bead" roughness={0.92} />
+      </mesh>
+      {[0.28, 0.42, 0.56].map((y, i) => (
+        <mesh key={`pilot-drawer-${i}`} position={[1.42, y, 0.56]} castShadow>
+          <boxGeometry args={[0.03, 0.07, 0.18]} />
+          <meshStandardMaterial color="#7c6b5d" />
+        </mesh>
+      ))}
+
+      <group position={[0, 0.02, -0.88]}>
+        <mesh position={[0, 0.28, 0]} castShadow>
+          <boxGeometry args={[0.6, 0.09, 0.56]} />
+          <meshStandardMaterial color="#637589" />
+        </mesh>
+        <mesh position={[0, 0.58, 0.18]} castShadow>
+          <boxGeometry args={[0.58, 0.46, 0.12]} />
+          <meshStandardMaterial color="#6c7f95" />
+        </mesh>
+        <mesh position={[0, 0.14, 0]} castShadow>
+          <cylinderGeometry args={[0.05, 0.06, 0.28, 14]} />
+          <meshStandardMaterial color="#5d574f" />
+        </mesh>
+        {[
+          [-0.27, 0.04, 0.22],
+          [0.27, 0.04, 0.22],
+          [-0.29, 0.04, -0.16],
+          [0.29, 0.04, -0.16],
+          [0, 0.04, -0.28],
+        ].map((leg, i) => (
+          <mesh key={`pilot-chair-${i}`} position={leg as [number, number, number]} castShadow>
+            <boxGeometry args={[0.14, 0.02, 0.04]} />
+            <meshStandardMaterial color="#433d38" />
+          </mesh>
+        ))}
+      </group>
     </>
   );
 }
@@ -1252,7 +1305,7 @@ function FallbackOffice({ topics }: { topics: TeamTopic[] }) {
       <div className="absolute inset-x-8 bottom-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {topics.slice(0, 8).map((topic) => (
           <div key={topic.topicId} className="rounded-lg border border-black/10 bg-[rgba(12,12,16,0.84)] px-3 py-2 text-white shadow-lg">
-            <div className="truncate text-[10px] uppercase tracking-[0.16em] text-white/65">{topic.configured.label}</div>
+            <div className="truncate text-[10px] uppercase tracking-[0.16em] text-white/65">{topicDisplayLabel(topic)}</div>
             <div className="mt-1 text-[11px]" style={{ color: statusColor(topic.live.status) }}>{actionLabel(topic)}</div>
           </div>
         ))}
@@ -1275,7 +1328,7 @@ function TopicInfoCard({ topic, isMobile, expanded, onToggle }: { topic: TeamTop
             className="rounded-lg border border-white/10 bg-[rgba(10,10,14,0.82)] px-3 py-2 text-left text-white shadow-xl backdrop-blur-md"
           >
             <div className="flex items-center gap-2">
-              <span className="truncate text-[11px] font-semibold" style={{ color }}>{topic.configured.label}</span>
+              <span className="truncate text-[11px] font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</span>
               <span className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>{topic.live.status}</span>
             </div>
           </button>
@@ -1288,7 +1341,7 @@ function TopicInfoCard({ topic, isMobile, expanded, onToggle }: { topic: TeamTop
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
-            <div className="truncate text-sm font-semibold" style={{ color }}>{topic.configured.label}</div>
+            <div className="truncate text-sm font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
           </div>
           <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
@@ -1307,7 +1360,7 @@ function TopicInfoCard({ topic, isMobile, expanded, onToggle }: { topic: TeamTop
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
-          <div className="truncate text-base font-semibold" style={{ color }}>{topic.configured.label}</div>
+          <div className="truncate text-base font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
         </div>
         <div className="rounded px-2 py-1 text-[10px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>
           {topic.live.status}
@@ -1507,15 +1560,15 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={5.2}
-          maxDistance={48}
-          zoomSpeed={1.35}
-          panSpeed={1.2}
-          rotateSpeed={0.9}
-          minPolarAngle={0.42}
-          maxPolarAngle={1.55}
-          minAzimuthAngle={-Math.PI}
-          maxAzimuthAngle={Math.PI}
+          minDistance={3.8}
+          maxDistance={56}
+          zoomSpeed={1.5}
+          panSpeed={1.35}
+          rotateSpeed={1.08}
+          minPolarAngle={0.24}
+          maxPolarAngle={2.45}
+          minAzimuthAngle={-Math.PI * 2}
+          maxAzimuthAngle={Math.PI * 2}
           target={[0, 1.15, 1.65]}
           screenSpacePanning
           touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}

@@ -111,6 +111,10 @@ export function topicRoleRank(role: string) {
   }
 }
 
+export function topicDisplayLabel(topic: TeamTopic) {
+  return topic.telegram.currentTopicName || topic.telegram.lastSeenTopicName || topic.configured.label || `Topic ${topic.topicId}`;
+}
+
 export function sortTeamTopics(topics: TeamTopic[]) {
   return [...topics].sort((a, b) => {
     const roleRank = topicRoleRank(a.configured.role) - topicRoleRank(b.configured.role);
@@ -119,7 +123,7 @@ export function sortTeamTopics(topics: TeamTopic[]) {
     const statusRank = liveStatusRank(a.live.status) - liveStatusRank(b.live.status);
     if (statusRank !== 0) return statusRank;
 
-    return a.configured.label.localeCompare(b.configured.label);
+    return topicDisplayLabel(a).localeCompare(topicDisplayLabel(b));
   });
 }
 
