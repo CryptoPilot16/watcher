@@ -1134,9 +1134,8 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   const inactiveTopics = topics.filter((topic) => !['running', 'recent'].includes(topic.live.status));
   const inactiveColumns = Math.min(2, Math.max(1, inactiveTopics.length));
   const inactiveRows = Math.max(1, Math.ceil(inactiveTopics.length / inactiveColumns));
-  const inactiveSpacingX = 0.84;
-  const inactiveSpacingZ = 0.7;
-  const inactiveBaseZ = -0.95;
+  const inactiveSpacingX = 1;
+  const inactiveSpacingZ = 0.72;
   const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
 
   return topics.map((topic, index) => {
@@ -1150,8 +1149,8 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const inactiveIndex = inactiveIndexById.get(topic.topicId) ?? index;
     const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
     const inactiveColumn = inactiveIndex % inactiveColumns;
-    const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX + jitter * 0.35;
-    const standbyZ = inactiveBaseZ - inactiveRow * inactiveSpacingZ + (inactiveRows > 1 ? ((inactiveRows - 1) * inactiveSpacingZ) / 2 : 0);
+    const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
+    const standbyZ = 0.94 + (inactiveRow - (inactiveRows - 1) / 2) * inactiveSpacingZ;
 
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.22;
