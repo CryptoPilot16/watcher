@@ -1,10 +1,10 @@
 'use client';
 
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, Float, OrbitControls, RoundedBox, useAnimations, useFBX, useGLTF } from '@react-three/drei';
+import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { SkeletonUtils, type OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { topicDisplayLabel, type TeamTaskSource, type TeamTopic } from '@/lib/watch-team';
 import {
@@ -12,8 +12,6 @@ import {
   OfficeAssetSlot,
   preloadOfficeAssets,
   resolveOfficeAssetManifest,
-  withOfficePrivateAssetPath,
-  OFFICE_PRIVATE_ASSET_ROOT,
   type OfficeAssetManifestOverride,
 } from './office-asset-pipeline';
 
@@ -81,215 +79,13 @@ function hashLabel(label: string) {
   return hash;
 }
 
-const WORKER_AVATAR_MANIFEST_URL = `${OFFICE_PRIVATE_ASSET_ROOT}/avatar-rig.manifest.local.json`;
-
-type WorkerMode = 'desk' | 'delivery' | 'standby';
-type WorkerAvatarClip = 'Typing' | 'Standing' | 'Presenting';
-
-type WorkerAvatarAssetEntry = {
-  url: string;
-  scale?: number | [number, number, number];
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-};
-
-type WorkerAvatarManifest = {
-  model?: WorkerAvatarAssetEntry;
-  animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>>;
-  stateMap: Record<WorkerMode, WorkerAvatarClip>;
-};
-
-function clipForWorkerMode(mode: WorkerMode): WorkerAvatarClip {
-  if (mode === 'desk') return 'Typing';
-  if (mode === 'delivery') return 'Presenting';
-  return 'Standing';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function asVector3(value: unknown): [number, number, number] | undefined {
-  if (!Array.isArray(value) || value.length !== 3) return undefined;
-  if (!value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))) return undefined;
-  return value as [number, number, number];
-}
-
-function asScale(value: unknown): number | [number, number, number] | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  return asVector3(value);
-}
-
-function toWorkerAvatarAssetEntry(value: unknown): WorkerAvatarAssetEntry | null {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return { url: withOfficePrivateAssetPath(value.trim()) };
-  }
-
-  if (!isRecord(value)) return null;
-
-  const file = typeof value.file === 'string' ? value.file.trim() : '';
-  const explicitUrl = typeof value.url === 'string' ? value.url.trim() : '';
-  const url = explicitUrl || (file ? withOfficePrivateAssetPath(file) : '');
-  if (!url) return null;
-
-  const entry: WorkerAvatarAssetEntry = { url };
-  const position = asVector3(value.position);
-  const rotation = asVector3(value.rotation);
-  const scale = asScale(value.scale);
-
-  if (position) entry.position = position;
-  if (rotation) entry.rotation = rotation;
-  if (scale !== undefined) entry.scale = scale;
-
-  return entry;
-}
-
-function parseWorkerAvatarLocalManifest(value: unknown): WorkerAvatarManifest | null {
-  if (!isRecord(value)) return null;
-
-  const model = toWorkerAvatarAssetEntry(value.model);
-  const animationsBlock = isRecord(value.animations) ? value.animations : {};
-  const animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>> = {};
-
-  (['Typing', 'Standing', 'Presenting'] as WorkerAvatarClip[]).forEach((clip) => {
-    const entry = toWorkerAvatarAssetEntry(animationsBlock[clip]);
-    if (entry) animations[clip] = entry;
-  });
-
-  const stateMapBlock = isRecord(value.stateMap) ? value.stateMap : {};
-  const stateMap: Record<WorkerMode, WorkerAvatarClip> = {
-    desk: stateMapBlock.desk === 'Standing' || stateMapBlock.desk === 'Presenting' ? stateMapBlock.desk : 'Typing',
-    standby: stateMapBlock.standby === 'Typing' || stateMapBlock.standby === 'Presenting' ? stateMapBlock.standby : 'Standing',
-    delivery: stateMapBlock.delivery === 'Typing' || stateMapBlock.delivery === 'Standing' ? stateMapBlock.delivery : 'Presenting',
-  };
-
-  if (!model) return null;
-  return { model, animations, stateMap };
-}
-
-async function loadWorkerAvatarLocalManifest(signal?: AbortSignal): Promise<WorkerAvatarManifest | null> {
-  try {
-    const response = await fetch(WORKER_AVATAR_MANIFEST_URL, {
-      cache: 'no-store',
-      signal,
-    });
-    if (!response.ok) return null;
-    return parseWorkerAvatarLocalManifest((await response.json()) as unknown);
-  } catch {
-    return null;
-  }
-}
-
-function hasWorkerAvatarManifest(manifest?: WorkerAvatarManifest | null): manifest is WorkerAvatarManifest {
-  return Boolean(manifest?.model && manifest.animations.Typing && manifest.animations.Standing && manifest.animations.Presenting);
-}
-
-function preloadWorkerAvatarAssets(manifest?: WorkerAvatarManifest | null) {
-  if (!hasWorkerAvatarManifest(manifest)) return;
-  useGLTF.preload(manifest.model.url);
-  useFBX.preload(manifest.animations.Typing.url);
-  useFBX.preload(manifest.animations.Standing.url);
-  useFBX.preload(manifest.animations.Presenting.url);
-}
-
-type WorkerAvatarAssetBoundaryProps = {
-  fallback: ReactNode;
-  children: ReactNode;
-};
-
-type WorkerAvatarAssetBoundaryState = {
-  hasError: boolean;
-};
-
-class WorkerAvatarAssetBoundary extends Component<WorkerAvatarAssetBoundaryProps, WorkerAvatarAssetBoundaryState> {
-  state: WorkerAvatarAssetBoundaryState = {
-    hasError: false,
-  };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch() {}
-
-  render() {
-    if (this.state.hasError) return this.props.fallback;
-    return this.props.children;
-  }
-}
-
-function WorkerAvatarModel({ clip, manifest }: { clip: WorkerAvatarClip; manifest: WorkerAvatarManifest }) {
-  const group = useRef<THREE.Group>(null);
-  const gltf = useGLTF(manifest.model!.url);
-  const typingSource = useFBX(manifest.animations.Typing!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
-  const standingSource = useFBX(manifest.animations.Standing!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
-  const presentingSource = useFBX(manifest.animations.Presenting!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
-
-  const scene = useMemo(() => {
-    const clone = SkeletonUtils.clone(gltf.scene) as THREE.Group;
-    clone.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
-    return clone;
-  }, [gltf.scene]);
-
-  const clips = useMemo(() => {
-    const namedClips: THREE.AnimationClip[] = [];
-    const typing = typingSource.animations?.[0];
-    const standing = standingSource.animations?.[0];
-    const presenting = presentingSource.animations?.[0];
-
-    if (typing) {
-      const next = typing.clone();
-      next.name = 'Typing';
-      namedClips.push(next);
-    }
-    if (standing) {
-      const next = standing.clone();
-      next.name = 'Standing';
-      namedClips.push(next);
-    }
-    if (presenting) {
-      const next = presenting.clone();
-      next.name = 'Presenting';
-      namedClips.push(next);
-    }
-
-    return namedClips;
-  }, [typingSource.animations, standingSource.animations, presentingSource.animations]);
-
-  const { actions } = useAnimations(clips, group);
-
-  useEffect(() => {
-    const action = actions[clip] ?? actions.Standing ?? Object.values(actions)[0];
-    if (!action) return;
-    action.reset().fadeIn(0.35).play();
-    return () => {
-      action.fadeOut(0.25);
-    };
-  }, [actions, clip]);
-
-  return (
-    <group
-      ref={group}
-      position={manifest.model?.position ?? [0, -1.02, 0.03]}
-      rotation={manifest.model?.rotation ?? [0, Math.PI, 0]}
-      scale={manifest.model?.scale ?? 0.98}
-    >
-      <primitive object={scene} />
-    </group>
-  );
-}
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topicDisplayLabel(topic));
-  const skin = ['#f5d9c4', '#e7bf9f', '#ca9a76', '#8c5b42'][seed % 4];
-  const hair = ['#201915', '#4b3428', '#2a2f39', '#6a5948', '#e7e2d8'][(seed >> 2) % 5];
-  const top = ['#243447', '#5c6b5d', '#7b4d46', '#4b5874', '#8a6b3f', '#3f5f64', '#5f4e63'][(seed >> 4) % 7];
-  const bottom = ['#2b3038', '#3a414c', '#444d5c', '#323843', '#585f6b'][(seed >> 6) % 5];
+  const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
+  const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
+  const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
+  const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
 }
 
@@ -323,29 +119,29 @@ function styleForTopic(topic: TeamTopic): WorkerStyle {
   const seed = hashLabel(topicDisplayLabel(topic));
   const archetype = seed % 7;
   return {
-    bodyScale: archetype === 4 ? [1.02, 1.06, 0.96] : archetype === 5 ? [0.96, 1.01, 0.92] : archetype === 1 ? [0.98, 1.03, 0.94] : [1, 1.04, 0.95],
-    headScale: archetype === 0 ? [1.16, 1.1, 1.06] : archetype === 3 ? [1.12, 1.06, 1.03] : [1.1, 1.04, 1.02],
-    shoulderWidth: archetype === 5 ? 0.118 : archetype === 4 ? 0.138 : 0.128,
-    legHeight: archetype === 5 ? 0.2 : 0.225,
-    armLength: archetype === 4 ? 0.23 : 0.21,
+    bodyScale: archetype === 4 ? [1.01, 1.09, 0.97] : archetype === 5 ? [0.95, 1.03, 0.93] : archetype === 1 ? [0.98, 1.04, 0.95] : [0.99, 1.05, 0.95],
+    headScale: archetype === 0 ? [1.24, 1.16, 1.12] : archetype === 3 ? [1.18, 1.1, 1.07] : [1.15, 1.08, 1.04],
+    shoulderWidth: archetype === 5 ? 0.12 : archetype === 4 ? 0.143 : 0.132,
+    legHeight: archetype === 5 ? 0.21 : 0.235,
+    armLength: archetype === 4 ? 0.24 : 0.22,
     hasHat: false,
     hatColor: '#2f3340',
     hatBrimColor: '#151515',
     hasApron: false,
     apronColor: '#f3f0ea',
-    hasJacket: archetype === 2 || archetype === 3 || archetype === 6,
-    jacketColor: ['#43546c', '#5a5f54', '#e4dfd6', '#64738d', '#73634b', '#575b63', '#32424d'][archetype],
-    skirt: archetype === 5,
+    hasJacket: archetype === 2 || archetype === 3,
+    jacketColor: archetype === 2 ? '#e6e1d8' : '#7ea6ef',
+    skirt: archetype === 5 || archetype === 6,
     accentStripe: archetype === 0 || archetype === 4,
     hasVest: archetype === 1 || archetype === 4,
-    vestColor: ['#3f4c64', '#5d5148', '#495851', '#55647f', '#796048', '#5d5657', '#524c69'][archetype],
+    vestColor: ['#44506d', '#665548', '#4c5d55', '#52657f', '#836646', '#63595a', '#5d5678'][archetype],
     hasTie: archetype === 0 || archetype === 2,
-    tieColor: archetype === 0 ? '#c05a4f' : '#4d6b91',
-    blouseColor: ['#efe6da', '#f1ebe1', '#f5f0e8', '#ebe5de', '#efe7db', '#f4eee7', '#e9e0d4'][archetype],
-    sockColor: archetype === 5 ? '#ddd3c7' : '#616978',
-    shoeColor: ['#332c28', '#34303a', '#262d38', '#453830', '#362d27', '#423431', '#2f3140'][archetype],
-    hairStyle: ['part', 'crop', 'bob', 'part', 'crop', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
-    hairVolume: archetype === 5 ? 1.04 : 0.96,
+    tieColor: archetype === 0 ? '#c74642' : '#506b9f',
+    blouseColor: ['#ece5d8', '#efe7dd', '#f3eee5', '#ece8e2', '#efe8de', '#f5f1ea', '#eee4d9'][archetype],
+    sockColor: archetype === 5 || archetype === 6 ? '#ddd3c8' : '#5a6170',
+    shoeColor: ['#40362f', '#3d3530', '#2f3340', '#4c3c31', '#3d322a', '#4b3934', '#3a3346'][archetype],
+    hairStyle: ['part', 'crop', 'bob', 'flip', 'part', 'bun', 'bob'][archetype] as WorkerStyle['hairStyle'],
+    hairVolume: archetype === 5 ? 1.08 : archetype === 2 ? 1.04 : 1,
   };
 }
 
@@ -439,67 +235,79 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
 }
 
 function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForTopic>; style: WorkerStyle }) {
-  const capScale: [number, number, number] = [style.headScale[0] * 1.03, style.headScale[1] * 0.74 * style.hairVolume, style.headScale[2] * 0.98];
+  const capScale: [number, number, number] = [style.headScale[0] * 1.05, style.headScale[1] * 0.82 * style.hairVolume, style.headScale[2] * 1.02];
 
   return (
     <group>
-      <mesh castShadow position={[0, 0.935, -0.03]} scale={capScale}>
-        <sphereGeometry args={[0.125, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.9]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.76} />
+      <mesh castShadow position={[0, 0.92, -0.045]} scale={capScale}>
+        <sphereGeometry args={[0.122, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.86]} />
+        <meshStandardMaterial color={palette.hair} roughness={0.72} />
       </mesh>
-
-      {style.hairStyle === 'part' && (
-        <>
-          <mesh castShadow position={[0, 0.9, 0.03]} rotation={[0.2, 0, 0]}>
-            <boxGeometry args={[0.16, 0.024, 0.048]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.74} />
-          </mesh>
-          <mesh castShadow position={[-0.055, 0.855, 0.026]} rotation={[0.16, 0.18, -0.12]}>
-            <boxGeometry args={[0.06, 0.09, 0.028]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.74} />
-          </mesh>
-        </>
-      )}
-
-      {style.hairStyle === 'crop' && (
-        <mesh castShadow position={[0, 0.912, 0.026]} rotation={[0.3, 0, 0]}>
-          <boxGeometry args={[0.17, 0.03, 0.06]} />
-          <meshStandardMaterial color={palette.hair} roughness={0.7} />
-        </mesh>
-      )}
-
       {style.hairStyle === 'bob' && (
         <>
-          <mesh castShadow position={[0, 0.85, -0.04]} scale={[1, 0.88, 0.9]}>
-            <sphereGeometry args={[0.105, 16, 16, 0, Math.PI * 2, Math.PI / 2.3, Math.PI / 1.72]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.78} />
+          <mesh castShadow position={[0, 0.835, -0.055]} scale={[style.headScale[0] * 1.02, style.headScale[1] * 0.82, style.headScale[2] * 0.92]}>
+            <sphereGeometry args={[0.108, 18, 18, 0, Math.PI * 2, Math.PI / 2.35, Math.PI / 1.65]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.76} />
           </mesh>
-          {[-0.092, 0.092].map((x) => (
-            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.006]} scale={[0.82, 1.1, 0.74]}>
-              <sphereGeometry args={[0.036, 12, 12]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.78} />
+          {[-0.1, 0.1].map((x) => (
+            <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.025]} scale={[0.88, 1.18, 0.78]}>
+              <sphereGeometry args={[0.042, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.76} />
             </mesh>
           ))}
         </>
       )}
-
+      {style.hairStyle === 'part' && (
+        <>
+          <mesh castShadow position={[0, 0.885, 0.012]} rotation={[0.22, 0, 0]}>
+            <boxGeometry args={[0.18, 0.028, 0.05]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+          <mesh castShadow position={[-0.06, 0.845, 0.022]} rotation={[0.2, 0.2, -0.18]}>
+            <boxGeometry args={[0.065, 0.11, 0.03]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+          </mesh>
+        </>
+      )}
       {style.hairStyle === 'bun' && (
         <>
-          <mesh castShadow position={[0, 0.82, -0.09]}>
-            <sphereGeometry args={[0.05, 12, 12]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.78} />
+          <mesh castShadow position={[0, 0.81, -0.09]}>
+            <sphereGeometry args={[0.06, 14, 14]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
           </mesh>
-          <mesh castShadow position={[0, 0.882, 0.016]} rotation={[0.24, 0, 0]}>
-            <boxGeometry args={[0.145, 0.026, 0.04]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.74} />
+          {[-0.082, 0.082].map((x) => (
+            <mesh key={`bun-side-${x}`} castShadow position={[x, 0.87, -0.01]} scale={[0.75, 1.15, 0.72]}>
+              <sphereGeometry args={[0.038, 12, 12]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {style.hairStyle === 'crop' && (
+        <mesh castShadow position={[0, 0.905, 0.03]} rotation={[0.36, 0, 0]}>
+          <boxGeometry args={[0.19, 0.038, 0.07]} />
+          <meshStandardMaterial color={palette.hair} roughness={0.66} />
+        </mesh>
+      )}
+      {style.hairStyle === 'flip' && (
+        <>
+          <mesh castShadow position={[0, 0.84, -0.07]} scale={[1, 0.95, 0.9]}>
+            <sphereGeometry args={[0.1, 16, 16, 0, Math.PI * 2, Math.PI / 2.45, Math.PI / 1.7]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72} />
           </mesh>
+          {[-0.11, 0.11].map((x) => (
+            <mesh key={`flip-side-${x}`} castShadow position={[x, 0.83, -0.01]} rotation={[0, 0, x < 0 ? -0.35 : 0.35]}>
+              <boxGeometry args={[0.04, 0.1, 0.028]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            </mesh>
+          ))}
         </>
       )}
     </group>
   );
 }
 
-function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
+function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
   standbyPosition: [number, number, number];
   deskPosition: [number, number, number];
@@ -513,86 +321,48 @@ function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryP
   onSelect: () => void;
 }) {
   const group = useRef<THREE.Group>(null);
-  const torso = useRef<THREE.Group>(null);
-  const leftUpperArm = useRef<THREE.Group>(null);
-  const rightUpperArm = useRef<THREE.Group>(null);
-  const leftForearm = useRef<THREE.Group>(null);
-  const rightForearm = useRef<THREE.Group>(null);
-  const leftThigh = useRef<THREE.Group>(null);
-  const rightThigh = useRef<THREE.Group>(null);
-  const leftShin = useRef<THREE.Group>(null);
-  const rightShin = useRef<THREE.Group>(null);
+  const leftArm = useRef<THREE.Group>(null);
+  const rightArm = useRef<THREE.Group>(null);
+  const leftLeg = useRef<THREE.Group>(null);
+  const rightLeg = useRef<THREE.Group>(null);
   const chest = useRef<THREE.Mesh>(null);
   const palette = useMemo(() => paletteForTopic(topic), [topic]);
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
-  const mode: WorkerMode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
+  const mode = topic.live.status === 'running' ? 'desk' : topic.live.status === 'recent' ? 'delivery' : 'standby';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
-
     const t = clock.getElapsedTime() + seed * 0.27;
-    const motion = reducedMotion ? 0 : Math.sin(t * 2.0) * 0.013;
+    const stride = Math.sin(t * 5.2) * 0.46;
     const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
     const facing = mode === 'desk' ? deskFacing : 0;
-    const typing = Math.sin(t * 7.6) * 0.08;
 
-    group.current.position.set(anchor[0], 0.045 + motion, anchor[2]);
+    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
-    if (torso.current) {
-      if (mode === 'desk') {
-        torso.current.rotation.x = 0.16;
-        torso.current.position.y = 0.56;
+    if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
+      if (mode === 'desk' && !reducedMotion) {
+        leftArm.current.rotation.x = -1.05 + stride * 0.09;
+        rightArm.current.rotation.x = -0.95 - stride * 0.09;
+        leftLeg.current.rotation.x = 0.12;
+        rightLeg.current.rotation.x = 0.02;
       } else if (mode === 'delivery') {
-        torso.current.rotation.x = -0.04;
-        torso.current.position.y = 0.58;
+        leftArm.current.rotation.x = -0.2;
+        rightArm.current.rotation.x = -0.48;
+        leftLeg.current.rotation.x = 0;
+        rightLeg.current.rotation.x = 0;
       } else {
-        torso.current.rotation.x = reducedMotion ? 0 : Math.sin(t * 1.45) * 0.03;
-        torso.current.position.y = 0.57;
-      }
-    }
-
-    if (leftUpperArm.current && rightUpperArm.current && leftForearm.current && rightForearm.current) {
-      if (mode === 'desk') {
-        leftUpperArm.current.rotation.x = -0.88 + typing;
-        rightUpperArm.current.rotation.x = -0.76 - typing;
-        leftForearm.current.rotation.x = -0.72 + typing * 0.55;
-        rightForearm.current.rotation.x = -0.78 - typing * 0.55;
-      } else if (mode === 'delivery') {
-        leftUpperArm.current.rotation.x = -0.24;
-        rightUpperArm.current.rotation.x = -0.58;
-        leftForearm.current.rotation.x = -0.22;
-        rightForearm.current.rotation.x = -0.48;
-      } else {
-        leftUpperArm.current.rotation.x = -0.36;
-        rightUpperArm.current.rotation.x = -0.31;
-        leftForearm.current.rotation.x = -0.14;
-        rightForearm.current.rotation.x = -0.1;
-      }
-    }
-
-    if (leftThigh.current && rightThigh.current && leftShin.current && rightShin.current) {
-      if (mode === 'desk') {
-        leftThigh.current.rotation.x = -1.38;
-        rightThigh.current.rotation.x = -1.38;
-        leftShin.current.rotation.x = 1.44;
-        rightShin.current.rotation.x = 1.44;
-      } else if (mode === 'delivery') {
-        leftThigh.current.rotation.x = 0.04;
-        rightThigh.current.rotation.x = -0.02;
-        leftShin.current.rotation.x = 0;
-        rightShin.current.rotation.x = 0;
-      } else {
-        leftThigh.current.rotation.x = 0;
-        rightThigh.current.rotation.x = 0;
-        leftShin.current.rotation.x = 0;
-        rightShin.current.rotation.x = 0;
+        leftArm.current.rotation.x = -0.48;
+        rightArm.current.rotation.x = -0.38;
+        leftLeg.current.rotation.x = 0;
+        rightLeg.current.rotation.x = 0;
       }
     }
 
     if (chest.current) {
-      (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = topic.live.status === 'running' ? 0.12 : 0.02;
+      const emissive = topic.live.status === 'running' ? 0.14 : 0.02;
+      (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
     }
   });
 
@@ -613,161 +383,180 @@ function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryP
 
   return (
     <group ref={group}>
-      <mesh position={[0, 0.04, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.13, 0.17, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
       </mesh>
-
       <group scale={style.bodyScale}>
-        <group ref={torso} position={[0, 0.57, 0.02]}>
-          <mesh castShadow position={[0, 0.12, 0.01]}>
-            <capsuleGeometry args={[0.128, 0.14, 6, 12]} />
-            <meshStandardMaterial color={style.blouseColor} roughness={0.9} />
-          </mesh>
-          <mesh ref={chest} castShadow position={[0, -0.02, 0.02]}>
-            <capsuleGeometry args={[0.138, 0.24, 8, 14]} />
-            <meshStandardMaterial color={palette.top} roughness={0.82} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.12 : 0.02} />
-          </mesh>
-          <mesh castShadow position={[0, -0.2, 0.04]}>
-            <capsuleGeometry args={[0.112, 0.1, 6, 10]} />
-            <meshStandardMaterial color={palette.bottom} roughness={0.88} />
-          </mesh>
-          {style.hasVest && (
-            <mesh castShadow position={[0, -0.02, 0.09]}>
-              <capsuleGeometry args={[0.122, 0.2, 8, 12]} />
-              <meshStandardMaterial color={style.vestColor} roughness={0.84} />
-            </mesh>
-          )}
-          {style.hasJacket && (
-            <mesh castShadow position={[0, -0.01, 0.07]}>
-              <capsuleGeometry args={[0.15, 0.28, 8, 14]} />
-              <meshStandardMaterial color={style.jacketColor} roughness={0.86} />
-            </mesh>
-          )}
-          {style.accentStripe && (
-            <mesh castShadow position={[0, -0.02, 0.17]}>
-              <boxGeometry args={[0.042, 0.22, 0.02]} />
-              <meshStandardMaterial color="#f4ecdf" roughness={0.7} />
-            </mesh>
-          )}
-          {style.hasTie && (
-            <>
-              <mesh castShadow position={[0, 0.1, 0.17]} rotation={[0, 0, Math.PI / 4]}>
-                <boxGeometry args={[0.034, 0.034, 0.018]} />
-                <meshStandardMaterial color={style.tieColor} roughness={0.75} />
-              </mesh>
-              <mesh castShadow position={[0, -0.02, 0.17]}>
-                <boxGeometry args={[0.028, 0.16, 0.018]} />
-                <meshStandardMaterial color={style.tieColor} roughness={0.75} />
-              </mesh>
-            </>
-          )}
-        </group>
-
-        {style.skirt && (
-          <mesh castShadow position={[0, 0.34, 0.05]}>
-            <cylinderGeometry args={[0.1, 0.17, 0.22, 12]} />
-            <meshStandardMaterial color={palette.bottom} roughness={0.9} />
+        <mesh castShadow position={[0, 0.59, 0.02]}>
+          <capsuleGeometry args={[0.125, 0.14, 6, 12]} />
+          <meshStandardMaterial color={style.blouseColor} />
+        </mesh>
+        <mesh ref={chest} castShadow position={[0, 0.45, 0.02]}>
+          <capsuleGeometry args={[0.118, 0.28, 8, 14]} />
+          <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
+        </mesh>
+        <mesh castShadow position={[0, 0.33, 0.06]}>
+          <capsuleGeometry args={[0.095, 0.08, 6, 10]} />
+          <meshStandardMaterial color={palette.bottom} />
+        </mesh>
+        {style.hasVest && (
+          <mesh castShadow position={[0, 0.45, 0.1]}>
+            <capsuleGeometry args={[0.11, 0.24, 8, 12]} />
+            <meshStandardMaterial color={style.vestColor} />
           </mesh>
         )}
-
-        <mesh castShadow position={[0, 0.73, 0.02]}>
-          <capsuleGeometry args={[0.03, 0.038, 4, 8]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.92} />
+        {style.hasJacket && (
+          <mesh castShadow position={[0, 0.45, 0.09]}>
+            <capsuleGeometry args={[0.128, 0.3, 8, 14]} />
+            <meshStandardMaterial color={style.jacketColor} />
+          </mesh>
+        )}
+        {style.accentStripe && (
+          <mesh castShadow position={[0, 0.45, 0.145]}>
+            <boxGeometry args={[0.04, 0.25, 0.02]} />
+            <meshStandardMaterial color="#f2eddd" />
+          </mesh>
+        )}
+        {style.hasTie && (
+          <>
+            <mesh castShadow position={[0, 0.55, 0.145]} rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.035, 0.035, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+            <mesh castShadow position={[0, 0.46, 0.15]}>
+              <boxGeometry args={[0.03, 0.16, 0.018]} />
+              <meshStandardMaterial color={style.tieColor} />
+            </mesh>
+          </>
+        )}
+        {style.skirt ? (
+          <mesh castShadow position={[0, 0.18, 0.05]}>
+            <cylinderGeometry args={[0.11, 0.16, 0.22, 10]} />
+            <meshStandardMaterial color={palette.bottom} />
+          </mesh>
+        ) : (
+          <>
+            <mesh castShadow position={[-0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+            <mesh castShadow position={[0.045, 0.18, 0.05]}>
+              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
+              <meshStandardMaterial color={palette.bottom} />
+            </mesh>
+          </>
+        )}
+        {style.hasApron && (
+          <mesh castShadow position={[0, 0.33, 0.13]}>
+            <boxGeometry args={[0.14, 0.18, 0.025]} />
+            <meshStandardMaterial color={style.apronColor} />
+          </mesh>
+        )}
+        <mesh castShadow position={[0, 0.68, 0.02]}>
+          <capsuleGeometry args={[0.03, 0.034, 4, 8]} />
+          <meshStandardMaterial color={palette.skin} />
         </mesh>
-        <mesh castShadow position={[0, 0.88, -0.01]} scale={style.headScale}>
-          <sphereGeometry args={[0.13, 24, 24]} />
-          <meshStandardMaterial color={palette.skin} roughness={0.94} />
+        <mesh castShadow position={[0, 0.83, -0.01]} scale={style.headScale}>
+          <sphereGeometry args={[0.125, 22, 22]} />
+          <meshStandardMaterial color={palette.skin} />
         </mesh>
         <AvatarHair palette={palette} style={style} />
-        {[-0.043, 0.043].map((x) => (
-          <mesh key={`eye-${x}`} castShadow position={[x, 0.88, 0.122]}>
-            <sphereGeometry args={[0.011, 12, 12]} />
-            <meshStandardMaterial color="#2b241f" roughness={0.35} />
-          </mesh>
+        <mesh castShadow position={[0, 0.818, 0.1]} scale={[0.56, 0.66, 0.28]}>
+          <sphereGeometry args={[0.082, 18, 18]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+        {[-0.046, 0.046].map((x) => (
+          <group key={`face-${x}`} position={[x, 0.842, 0.112]}>
+            <mesh castShadow scale={[1.26, 1, 0.82]}>
+              <sphereGeometry args={[0.0155, 12, 12]} />
+              <meshStandardMaterial color="#fffdf8" />
+            </mesh>
+            <mesh castShadow position={[0, -0.001, 0.008]} scale={[1.12, 1.12, 0.9]}>
+              <sphereGeometry args={[0.0068, 10, 10]} />
+              <meshStandardMaterial color="#2b241f" />
+            </mesh>
+            <mesh castShadow position={[0, 0.024, -0.004]} rotation={[0, 0, x < 0 ? 0.16 : -0.16]}>
+              <boxGeometry args={[0.028, 0.005, 0.005]} />
+              <meshStandardMaterial color={palette.hair} />
+            </mesh>
+          </group>
         ))}
         {[-0.118, 0.118].map((x) => (
-          <mesh key={`ear-${x}`} castShadow position={[x, 0.85, 0.004]} scale={[0.76, 1.05, 0.72]}>
+          <mesh key={`ear-${x}`} castShadow position={[x, 0.81, 0.004]} scale={[0.8, 1.05, 0.7]}>
             <sphereGeometry args={[0.022, 10, 10]} />
-            <meshStandardMaterial color={palette.skin} roughness={0.96} />
+            <meshStandardMaterial color={palette.skin} />
           </mesh>
         ))}
-        <mesh castShadow position={[0, 0.833, 0.118]} scale={[0.66, 1, 0.86]}>
-          <sphereGeometry args={[0.01, 10, 10]} />
-          <meshStandardMaterial color="#cf9d83" roughness={0.92} />
+        <mesh castShadow position={[0, 0.792, 0.122]} scale={[0.75, 1.05, 0.9]}>
+          <sphereGeometry args={[0.009, 10, 10]} />
+          <meshStandardMaterial color="#ca9a80" />
         </mesh>
-        <mesh castShadow position={[0, 0.792, 0.118]}>
-          <boxGeometry args={[0.04, 0.006, 0.006]} />
-          <meshStandardMaterial color="#b36e71" roughness={0.84} />
+        <mesh castShadow position={[0, 0.752, 0.118]} rotation={[0.02, 0, 0.04]}>
+          <boxGeometry args={[0.042, 0.006, 0.006]} />
+          <meshStandardMaterial color="#ad6768" />
         </mesh>
+        {style.hasHat && (
+          <group position={[0, 0.965, -0.01]}>
+            <mesh castShadow scale={[1.04, 0.72, 1.02]}>
+              <sphereGeometry args={[0.132, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
+              <meshStandardMaterial color={style.hatColor} roughness={0.82} />
+            </mesh>
+            <mesh castShadow position={[0, -0.012, 0.086]} rotation={[0.28, 0, 0]}>
+              <boxGeometry args={[0.16, 0.02, 0.09]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
+            </mesh>
+            <mesh castShadow position={[0, -0.055, -0.055]}>
+              <boxGeometry args={[0.16, 0.05, 0.12]} />
+              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
+            </mesh>
+          </group>
+        )}
+      </group>
 
-        <group ref={leftUpperArm} position={[-style.shoulderWidth, 0.64, 0.03]}>
-          <mesh castShadow position={[0, -0.1, 0]}>
-            <capsuleGeometry args={[0.036, 0.16, 4, 10]} />
-            <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} roughness={0.86} />
-          </mesh>
-          <group ref={leftForearm} position={[0, -0.21, 0]}>
-            <mesh castShadow position={[0, -0.095, 0]}>
-              <capsuleGeometry args={[0.032, 0.14, 4, 10]} />
-              <meshStandardMaterial color={style.blouseColor} roughness={0.88} />
-            </mesh>
-            <mesh castShadow position={[0, -0.2, 0.01]}>
-              <sphereGeometry args={[0.042, 12, 12]} />
-              <meshStandardMaterial color={palette.skin} roughness={0.94} />
-            </mesh>
-          </group>
-        </group>
-        <group ref={rightUpperArm} position={[style.shoulderWidth, 0.64, 0.03]}>
-          <mesh castShadow position={[0, -0.1, 0]}>
-            <capsuleGeometry args={[0.036, 0.16, 4, 10]} />
-            <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} roughness={0.86} />
-          </mesh>
-          <group ref={rightForearm} position={[0, -0.21, 0]}>
-            <mesh castShadow position={[0, -0.095, 0]}>
-              <capsuleGeometry args={[0.032, 0.14, 4, 10]} />
-              <meshStandardMaterial color={style.blouseColor} roughness={0.88} />
-            </mesh>
-            <mesh castShadow position={[0, -0.2, 0.01]}>
-              <sphereGeometry args={[0.042, 12, 12]} />
-              <meshStandardMaterial color={palette.skin} roughness={0.94} />
-            </mesh>
-          </group>
-        </group>
-
-        <group ref={leftThigh} position={[-0.075, 0.34, 0.05]}>
-          <mesh castShadow position={[0, -0.11, 0]}>
-            <capsuleGeometry args={[0.044, 0.18, 4, 10]} />
-            <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} roughness={0.9} />
-          </mesh>
-          <group ref={leftShin} position={[0, -0.21, 0.02]}>
-            <mesh castShadow position={[0, -0.11, 0]}>
-              <capsuleGeometry args={[0.038, 0.17, 4, 10]} />
-              <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} roughness={0.92} />
-            </mesh>
-            <RoundedBox args={[0.11, 0.05, 0.18]} radius={0.018} smoothness={3} position={[0, -0.22, 0.05]} castShadow>
-              <meshStandardMaterial color={style.shoeColor} roughness={0.78} />
-            </RoundedBox>
-          </group>
-        </group>
-        <group ref={rightThigh} position={[0.075, 0.34, 0.05]}>
-          <mesh castShadow position={[0, -0.11, 0]}>
-            <capsuleGeometry args={[0.044, 0.18, 4, 10]} />
-            <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} roughness={0.9} />
-          </mesh>
-          <group ref={rightShin} position={[0, -0.21, 0.02]}>
-            <mesh castShadow position={[0, -0.11, 0]}>
-              <capsuleGeometry args={[0.038, 0.17, 4, 10]} />
-              <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} roughness={0.92} />
-            </mesh>
-            <RoundedBox args={[0.11, 0.05, 0.18]} radius={0.018} smoothness={3} position={[0, -0.22, 0.05]} castShadow>
-              <meshStandardMaterial color={style.shoeColor} roughness={0.78} />
-            </RoundedBox>
-          </group>
-        </group>
+      <group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
+        <mesh castShadow position={[0, -0.12, 0]}>
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
+        </mesh>
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+      </group>
+      <group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
+        <mesh castShadow position={[0, -0.12, 0]}>
+          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
+          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
+        </mesh>
+        <mesh castShadow position={[0, -0.29, 0.01]}>
+          <sphereGeometry args={[0.043, 12, 12]} />
+          <meshStandardMaterial color={palette.skin} />
+        </mesh>
+      </group>
+      <group ref={leftLeg} position={[-0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
+        </mesh>
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
+        </mesh>
+      </group>
+      <group ref={rightLeg} position={[0.06, 0.2, 0.06]}>
+        <mesh castShadow position={[0, -0.11, 0]}>
+          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
+          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
+        </mesh>
+        <mesh castShadow position={[0, -0.25, 0.06]}>
+          <boxGeometry args={[0.09, 0.04, 0.15]} />
+          <meshStandardMaterial color={style.shoeColor} />
+        </mesh>
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.72, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
+      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -784,71 +573,10 @@ function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryP
           onSelect();
         }}
       >
-        <capsuleGeometry args={[0.24, 0.96, 6, 12]} />
+        <capsuleGeometry args={[0.22, 0.95, 6, 12]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
-  );
-}
-
-function WorkerAvatar(props: {
-  topic: TeamTopic;
-  standbyPosition: [number, number, number];
-  deskPosition: [number, number, number];
-  deliveryPosition: [number, number, number];
-  deskFacing: number;
-  reducedMotion: boolean;
-  seed: number;
-  emphasized: boolean;
-  onHover: () => void;
-  onLeave: () => void;
-  onSelect: () => void;
-  manifest?: WorkerAvatarManifest | null;
-}) {
-  const mode: WorkerMode = props.topic.live.status === 'running' ? 'desk' : props.topic.live.status === 'recent' ? 'delivery' : 'standby';
-  const avatarClip = props.manifest?.stateMap[mode] ?? clipForWorkerMode(mode);
-  const anchor = mode === 'desk' ? props.deskPosition : mode === 'delivery' ? props.deliveryPosition : props.standbyPosition;
-  const facing = mode === 'desk' ? props.deskFacing : 0;
-  const fallback = <PrimitiveWorkerAvatar {...props} />;
-
-  if (props.topic.live.status === 'missing' || !hasWorkerAvatarManifest(props.manifest)) {
-    return fallback;
-  }
-
-  const key = `${props.manifest.model!.url}:${props.manifest.animations.Typing!.url}:${props.manifest.animations.Standing!.url}:${props.manifest.animations.Presenting!.url}`;
-
-  return (
-    <WorkerAvatarAssetBoundary key={key} fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <group position={[anchor[0], 0.09, anchor[2]]} rotation={[0, facing, 0]}>
-          <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.13, 0.17, 18]} />
-            <meshBasicMaterial color={statusColor(props.topic.live.status)} transparent opacity={props.topic.live.status === 'running' ? 0.48 : 0.2} />
-          </mesh>
-          <WorkerAvatarModel clip={avatarClip} manifest={props.manifest} />
-          <ActivityDiamond visible={props.emphasized || props.topic.live.status === 'running'} />
-          <FloatingNameTag name={topicDisplayLabel(props.topic)} color={statusColor(props.topic.live.status)} position={[0.18, 1.78, 0.02]} visible={props.emphasized || props.topic.live.status === 'running' || props.topic.live.status === 'recent'} />
-          <mesh
-            position={[0, 0.7, 0]}
-            onPointerOver={(event) => {
-              event.stopPropagation();
-              props.onHover();
-            }}
-            onPointerOut={(event) => {
-              event.stopPropagation();
-              props.onLeave();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onSelect();
-            }}
-          >
-            <capsuleGeometry args={[0.22, 0.95, 6, 12]} />
-            <meshBasicMaterial transparent opacity={0} />
-          </mesh>
-        </group>
-      </Suspense>
-    </WorkerAvatarAssetBoundary>
   );
 }
 
@@ -1273,7 +1001,7 @@ function HubFallback() {
         </mesh>
       ))}
 
-      <group position={[0, 0.02, -0.88]} rotation={[0, Math.PI, 0]}>
+      <group position={[0, 0.02, -0.88]}>
         <mesh position={[0, 0.28, 0]} castShadow>
           <boxGeometry args={[0.6, 0.09, 0.56]} />
           <meshStandardMaterial color="#637589" />
@@ -1458,13 +1186,12 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, manifest, workerAvatarManifest, onHover, onLeave, onSelect }: {
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, manifest, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
   manifest?: OfficeAssetManifestOverride;
-  workerAvatarManifest?: WorkerAvatarManifest | null;
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
@@ -1513,7 +1240,6 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               reducedMotion={reducedMotion}
               seed={index + 1}
               emphasized={emphasized}
-              manifest={workerAvatarManifest}
               onHover={() => onHover(desk.topic.topicId)}
               onLeave={() => onLeave(desk.topic.topicId)}
               onSelect={() => onSelect(desk.topic.topicId)}
@@ -1716,7 +1442,6 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
-  const [workerAvatarManifest, setWorkerAvatarManifest] = useState<WorkerAvatarManifest | null>(null);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -1738,9 +1463,6 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
     loadOfficeLocalAssetManifest(controller.signal).then((manifest) => {
       setLocalAssetManifest(manifest);
     });
-    loadWorkerAvatarLocalManifest(controller.signal).then((manifest) => {
-      setWorkerAvatarManifest(manifest);
-    });
     return () => controller.abort();
   }, []);
 
@@ -1751,8 +1473,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
 
   useEffect(() => {
     preloadOfficeAssets(resolvedAssetManifest);
-    preloadWorkerAvatarAssets(workerAvatarManifest);
-  }, [resolvedAssetManifest, workerAvatarManifest]);
+  }, [resolvedAssetManifest]);
 
   const deskLayouts = useMemo(() => buildDeskLayouts(topics), [topics]);
   const layoutById = useMemo(() => {
@@ -1818,7 +1539,6 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           hoveredTopicId={hoveredTopicId}
           selectedTopicId={selectedTopicId}
           manifest={resolvedAssetManifest}
-          workerAvatarManifest={workerAvatarManifest}
           onHover={setHoveredTopicId}
           onLeave={(topicId) => {
             setHoveredTopicId((current) => (current === topicId ? null : current));
