@@ -160,6 +160,7 @@ type DeskLayout = {
   taskTableFacing: number;
   deliveryPosition: [number, number, number];
   focusPoint: [number, number, number];
+  deskSeatPosition: [number, number, number];
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
@@ -236,6 +237,27 @@ function ActivityDiamond({ visible }: { visible: boolean }) {
       <mesh ref={mesh} position={[0, 1.58, 0]} castShadow>
         <octahedronGeometry args={[0.16, 0]} />
         <meshStandardMaterial color="#7dffad" emissive="#7dffad" emissiveIntensity={1.7} />
+      </mesh>
+    </Float>
+  );
+}
+
+function AlertDiamond({ visible }: { visible: boolean }) {
+  const mesh = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!mesh.current || !visible) return;
+    const t = clock.getElapsedTime();
+    mesh.current.rotation.z = Math.PI / 4;
+    mesh.current.rotation.y = t * 1.9;
+  });
+
+  if (!visible) return null;
+
+  return (
+    <Float speed={2.6} rotationIntensity={0.14} floatIntensity={0.62}>
+      <mesh ref={mesh} position={[0, 1.9, 0]} castShadow>
+        <boxGeometry args={[0.22, 0.22, 0.06]} />
+        <meshStandardMaterial color="#ffd86e" emissive="#ffd86e" emissiveIntensity={1.9} />
       </mesh>
     </Float>
   );
@@ -339,23 +361,30 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
-  const mode = topic.live.status === 'recent'
-    ? 'delivery'
-    : assigned
-      ? 'job-front'
-      : 'standby';
+  const isHousekeeping = topic.configured.role === 'housekeeping_monitor';
+  const showHousekeepingAlert = isHousekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
+  const mode = isHousekeeping
+    ? 'desk-watch'
+    : topic.live.status === 'recent'
+      ? 'delivery'
+      : assigned
+        ? 'job-front'
+        : 'standby';
 
   useFrame(({ clock }) => {
     if (!group.current) return;
     const t = clock.getElapsedTime() + seed * 0.27;
     const stride = Math.sin(t * 5.2) * 0.46;
     const atFront = mode === 'job-front';
-    const anchor = mode === 'delivery' ? deliveryPosition : atFront ? taskTablePosition : standbyPosition;
-    const facing = atFront ? taskTableFacing : 0;
-    const baseY = atFront ? 0.06 : 0.07;
+    const atDesk = mode === 'desk-watch';
+    const anchor = mode === 'delivery' ? deliveryPosition : atDesk ? deskPosition : atFront ? taskTablePosition : standbyPosition;
+    const facing = atDesk ? deskFacing : atFront ? taskTableFacing : 0;
+    const baseY = atFront ? 0.06 : atDesk ? 0.04 : 0.07;
     const bob = atFront
       ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
-      : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
+      : atDesk
+        ? (!reducedMotion ? Math.sin(t * 1.2) * 0.003 : 0)
+        : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
 
     group.current.position.set(anchor[0], baseY + bob, anchor[2]);
     group.current.rotation.set(0, facing, 0);
@@ -376,6 +405,11 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
         rightArm.current.rotation.x = -0.48;
         leftLeg.current.rotation.x = 0;
         rightLeg.current.rotation.x = 0;
+      } else if (mode === 'desk-watch') {
+        leftArm.current.rotation.x = -1.1;
+        rightArm.current.rotation.x = -1.02;
+        leftLeg.current.rotation.x = 1.18;
+        rightLeg.current.rotation.x = 1.18;
       } else {
         leftArm.current.rotation.x = -0.48;
         rightArm.current.rotation.x = -0.38;
@@ -569,7 +603,8 @@ function WorkerAvatar({ topic, standbyPosition, taskTablePosition, taskTableFaci
       </group>
 
       <ActivityDiamond visible={emphasized || topic.live.status === 'running'} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent'} />
+      <AlertDiamond visible={showHousekeepingAlert} />
+      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
 
       <mesh
         position={[0, 0.7, 0]}
@@ -1244,23 +1279,34 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.34;
+    const rotationY = Math.PI;
+    const chairLocalOffset: [number, number, number] = [0.08, 0, 0.48];
+    const sinY = Math.sin(rotationY);
+    const cosY = Math.cos(rotationY);
+    const deskSeatPosition: [number, number, number] = [
+      deskX + chairLocalOffset[0] * cosY - chairLocalOffset[2] * sinY,
+      0,
+      deskZ + chairLocalOffset[0] * sinY + chairLocalOffset[2] * cosY,
+    ];
 
     return {
       topic,
       position: [deskX, 0, deskZ] as [number, number, number],
-      rotationY: Math.PI,
+      rotationY,
       workerDeskPosition: taskTablePosition,
       standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
       taskTablePosition,
       taskTableFacing,
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
       focusPoint: [taskTablePosition[0], 0.92, taskTablePosition[2] + 0.12] as [number, number, number],
+      deskSeatPosition,
     };
   });
 }
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
+  if (topic.configured.role === 'housekeeping_monitor') return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
   if (topic.live.status === 'running') return layout.focusPoint;
   if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
   if (hasAssignedTask(topic)) return [layout.taskTablePosition[0], 0.92, layout.taskTablePosition[2]] as [number, number, number];
@@ -1315,7 +1361,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               standbyPosition={desk.standbyPosition}
               taskTablePosition={desk.taskTablePosition}
               taskTableFacing={desk.taskTableFacing}
-              deskPosition={desk.workerDeskPosition}
+              deskPosition={desk.topic.configured.role === 'housekeeping_monitor' ? desk.deskSeatPosition : desk.workerDeskPosition}
               deliveryPosition={desk.deliveryPosition}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
               reducedMotion={reducedMotion}

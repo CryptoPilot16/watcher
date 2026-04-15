@@ -32,6 +32,7 @@ export function middleware(request: NextRequest) {
 
   if (
     pathname === '/login' ||
+    pathname.startsWith('/office-preview') ||
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/_next/') ||
     PUBLIC_FILE.test(pathname)
