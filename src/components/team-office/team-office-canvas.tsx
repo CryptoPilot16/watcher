@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
+import { ContactShadows, Float, OrbitControls, RoundedBox, useAnimations, useFBX, useGLTF } from '@react-three/drei';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { SkeletonUtils, type OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { topicDisplayLabel, type TeamTaskSource, type TeamTopic } from '@/lib/watch-team';
 import {
@@ -12,6 +12,8 @@ import {
   OfficeAssetSlot,
   preloadOfficeAssets,
   resolveOfficeAssetManifest,
+  withOfficePrivateAssetPath,
+  OFFICE_PRIVATE_ASSET_ROOT,
   type OfficeAssetManifestOverride,
 } from './office-asset-pipeline';
 
@@ -79,6 +81,208 @@ function hashLabel(label: string) {
   return hash;
 }
 
+const WORKER_AVATAR_MANIFEST_URL = `${OFFICE_PRIVATE_ASSET_ROOT}/avatar-rig.manifest.local.json`;
+
+type WorkerMode = 'desk' | 'delivery' | 'standby';
+type WorkerAvatarClip = 'Typing' | 'Standing' | 'Presenting';
+
+type WorkerAvatarAssetEntry = {
+  url: string;
+  scale?: number | [number, number, number];
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+};
+
+type WorkerAvatarManifest = {
+  model?: WorkerAvatarAssetEntry;
+  animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>>;
+  stateMap: Record<WorkerMode, WorkerAvatarClip>;
+};
+
+function clipForWorkerMode(mode: WorkerMode): WorkerAvatarClip {
+  if (mode === 'desk') return 'Typing';
+  if (mode === 'delivery') return 'Presenting';
+  return 'Standing';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asVector3(value: unknown): [number, number, number] | undefined {
+  if (!Array.isArray(value) || value.length !== 3) return undefined;
+  if (!value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))) return undefined;
+  return value as [number, number, number];
+}
+
+function asScale(value: unknown): number | [number, number, number] | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return asVector3(value);
+}
+
+function toWorkerAvatarAssetEntry(value: unknown): WorkerAvatarAssetEntry | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return { url: withOfficePrivateAssetPath(value.trim()) };
+  }
+
+  if (!isRecord(value)) return null;
+
+  const file = typeof value.file === 'string' ? value.file.trim() : '';
+  const explicitUrl = typeof value.url === 'string' ? value.url.trim() : '';
+  const url = explicitUrl || (file ? withOfficePrivateAssetPath(file) : '');
+  if (!url) return null;
+
+  const entry: WorkerAvatarAssetEntry = { url };
+  const position = asVector3(value.position);
+  const rotation = asVector3(value.rotation);
+  const scale = asScale(value.scale);
+
+  if (position) entry.position = position;
+  if (rotation) entry.rotation = rotation;
+  if (scale !== undefined) entry.scale = scale;
+
+  return entry;
+}
+
+function parseWorkerAvatarLocalManifest(value: unknown): WorkerAvatarManifest | null {
+  if (!isRecord(value)) return null;
+
+  const model = toWorkerAvatarAssetEntry(value.model);
+  const animationsBlock = isRecord(value.animations) ? value.animations : {};
+  const animations: Partial<Record<WorkerAvatarClip, WorkerAvatarAssetEntry>> = {};
+
+  (['Typing', 'Standing', 'Presenting'] as WorkerAvatarClip[]).forEach((clip) => {
+    const entry = toWorkerAvatarAssetEntry(animationsBlock[clip]);
+    if (entry) animations[clip] = entry;
+  });
+
+  const stateMapBlock = isRecord(value.stateMap) ? value.stateMap : {};
+  const stateMap: Record<WorkerMode, WorkerAvatarClip> = {
+    desk: stateMapBlock.desk === 'Standing' || stateMapBlock.desk === 'Presenting' ? stateMapBlock.desk : 'Typing',
+    standby: stateMapBlock.standby === 'Typing' || stateMapBlock.standby === 'Presenting' ? stateMapBlock.standby : 'Standing',
+    delivery: stateMapBlock.delivery === 'Typing' || stateMapBlock.delivery === 'Standing' ? stateMapBlock.delivery : 'Presenting',
+  };
+
+  if (!model) return null;
+  return { model, animations, stateMap };
+}
+
+async function loadWorkerAvatarLocalManifest(signal?: AbortSignal): Promise<WorkerAvatarManifest | null> {
+  try {
+    const response = await fetch(WORKER_AVATAR_MANIFEST_URL, {
+      cache: 'no-store',
+      signal,
+    });
+    if (!response.ok) return null;
+    return parseWorkerAvatarLocalManifest((await response.json()) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function hasWorkerAvatarManifest(manifest?: WorkerAvatarManifest | null): manifest is WorkerAvatarManifest {
+  return Boolean(manifest?.model && manifest.animations.Typing && manifest.animations.Standing && manifest.animations.Presenting);
+}
+
+function preloadWorkerAvatarAssets(manifest?: WorkerAvatarManifest | null) {
+  if (!hasWorkerAvatarManifest(manifest)) return;
+  useGLTF.preload(manifest.model.url);
+  useFBX.preload(manifest.animations.Typing.url);
+  useFBX.preload(manifest.animations.Standing.url);
+  useFBX.preload(manifest.animations.Presenting.url);
+}
+
+type WorkerAvatarAssetBoundaryProps = {
+  fallback: ReactNode;
+  children: ReactNode;
+};
+
+type WorkerAvatarAssetBoundaryState = {
+  hasError: boolean;
+};
+
+class WorkerAvatarAssetBoundary extends Component<WorkerAvatarAssetBoundaryProps, WorkerAvatarAssetBoundaryState> {
+  state: WorkerAvatarAssetBoundaryState = {
+    hasError: false,
+  };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch() {}
+
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+function WorkerAvatarModel({ clip, manifest }: { clip: WorkerAvatarClip; manifest: WorkerAvatarManifest }) {
+  const group = useRef<THREE.Group>(null);
+  const gltf = useGLTF(manifest.model!.url);
+  const typingSource = useFBX(manifest.animations.Typing!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
+  const standingSource = useFBX(manifest.animations.Standing!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
+  const presentingSource = useFBX(manifest.animations.Presenting!.url) as THREE.Group & { animations: THREE.AnimationClip[] };
+
+  const scene = useMemo(() => {
+    const clone = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+    clone.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    return clone;
+  }, [gltf.scene]);
+
+  const clips = useMemo(() => {
+    const namedClips: THREE.AnimationClip[] = [];
+    const typing = typingSource.animations?.[0];
+    const standing = standingSource.animations?.[0];
+    const presenting = presentingSource.animations?.[0];
+
+    if (typing) {
+      const next = typing.clone();
+      next.name = 'Typing';
+      namedClips.push(next);
+    }
+    if (standing) {
+      const next = standing.clone();
+      next.name = 'Standing';
+      namedClips.push(next);
+    }
+    if (presenting) {
+      const next = presenting.clone();
+      next.name = 'Presenting';
+      namedClips.push(next);
+    }
+
+    return namedClips;
+  }, [typingSource.animations, standingSource.animations, presentingSource.animations]);
+
+  const { actions } = useAnimations(clips, group);
+
+  useEffect(() => {
+    const action = actions[clip] ?? actions.Standing ?? Object.values(actions)[0];
+    if (!action) return;
+    action.reset().fadeIn(0.35).play();
+    return () => {
+      action.fadeOut(0.25);
+    };
+  }, [actions, clip]);
+
+  return (
+    <group
+      ref={group}
+      position={manifest.model?.position ?? [0, -1.02, 0.03]}
+      rotation={manifest.model?.rotation ?? [0, Math.PI, 0]}
+      scale={manifest.model?.scale ?? 0.98}
+    >
+      <primitive object={scene} />
+    </group>
+  );
+}
 
 function paletteForTopic(topic: TeamTopic) {
   const seed = hashLabel(topicDisplayLabel(topic));
@@ -307,7 +511,7 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
   );
 }
 
-function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
+function PrimitiveWorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, deskFacing, reducedMotion, seed, emphasized, onHover, onLeave, onSelect }: {
   topic: TeamTopic;
   standbyPosition: [number, number, number];
   deskPosition: [number, number, number];
@@ -577,6 +781,67 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
+  );
+}
+
+function WorkerAvatar(props: {
+  topic: TeamTopic;
+  standbyPosition: [number, number, number];
+  deskPosition: [number, number, number];
+  deliveryPosition: [number, number, number];
+  deskFacing: number;
+  reducedMotion: boolean;
+  seed: number;
+  emphasized: boolean;
+  onHover: () => void;
+  onLeave: () => void;
+  onSelect: () => void;
+  manifest?: WorkerAvatarManifest | null;
+}) {
+  const mode: WorkerMode = props.topic.live.status === 'running' ? 'desk' : props.topic.live.status === 'recent' ? 'delivery' : 'standby';
+  const avatarClip = props.manifest?.stateMap[mode] ?? clipForWorkerMode(mode);
+  const anchor = mode === 'desk' ? props.deskPosition : mode === 'delivery' ? props.deliveryPosition : props.standbyPosition;
+  const facing = mode === 'desk' ? props.deskFacing : 0;
+  const fallback = <PrimitiveWorkerAvatar {...props} />;
+
+  if (props.topic.live.status === 'missing' || !hasWorkerAvatarManifest(props.manifest)) {
+    return fallback;
+  }
+
+  const key = `${props.manifest.model!.url}:${props.manifest.animations.Typing!.url}:${props.manifest.animations.Standing!.url}:${props.manifest.animations.Presenting!.url}`;
+
+  return (
+    <WorkerAvatarAssetBoundary key={key} fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <group position={[anchor[0], 0.26, anchor[2]]} rotation={[0, facing, 0]}>
+          <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.13, 0.17, 18]} />
+            <meshBasicMaterial color={statusColor(props.topic.live.status)} transparent opacity={props.topic.live.status === 'running' ? 0.48 : 0.2} />
+          </mesh>
+          <WorkerAvatarModel clip={avatarClip} manifest={props.manifest} />
+          <ActivityDiamond visible={props.emphasized || props.topic.live.status === 'running'} />
+          <FloatingNameTag name={topicDisplayLabel(props.topic)} color={statusColor(props.topic.live.status)} position={[0.18, 1.78, 0.02]} visible={props.emphasized || props.topic.live.status === 'running' || props.topic.live.status === 'recent'} />
+          <mesh
+            position={[0, 0.7, 0]}
+            onPointerOver={(event) => {
+              event.stopPropagation();
+              props.onHover();
+            }}
+            onPointerOut={(event) => {
+              event.stopPropagation();
+              props.onLeave();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onSelect();
+            }}
+          >
+            <capsuleGeometry args={[0.22, 0.95, 6, 12]} />
+            <meshBasicMaterial transparent opacity={0} />
+          </mesh>
+        </group>
+      </Suspense>
+    </WorkerAvatarAssetBoundary>
   );
 }
 
@@ -1186,12 +1451,13 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, manifest, onHover, onLeave, onSelect }: {
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, manifest, workerAvatarManifest, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
   manifest?: OfficeAssetManifestOverride;
+  workerAvatarManifest?: WorkerAvatarManifest | null;
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
@@ -1240,6 +1506,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, ma
               reducedMotion={reducedMotion}
               seed={index + 1}
               emphasized={emphasized}
+              manifest={workerAvatarManifest}
               onHover={() => onHover(desk.topic.topicId)}
               onLeave={() => onLeave(desk.topic.topicId)}
               onSelect={() => onSelect(desk.topic.topicId)}
@@ -1442,6 +1709,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
+  const [workerAvatarManifest, setWorkerAvatarManifest] = useState<WorkerAvatarManifest | null>(null);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -1463,6 +1731,9 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
     loadOfficeLocalAssetManifest(controller.signal).then((manifest) => {
       setLocalAssetManifest(manifest);
     });
+    loadWorkerAvatarLocalManifest(controller.signal).then((manifest) => {
+      setWorkerAvatarManifest(manifest);
+    });
     return () => controller.abort();
   }, []);
 
@@ -1473,7 +1744,8 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
 
   useEffect(() => {
     preloadOfficeAssets(resolvedAssetManifest);
-  }, [resolvedAssetManifest]);
+    preloadWorkerAvatarAssets(workerAvatarManifest);
+  }, [resolvedAssetManifest, workerAvatarManifest]);
 
   const deskLayouts = useMemo(() => buildDeskLayouts(topics), [topics]);
   const layoutById = useMemo(() => {
@@ -1539,6 +1811,7 @@ export function TeamOfficeCanvas({ topics, assetManifest }: { topics: TeamTopic[
           hoveredTopicId={hoveredTopicId}
           selectedTopicId={selectedTopicId}
           manifest={resolvedAssetManifest}
+          workerAvatarManifest={workerAvatarManifest}
           onHover={setHoveredTopicId}
           onLeave={(topicId) => {
             setHoveredTopicId((current) => (current === topicId ? null : current));
