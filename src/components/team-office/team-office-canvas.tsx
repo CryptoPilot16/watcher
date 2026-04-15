@@ -268,14 +268,12 @@ function ProjectDeskBadge({ topic, position }: { topic: TeamTopic; position: [nu
 
   return (
     <group position={position} renderOrder={18}>
-      <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[1.18, 0.72]} />
-        <meshBasicMaterial color="#0f1015" transparent opacity={0.92} depthWrite={false} depthTest={false} />
-      </mesh>
-      <mesh position={[0, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.98, 0.5]} />
-        <meshBasicMaterial map={texture} transparent depthWrite={false} depthTest={false} />
-      </mesh>
+      <sprite scale={[1.82, 0.94, 1]} renderOrder={18}>
+        <spriteMaterial color="#0f1015" transparent opacity={0.88} depthWrite={false} depthTest={false} />
+      </sprite>
+      <sprite scale={[1.52, 0.66, 1]} renderOrder={19}>
+        <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
+      </sprite>
     </group>
   );
 }
@@ -885,7 +883,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
       <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} />} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
-      <ProjectDeskBadge topic={topic} position={[0.04, 0.545, 0.02]} />
+      <ProjectDeskBadge topic={topic} position={[0.02, 1.18, -0.02]} />
 
       <mesh
         position={[0, 0.6, 0.17]}
