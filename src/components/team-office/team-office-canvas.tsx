@@ -338,7 +338,7 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
     const anchor = mode === 'desk' ? deskPosition : mode === 'delivery' ? deliveryPosition : standbyPosition;
     const facing = mode === 'desk' ? deskFacing : 0;
 
-    group.current.position.set(anchor[0], 0.26 + (!reducedMotion ? Math.sin(t * 2.0) * 0.013 : 0), anchor[2]);
+    group.current.position.set(anchor[0], 0.07 + (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0), anchor[2]);
     group.current.rotation.set(0, facing, 0);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
@@ -367,23 +367,12 @@ function WorkerAvatar({ topic, standbyPosition, deskPosition, deliveryPosition, 
   });
 
   if (topic.live.status === 'missing') {
-    return (
-      <group position={[standbyPosition[0], 0.1, standbyPosition[2]]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.09, 0.14, 18]} />
-          <meshBasicMaterial color="#7f8791" transparent opacity={0.38} />
-        </mesh>
-        <mesh position={[0, 0.08, 0]}>
-          <cylinderGeometry args={[0.04, 0.05, 0.14, 12]} />
-          <meshStandardMaterial color="#8d96a1" emissive="#d8dde4" emissiveIntensity={0.08} />
-        </mesh>
-      </group>
-    );
+    return null;
   }
 
   return (
     <group ref={group}>
-      <mesh position={[0, 0.05, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.012, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.13, 0.17, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
       </mesh>
