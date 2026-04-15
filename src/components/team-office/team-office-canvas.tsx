@@ -62,8 +62,12 @@ function sourceLabel(source: TeamTaskSource) {
   }
 }
 
+function hasAssignedTask(topic: TeamTopic) {
+  return topic.live.status === 'running' || topic.live.status === 'recent' || topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
+}
+
 function isDeskResidentTopic(topic: TeamTopic) {
-  return topic.configured.role === 'project_owner_and_worker' && topic.live.status !== 'missing';
+  return topic.configured.role === 'project_owner_and_worker' && topic.live.status !== 'missing' && hasAssignedTask(topic);
 }
 
 function actionLabel(topic: TeamTopic) {
