@@ -1143,9 +1143,10 @@ function BreakArea({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
 function buildDeskLayouts(topics: TeamTopic[]) {
   const deskRows = Math.ceil(topics.length / 2);
   const inactiveTopics = topics.filter((topic) => !['running', 'recent'].includes(topic.live.status));
-  const inactiveColumns = Math.max(1, Math.ceil(inactiveTopics.length / 2));
-  const inactiveSpacingX = 1.04;
-  const inactiveRowZ = [0.55, 1.35];
+  const inactiveColumns = Math.min(2, Math.max(1, inactiveTopics.length));
+  const inactiveRows = Math.max(1, Math.ceil(inactiveTopics.length / inactiveColumns));
+  const inactiveSpacingX = 1;
+  const inactiveSpacingZ = 0.72;
   const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
 
   return topics.map((topic, index) => {
@@ -1160,7 +1161,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
     const inactiveColumn = inactiveIndex % inactiveColumns;
     const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
-    const standbyZ = inactiveRowZ[Math.min(inactiveRow, inactiveRowZ.length - 1)];
+    const standbyZ = 0.94 + (inactiveRow - (inactiveRows - 1) / 2) * inactiveSpacingZ;
 
     const deliveryX = (index - (topics.length - 1) / 2) * 0.82;
     const deliveryZ = 3.22;
