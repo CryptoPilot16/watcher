@@ -2,7 +2,7 @@
 
 Private mission-control dashboard for the OpenClaw agent stack.
 
-![Watcher landing page desktop preview](docs/images/landing-page-desktop-preview.png)
+![Watcher Team Office live screenshot](docs/images/team-office-screenshot-2026-04-16.jpg)
 
 ## Overview
 
