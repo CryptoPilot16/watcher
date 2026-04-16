@@ -2,7 +2,9 @@
 
 Mission control for multi-agent operations.
 
-![Watcher Team Office live screenshot](docs/images/team-office-screenshot-2026-04-16.jpg)
+Website: https://watch.clawnux.com/
+
+![Watcher website screenshot](docs/images/watch-login-screenshot-2026-04-16.png)
 
 ## What It Is
 
