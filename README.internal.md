@@ -2,7 +2,9 @@
 
 Private mission-control dashboard for the OpenClaw agent stack.
 
-![Watcher Team Office live screenshot](docs/images/team-office-screenshot-2026-04-16.jpg)
+Website: https://watch.clawnux.com/
+
+![Watcher website screenshot](docs/images/watch-login-screenshot-2026-04-16.png)
 
 ## Overview
 
