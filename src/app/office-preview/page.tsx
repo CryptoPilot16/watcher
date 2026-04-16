@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: 'CLAWNUX Watch, Office Preview',
+  title: 'Watcher, Office Preview',
   description: 'Public read-only office preview for Watcher.',
 };
 

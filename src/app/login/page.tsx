@@ -82,19 +82,11 @@ export default function LoginPage() {
             className="h-8 w-8 rounded"
             style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0 }}
           />
-          <div>
-            <div
-              className="text-[9px] uppercase tracking-[0.3em] text-[var(--watch-text-muted)]"
-              style={{ fontSize: 9, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(230,220,185,0.5)' }}
-            >
-              CLAWNUX
-            </div>
-            <div
-              className="text-sm font-semibold tracking-[0.12em] uppercase text-[var(--watch-text)]"
-              style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f0ece0' }}
-            >
-              WATCHER
-            </div>
+          <div
+            className="text-sm font-semibold tracking-[0.12em] uppercase text-[var(--watch-text)]"
+            style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f0ece0' }}
+          >
+            WATCHER
           </div>
         </div>
 

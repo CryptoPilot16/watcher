@@ -8,7 +8,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'CLAWNUX Watch',
+  title: 'Watcher',
   description: 'Private monitoring dashboard',
   appleWebApp: {
     capable: true,

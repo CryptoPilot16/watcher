@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'CLAWNUX Watch',
+  title: 'Watcher',
 };
 
 export default function WatchLayout({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,4 @@
-# CLAWNUX Watch
+# Watcher
 
 Private mission-control dashboard for the OpenClaw agent stack.
 
@@ -6,7 +6,7 @@ Private mission-control dashboard for the OpenClaw agent stack.
 
 ## Overview
 
-CLAWNUX Watch is a Next.js monitoring app that gives a live, consolidated view of everything
+Watcher is a Next.js monitoring app that gives a live, consolidated view of everything
 OpenClaw is doing — active Telegram sessions, task runs, flows, cron jobs, auth state, and
 Snapmolt voice/HTTP activity — in a single password-gated dashboard.
 
