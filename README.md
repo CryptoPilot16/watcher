@@ -2,7 +2,11 @@
 
 Mission control for multi-agent operations.
 
-Website: https://watch.clawnux.com/
+Website: https://cryptopilot.dev/watcher
+
+Public Office Preview: https://watch.clawnux.com/office-preview
+
+Operator Dashboard (login): https://watch.clawnux.com/watch
 
 ![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-16.png)
 
