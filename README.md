@@ -22,6 +22,7 @@ It provides:
 - **PM2 processes** — process table and live log tail
 - **Auth state** — per-provider token health (anthropic, openai, telegram, etc.)
 - **Version + model badge** — always-visible OpenClaw version and active model
+- **Team Office scene** — interactive 3D office floor with live lane state, role-specific positioning, and visual status cues
 - Mobile-optimised, PWA-installable (`start_url: /watch`, maskable icons)
 - Password-gated with `WATCH_PASSWORD`; `watch_access` cookie valid 30 days
 
@@ -80,6 +81,7 @@ pm2 save
 | `/api/watch` | JSON runtime snapshot — auth required |
 | `/api/watch-telegram` | Triggers Telegram sync |
 | `/api/watch-telegram/init` | Force fresh tracking cycle |
+| `/api/team-office/instruct` | Injects a message to an agent via OpenClaw (`openclaw agent --agent <id> -m ...`) and can mirror to Telegram topic |
 
 ## Key Files
 
@@ -91,8 +93,18 @@ pm2 save
 | `src/lib/openclaw-health.ts` | Health computation and color coding |
 | `src/lib/snapmolt-mirror.ts` | Snapmolt activity parsing and tagging |
 | `src/components/watch-shell-header.tsx` | Nav shell with tabs |
+| `src/components/team-office/team-office-panel.tsx` | Team Office panel shell, legend, and live floor cards |
+| `src/components/team-office/team-office-canvas.tsx` | 3D Team Office scene and worker state choreography |
+| `src/app/api/team-office/instruct/route.ts` | Server endpoint for web-triggered lane instructions |
 | `docs/private-ts1-office-assets.md` | Local-only TS1 office asset override workflow |
 | `ecosystem.config.cjs` | PM2 process definitions |
+
+## Team Office Notes
+
+- Project-lane logo badges now render as framed wall signs.
+- Running lanes show billboarded vertical progress bars (non-housekeeping lanes).
+- House Keeping only stays seated for desk-watch/discipline behavior.
+- The Team Office web instruct route validates payloads (`agentId`, `message`), invokes OpenClaw, and returns structured success/failure JSON.
 
 ## Performance
 
@@ -142,4 +154,3 @@ Durable team and project context now lives in workspace files:
 - Current live runtime repo: `/opt/watcher`
 - Workspace project state: `state/projects/watcher.json`
 - Workspace durable memory note: `memory/projects/watcher.md`
-

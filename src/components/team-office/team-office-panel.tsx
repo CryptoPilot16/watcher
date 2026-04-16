@@ -34,7 +34,6 @@ function statusTone(status: 'running' | 'recent' | 'idle' | 'missing') {
 
 export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
   const topics = sortTeamTopics(topology.topics);
-  const active = topics.filter((topic) => topic.live.status === 'running' || topic.live.status === 'recent');
   const featured = topics.slice(0, 6);
 
   return (
@@ -56,22 +55,7 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       </div>
 
       <div className="relative">
-        <TeamOfficeCanvas topics={topics} />
-
-        <div className="pointer-events-none absolute left-3 right-3 top-3 hidden flex-wrap gap-2 sm:flex">
-          {active.slice(0, 5).map((topic) => (
-            <div
-              key={topic.topicId}
-              className="rounded-md border px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] backdrop-blur-sm"
-              style={{
-                borderColor: topic.live.status === 'running' ? 'rgba(103,232,249,0.45)' : 'rgba(251,191,36,0.35)',
-                background: topic.live.status === 'running' ? 'rgba(103,232,249,0.12)' : 'rgba(251,191,36,0.10)',
-              }}
-            >
-              {topicDisplayLabel(topic)}
-            </div>
-          ))}
-        </div>
+        <TeamOfficeCanvas topics={topics} groupId={topology.groupId} />
       </div>
 
       <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.2)] px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)] sm:hidden">
