@@ -4,7 +4,7 @@ Mission control for multi-agent operations.
 
 Website: https://watch.clawnux.com/
 
-![Watcher website screenshot](docs/images/watch-login-screenshot-2026-04-16.png)
+![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-16.png)
 
 ## What It Is
 
