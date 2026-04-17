@@ -72,6 +72,7 @@ else
     [crates_stacked.gltf.glb]=crates.glb
     [candle_triple.gltf.glb]=candle_triple.glb
     [candle_lit.gltf.glb]=candle_lit.glb
+    [chest_gold.glb]=chest_gold.glb
     [pillar.gltf.glb]=pillar.glb
     [pillar_decorated.gltf.glb]=pillar_decorated.glb
   )
