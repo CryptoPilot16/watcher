@@ -540,7 +540,8 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
     if (isRunning && !wasRunning) {
       startTime.current = t;
       completionStartTime.current = null;
-      if (exactProgress === null) displayedProgress.current = 0;
+      displayedProgress.current = 0;
+      displayedOpacity.current = 0;
     } else if (!isRunning && wasRunning) {
       completionStartTime.current = t;
       completionFrom.current = displayedProgress.current;
