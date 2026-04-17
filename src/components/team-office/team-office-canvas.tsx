@@ -2216,6 +2216,12 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <span>{actionLabel(topic)}</span>
           <span>{topic.live.freshnessLabel}</span>
         </div>
+        {isHousekeepingTopic(topic) && (
+          <button type="button" onClick={onDisciplineDemo}
+            className={`pointer-events-auto mt-3 w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineDemo ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
+            {disciplineDemo ? 'stop demo' : 'demo discipline'}
+          </button>
+        )}
         <InstructInput topic={topic} groupId={groupId} />
       </div>
     );

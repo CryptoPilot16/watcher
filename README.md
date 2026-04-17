@@ -66,7 +66,9 @@ bash scripts/fetch-models.sh
 
 # 3. copy env template and set WATCH_PASSWORD + optional Telegram token
 cp .env.example .env.local
-# edit .env.local
+# edit .env.local — WATCH_PASSWORD is whatever you want; this is the
+# password you'll type into /login to access your dashboard. There is
+# no pre-set value; anyone self-hosting picks their own.
 
 # 4. run dev
 npm run dev
