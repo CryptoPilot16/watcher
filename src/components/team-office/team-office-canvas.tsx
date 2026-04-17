@@ -513,34 +513,84 @@ function buildStripeTexture(): THREE.CanvasTexture {
 }
 
 function AgentProgressBar({ topic }: { topic: TeamTopic }) {
+  const group = useRef<THREE.Group>(null);
   const fill = useRef<THREE.Mesh>(null);
+  const wellMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const fillMaterial = useRef<THREE.MeshBasicMaterial>(null);
   const exactProgress = topicProgress(topic);
   const isRunning = topic.live.status === 'running';
-  const showBar = isRunning && !isHousekeepingTopic(topic);
+  const hiddenForTopic = isHousekeepingTopic(topic);
   const startTime = useRef<number | null>(null);
+  const displayedProgress = useRef(0);
+  const displayedOpacity = useRef(0);
+  const lastStatus = useRef<TeamTopic['live']['status']>(topic.live.status);
+  const completionStartTime = useRef<number | null>(null);
+  const completionFrom = useRef(0);
 
-  useFrame(({ clock }) => {
-    if (!fill.current || !showBar) { startTime.current = null; return; }
+  useFrame(({ clock }, delta) => {
+    if (!group.current || !fill.current || !wellMaterial.current || !fillMaterial.current || hiddenForTopic) {
+      startTime.current = null;
+      completionStartTime.current = null;
+      return;
+    }
+
     const t = clock.getElapsedTime();
-    if (startTime.current === null) startTime.current = t;
-    const elapsed = t - startTime.current;
-    const target = exactProgress !== null ? exactProgress : (1 - Math.exp(-elapsed / 50));
-    const clamped = Math.max(0.0, Math.min(1, target));
-    fill.current.scale.y = Math.max(0.001, clamped);
+    const wasRunning = lastStatus.current === 'running';
+
+    if (isRunning && !wasRunning) {
+      startTime.current = t;
+      completionStartTime.current = null;
+      if (exactProgress === null) displayedProgress.current = 0;
+    } else if (!isRunning && wasRunning) {
+      completionStartTime.current = t;
+      completionFrom.current = displayedProgress.current;
+    }
+    lastStatus.current = topic.live.status;
+
+    let targetProgress = displayedProgress.current;
+    let targetOpacity = 0;
+
+    if (isRunning) {
+      if (startTime.current === null) startTime.current = t;
+      const elapsed = t - startTime.current;
+      targetProgress = exactProgress !== null ? exactProgress : (1 - Math.exp(-elapsed / 10));
+      targetOpacity = 1;
+    } else if (completionStartTime.current !== null) {
+      const completionPhase = Math.min(1, (t - completionStartTime.current) / 0.45);
+      targetProgress = THREE.MathUtils.lerp(completionFrom.current, 1, completionPhase);
+      targetOpacity = completionPhase < 1 ? 1 : 0;
+      if (completionPhase >= 1) {
+        completionStartTime.current = null;
+        startTime.current = null;
+      }
+    } else {
+      targetProgress = 0;
+      targetOpacity = 0;
+      startTime.current = null;
+    }
+
+    displayedProgress.current = THREE.MathUtils.damp(displayedProgress.current, Math.max(0, Math.min(1, targetProgress)), 12, delta);
+    displayedOpacity.current = THREE.MathUtils.damp(displayedOpacity.current, targetOpacity, 14, delta);
+
+    const clamped = Math.max(0.001, Math.min(1, displayedProgress.current));
+    fill.current.scale.y = clamped;
     fill.current.position.y = -0.22 + clamped * 0.22;
+    group.current.visible = displayedOpacity.current > 0.02;
+    wellMaterial.current.opacity = displayedOpacity.current * 0.96;
+    fillMaterial.current.opacity = displayedOpacity.current;
   });
 
-  if (!showBar) return null;
+  if (hiddenForTopic) return null;
 
   return (
-    <Billboard position={[0, 2.08, 0]}>
+    <Billboard ref={group as never} position={[0, 2.08, 0]}>
       {/* slim well */}
       <RoundedBox args={[0.07, 0.46, 0.02]} radius={0.03} smoothness={6}>
-        <meshBasicMaterial color="#0a0c0f" />
+        <meshBasicMaterial ref={wellMaterial as never} color="#0a0c0f" transparent opacity={0} />
       </RoundedBox>
       {/* fill — deeper than well so it shows on front AND back */}
       <RoundedBox ref={fill as never} args={[0.062, 0.44, 0.05]} radius={0.028} smoothness={6} position={[0, 0, 0]}>
-        <meshBasicMaterial color="#4aff6e" toneMapped={false} />
+        <meshBasicMaterial ref={fillMaterial as never} color="#4aff6e" toneMapped={false} transparent opacity={0} />
       </RoundedBox>
     </Billboard>
   );
