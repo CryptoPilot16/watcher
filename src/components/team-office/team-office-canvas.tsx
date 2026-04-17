@@ -71,6 +71,14 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
+function hasTaskOwnership(topic: TeamTopic) {
+  if (topic.live.status === 'missing') return false;
+  return topic.live.status === 'running'
+    || topic.live.status === 'recent'
+    || topic.currentTask.source !== 'none'
+    || Boolean(topic.currentTask.snippet);
+}
+
 function hasFreshTaskSignal(topic: TeamTopic, maxAgeMs = 3 * 60 * 1000) {
   if (topic.currentTask.source === 'none' && !topic.currentTask.snippet) return false;
   const updatedAt = topic.currentTask.updatedAt ? Date.parse(topic.currentTask.updatedAt) : Number.NaN;
@@ -99,8 +107,8 @@ function shouldSitAtDesk(topic: TeamTopic) {
   if (isHousekeepingTopic(topic)) return true;
   if (isAssistantTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent';
   if (isCloneTopic(topic)) return hasFreshTaskSignal(topic);
-  if (isProjectDeskTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent' || hasFreshTaskSignal(topic);
-  if (isCoderTopic(topic) || isGeneralTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent' || hasFreshTaskSignal(topic);
+  if (isProjectDeskTopic(topic)) return hasTaskOwnership(topic) || hasFreshTaskSignal(topic);
+  if (isCoderTopic(topic) || isGeneralTopic(topic)) return hasTaskOwnership(topic) || hasFreshTaskSignal(topic);
   return false;
 }
 
