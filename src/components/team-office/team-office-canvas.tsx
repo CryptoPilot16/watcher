@@ -91,9 +91,20 @@ function isHousekeepingTopic(topic: TeamTopic) {
   return role.includes('housekeeping') || configured.includes('house keeping') || display.includes('house keeping') || display.includes('housekeeping');
 }
 
-function staysAtDesk(topic: TeamTopic) {
+function isProjectDeskTopic(topic: TeamTopic) {
+  return projectBadgeSpec(topic) !== null;
+}
+
+function shouldSitAtDesk(topic: TeamTopic) {
   if (isHousekeepingTopic(topic)) return true;
-  return isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent');
+  if (isAssistantTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent';
+  if (isCloneTopic(topic)) return hasFreshTaskSignal(topic);
+  if (isProjectDeskTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent' || hasFreshTaskSignal(topic);
+  return false;
+}
+
+function staysAtDesk(topic: TeamTopic) {
+  return shouldSitAtDesk(topic);
 }
 
 function actionLabel(topic: TeamTopic) {
@@ -889,10 +900,7 @@ function WorkerAvatar({
   const housekeeping = isHousekeepingTopic(topic);
   const showHousekeepingAlert = housekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
   const disciplineMode = housekeeping && Boolean(disciplineTargetPosition);
-  const isAssistant = isAssistantTopic(topic);
-  const assistantSeated = isAssistant && (topic.live.status === 'running' || topic.live.status === 'recent');
-  const cloneSeated = isCloneTopic(topic) && hasFreshTaskSignal(topic);
-  const fixedDesk = staysAtDesk(topic) || cloneSeated;
+  const seatedAtDesk = shouldSitAtDesk(topic);
   const [hitPulse, setHitPulse] = useState(false);
   const lastHitRef = useRef(0);
   const contactStartRef = useRef(0);
@@ -904,17 +912,15 @@ function WorkerAvatar({
     ? 'victim'
     : disciplineMode
       ? 'discipline'
-      : (fixedDesk && (housekeeping || assistantSeated || cloneSeated))
+      : seatedAtDesk
         ? 'desk-watch'
-        : fixedDesk
-          ? 'desk-stand'
-          : topic.live.status === 'recent'
-            ? 'delivery'
-            : assigned
-              ? 'job-front'
-              : 'standby';
+        : topic.live.status === 'recent'
+          ? 'delivery'
+          : assigned
+            ? 'job-front'
+            : 'standby';
   const showHockeyStick = housekeeping && mode === 'discipline';
-  const showActivityDiamond = topic.live.status === 'running' || cloneSeated || (emphasized && !showHousekeepingAlert);
+  const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
     ? topicDisplayLabel(topic)
@@ -1412,9 +1418,7 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
 }) {
   const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const glowStrength = statusGlow(topic.live.status);
-  const assistantSeated = isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent');
-  const cloneSeated = isCloneTopic(topic) && hasFreshTaskSignal(topic);
-  const seatedAtDesk = isHousekeepingTopic(topic) || assistantSeated || cloneSeated;
+  const seatedAtDesk = shouldSitAtDesk(topic);
   const activeDeskWork = seatedAtDesk;
   const sideWallSign: 1 | -1 = position[0] > 0 ? -1 : 1;
 
@@ -1986,12 +1990,11 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                     if (!victim) return null;
                     // compute victim's actual rendered position based on their mode
                     const v = victim.topic;
-                    const vHousekeeping = isHousekeepingTopic(v);
-                    const vAssistant = isAssistantTopic(v);
+                    const vSeatedAtDesk = shouldSitAtDesk(v);
                     const vAssigned = hasAssignedTask(v);
                     const vOffline = v.live.status === 'missing';
                     let pos: [number, number, number];
-                    if (vHousekeeping || vAssistant) pos = victim.deskSeatPosition;
+                    if (vSeatedAtDesk) pos = victim.deskSeatPosition;
                     else if (vOffline) pos = victim.deskStandPosition;
                     else if (v.live.status === 'recent') pos = victim.deliveryPosition;
                     else if (v.live.status === 'running' || vAssigned) pos = victim.taskTablePosition;
