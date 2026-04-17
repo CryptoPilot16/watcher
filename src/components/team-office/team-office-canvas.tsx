@@ -100,6 +100,7 @@ function shouldSitAtDesk(topic: TeamTopic) {
   if (isAssistantTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent';
   if (isCloneTopic(topic)) return hasFreshTaskSignal(topic);
   if (isProjectDeskTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent' || hasFreshTaskSignal(topic);
+  if (isCoderTopic(topic) || isGeneralTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent' || hasFreshTaskSignal(topic);
   return false;
 }
 
@@ -1806,18 +1807,20 @@ function isCoderTopic(topic: TeamTopic) {
   return topic.configured.role === 'generic_coder' && !projectBadgeSpec(topic) && !isAssistantTopic(topic) && !isCloneTopic(topic) && !isHousekeepingTopic(topic);
 }
 
+function isGeneralTopic(topic: TeamTopic) {
+  const d = topicDisplayLabel(topic).toLowerCase();
+  const r = topic.configured?.role?.toLowerCase() ?? '';
+  return (d.includes('general') || r.includes('dispatch') || r.includes('coordination'))
+    && !projectBadgeSpec(topic) && !isAssistantTopic(topic) && !isCloneTopic(topic) && !isHousekeepingTopic(topic) && !isCoderTopic(topic);
+}
+
 function buildDeskLayouts(topics: TeamTopic[]) {
   // Layout: left=projects+general+assistant, right=coders+housekeeping+clone
   const projectSky = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('sky'));
   const projectEchoes = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('echo'));
   const projectOdds = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('odds') || l.includes('gap'); });
   const coders = topics.filter((t) => isCoderTopic(t));
-  const generals = topics.filter((t) => {
-    const d = topicDisplayLabel(t).toLowerCase();
-    const r = t.configured?.role?.toLowerCase() ?? '';
-    return (d.includes('general') || r.includes('dispatch') || r.includes('coordination'))
-      && !projectBadgeSpec(t) && !isAssistantTopic(t) && !isCloneTopic(t) && !isHousekeepingTopic(t) && !isCoderTopic(t);
-  });
+  const generals = topics.filter((t) => isGeneralTopic(t));
   const housekeepingList = topics.filter((t) => isHousekeepingTopic(t) && !projectBadgeSpec(t));
   const assistantList = topics.filter((t) => isAssistantTopic(t) && !projectBadgeSpec(t) && !isCloneTopic(t));
   const cloneList = topics.filter((t) => isCloneTopic(t) && !projectBadgeSpec(t));
