@@ -889,7 +889,7 @@ function animationForMode(mode: string, status: string): string {
   if (mode === 'discipline') return 'Unarmed_Melee_Attack_Punch_A';
   if (mode === 'delivery') return 'Walking_A';
   if (mode === 'job-front') return 'Walking_A';
-  if (mode === 'desk-watch') return 'Sit_Chair_Idle';
+  if (mode === 'desk-watch') return 'Sit_Chair_Pose';
   if (mode === 'desk-stand') return 'Idle';
   if (status === 'running') return 'Interact';
   return 'Idle';
@@ -1036,7 +1036,8 @@ function WorkerAvatar({
 
     // Compute separation vector from other avatars (local avoidance)
     const separation = new THREE.Vector3();
-    if (avatarPositionsRef?.current && !reducedMotion) {
+    const lockToDeskAnchor = atDesk || atDeskStand;
+    if (avatarPositionsRef?.current && !reducedMotion && !lockToDeskAnchor) {
       const AVOID_RADIUS = 0.95;
       const curX = group.current.position.x;
       const curZ = group.current.position.z;
@@ -1064,7 +1065,7 @@ function WorkerAvatar({
       group.current.position.lerp(adjTarget, stepFactor);
       const walkFacing = Math.atan2(adjTarget.x - group.current.position.x, adjTarget.z - group.current.position.z);
       group.current.rotation.set(0, walkFacing, 0);
-    } else if (separation.lengthSq() > 0) {
+    } else if (separation.lengthSq() > 0 && !lockToDeskAnchor) {
       // Even when "at rest", gently push apart if overlapping
       group.current.position.x += separation.x * 0.04;
       group.current.position.z += separation.z * 0.04;
