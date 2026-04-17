@@ -53,10 +53,30 @@ All third-party 3D assets used in the scenes are CC0 / free commercial-use:
 - **KayKit Dungeon Remastered** (CC0) — dungeon floor tiles, walls, banners, torches, barrels, chest, pillars
 - **MariaIsMe 3D Voxel Office Pack** — office furniture (desks, chairs, cubicles, cabinets, coffee machines, plants, wall art)
 
+Assets are not checked into the repo — they're downloaded on setup by `scripts/fetch-models.sh` (KayKit from GitHub, MariaIsMe from itch.io). Output goes to `public/models/{chars,env,voxel}`, which is gitignored.
+
+## Setup
+
+```bash
+# 1. install deps
+npm install
+
+# 2. fetch 3D assets (idempotent; skips anything already present)
+bash scripts/fetch-models.sh
+
+# 3. copy env template and set WATCH_PASSWORD + optional Telegram token
+cp .env.example .env.local
+# edit .env.local
+
+# 4. run dev
+npm run dev
+```
+
+If `fetch-models.sh` can't reach itch.io for the voxel office pack, it prints a fallback note with the manual download URL — just drop the OBJ zip into `public/models/voxel/` and re-run.
+
 ## Development
 
 ```bash
-npm install
 npm run dev
 ```
 
