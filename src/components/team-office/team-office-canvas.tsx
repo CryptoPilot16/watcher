@@ -1472,30 +1472,201 @@ function WindowBlindsFallback() {
   );
 }
 
+function buildWoodFloorTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = '#c28f5c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const plankHeight = 96;
+  const plankColors = ['#b8834f', '#c69464', '#a97645', '#bc8a58', '#b07b4a', '#c89b6c'];
+  let offsetX = 0;
+  for (let y = 0; y < canvas.height; y += plankHeight) {
+    offsetX = (offsetX + 220) % 340;
+    let x = -offsetX;
+    while (x < canvas.width) {
+      const w = 180 + Math.floor(Math.random() * 220);
+      ctx.fillStyle = plankColors[Math.floor(Math.random() * plankColors.length)];
+      ctx.fillRect(x, y, w, plankHeight);
+
+      for (let g = 0; g < 8; g++) {
+        ctx.strokeStyle = `rgba(60, 36, 20, ${0.04 + Math.random() * 0.08})`;
+        ctx.lineWidth = 0.7 + Math.random() * 0.9;
+        ctx.beginPath();
+        const gy = y + Math.random() * plankHeight;
+        ctx.moveTo(x, gy);
+        ctx.bezierCurveTo(
+          x + w * 0.3, gy + (Math.random() - 0.5) * 3,
+          x + w * 0.6, gy + (Math.random() - 0.5) * 3,
+          x + w, gy + (Math.random() - 0.5) * 2,
+        );
+        ctx.stroke();
+      }
+
+      if (Math.random() < 0.22) {
+        const kx = x + 40 + Math.random() * Math.max(w - 80, 20);
+        const ky = y + 20 + Math.random() * (plankHeight - 40);
+        const kr = 4 + Math.random() * 6;
+        const grad = ctx.createRadialGradient(kx, ky, 1, kx, ky, kr);
+        grad.addColorStop(0, 'rgba(60, 34, 18, 0.55)');
+        grad.addColorStop(1, 'rgba(60, 34, 18, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, kr, kr * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = 'rgba(40, 22, 10, 0.42)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x + w, y);
+      ctx.lineTo(x + w, y + plankHeight);
+      ctx.stroke();
+
+      x += w;
+    }
+    ctx.strokeStyle = 'rgba(40, 22, 10, 0.4)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(0, y + plankHeight);
+    ctx.lineTo(canvas.width, y + plankHeight);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function buildRugTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = '#8a3c34';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const border = 26;
+  ctx.strokeStyle = '#f1d6a5';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(border, border, canvas.width - border * 2, canvas.height - border * 2);
+  ctx.strokeStyle = '#d9a26b';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(border + 12, border + 12, canvas.width - (border + 12) * 2, canvas.height - (border + 12) * 2);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const diamond = (size: number, color: string) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-size, -size, size * 2, size * 2);
+    ctx.restore();
+  };
+  diamond(160, '#f1d6a5');
+  diamond(110, '#d9a26b');
+  diamond(60, '#f1d6a5');
+
+  ctx.fillStyle = '#f1d6a5';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    ctx.save();
+    ctx.translate(cx + dx * 140, cy + dy * 140);
+    ctx.strokeStyle = '#f1d6a5';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(40, 12, 8, ${0.02 + Math.random() * 0.05})`;
+    ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function OfficeFloor() {
+  const texture = useMemo(() => {
+    const tex = buildWoodFloorTexture();
+    if (tex) tex.repeat.set(6, 5.5);
+    return tex;
+  }, []);
+  useEffect(() => () => { texture?.dispose(); }, [texture]);
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+      <planeGeometry args={[24, 22]} />
+      <meshStandardMaterial map={texture ?? undefined} color={texture ? '#ffffff' : '#c28f5c'} roughness={0.88} />
+    </mesh>
+  );
+}
+
+let sharedRugTexture: THREE.CanvasTexture | null | undefined;
+function getRugTexture(): THREE.CanvasTexture | null {
+  if (sharedRugTexture === undefined) sharedRugTexture = buildRugTexture();
+  return sharedRugTexture;
+}
+
+function OfficeRug({ position, size }: { position: [number, number, number]; size: [number, number] }) {
+  const texture = getRugTexture();
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={position} receiveShadow>
+      <planeGeometry args={size} />
+      <meshStandardMaterial map={texture ?? undefined} color={texture ? '#ffffff' : '#8a3c34'} roughness={0.96} />
+    </mesh>
+  );
+}
+
+function OfficeBaseboard() {
+  const color = '#f1e5cf';
+  const walls: Array<{ position: [number, number, number]; args: [number, number, number] }> = [
+    { position: [0, 0.09, -10.95], args: [24, 0.18, 0.08] },
+    { position: [-11.95, 0.09, 0], args: [0.08, 0.18, 22] },
+    { position: [11.95, 0.09, 0], args: [0.08, 0.18, 22] },
+  ];
+  return (
+    <group>
+      {walls.map((w, i) => (
+        <mesh key={i} position={w.position}>
+          <boxGeometry args={w.args} />
+          <meshStandardMaterial color={color} roughness={0.88} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
   return (
     <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[24, 22]} />
-        <meshStandardMaterial color="#edf3f4" roughness={0.96} />
-      </mesh>
-
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0.05]} receiveShadow>
-        <planeGeometry args={[8.2, 12.8]} />
-        <meshStandardMaterial color="#d9ece6" roughness={0.98} />
-      </mesh>
-
-      {[-4.5, 4.5].map((x) => (
-        <mesh key={`desk-pad-${x}`} position={[x, 0.015, -1.6]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[3.4, 15.2]} />
-          <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
-        </mesh>
-      ))}
-
-      <mesh position={[0, 0.015, 4.38]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[6.4, 2.2]} />
-        <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
-      </mesh>
+      <OfficeFloor />
+      <OfficeBaseboard />
+      <OfficeRug position={[0, 0.005, -1.6]} size={[3.2, 6.4]} />
+      <OfficeRug position={[0, 0.006, 4.1]} size={[6.2, 2.6]} />
 
       {[-3.4, -1.7, 0, 1.7, 3.4].map((x) => (
         <mesh key={`review-line-${x}`} position={[x, 0.02, 3.15]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -1503,11 +1674,6 @@ function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
           <meshBasicMaterial color="#b8d4d7" transparent opacity={0.32} />
         </mesh>
       ))}
-
-      <mesh position={[0, 0.02, 4.1]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[6.2, 2.6]} />
-        <meshBasicMaterial color="#d7e5f2" transparent opacity={0.85} />
-      </mesh>
     </>
   );
 }
@@ -1679,12 +1845,14 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
 
   return (
     <>
-      <color attach="background" args={['#eef5f6']} />
-      <fog attach="fog" args={['#eef5f6', 28, 56]} />
-      <ambientLight intensity={1.2} color="#ffffff" />
-      <hemisphereLight args={['#ffffff', '#dbe8ea', 1.18]} />
-      <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" />
-      <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
+      <color attach="background" args={['#f6ecd6']} />
+      <fog attach="fog" args={['#f6ecd6', 30, 60]} />
+      <ambientLight intensity={0.78} color="#fff2d8" />
+      <hemisphereLight args={['#fff0cf', '#b58a5a', 0.95]} />
+      <directionalLight position={[9, 12, 7]} intensity={1.4} color="#ffe7b8" />
+      <pointLight position={[0, 6.8, 5.6]} intensity={3.2} color="#ffe0a4" />
+      <pointLight position={[-7, 4.4, 2]} intensity={1.4} color="#ffd39a" distance={12} />
+      <pointLight position={[7, 4.4, 2]} intensity={1.4} color="#ffd39a" distance={12} />
 
       <OfficeShell manifest={manifest} />
 
