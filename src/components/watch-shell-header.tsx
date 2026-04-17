@@ -20,11 +20,8 @@ export function WatchShellHeader({ activeTab }: WatchShellHeaderProps) {
             <img src="/watch-logo-v4.svg" alt="WATCHER" className="h-10 w-10 rounded sm:h-12 sm:w-12" />
           </Link>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-[var(--watch-text-muted)]">
-              CLAWNUX
-            </div>
-            <div className="mt-0.5 text-xl font-semibold tracking-[0.08em] uppercase text-[var(--watch-text)] sm:text-2xl">
-              WATCHER
+            <div className="watch-display text-xl font-semibold uppercase text-[var(--watch-accent-strong)] sm:text-2xl">
+              Watcher
             </div>
           </div>
         </div>

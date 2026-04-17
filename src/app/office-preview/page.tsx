@@ -120,9 +120,9 @@ export default function OfficePreviewPage({
         )}
 
         <div className={embed ? 'relative h-full' : 'flex-1'}>
-          <TeamOfficeCanvas topics={topology.topics} />
+          <TeamOfficeCanvas topics={topology.topics} demo />
 
-          <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-[rgba(236,213,141,0.28)] bg-[rgba(12,10,7,0.66)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] backdrop-blur-sm">
+          <div className="pointer-events-none absolute left-3 top-3 hidden sm:block rounded-md border border-[rgba(236,213,141,0.28)] bg-[rgba(12,10,7,0.66)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] backdrop-blur-sm">
             public office preview
           </div>
         </div>

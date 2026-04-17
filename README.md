@@ -13,13 +13,17 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
 ## Core Capabilities
 
 - Live mission status with system-level health context
-- Interactive Team Office scene for lane/agent visibility
+- Interactive 3D Team Office scene with two swappable styles:
+  - **Office** — voxel-art modern workspace with workstations, break area, wall fixtures (MariaIsMe voxel pack)
+  - **Dungeon** — medieval tavern with stone walls, torches, banners, treasure chest (KayKit Dungeon pack)
+- Rigged character avatars (KayKit Adventurers: Knight, Barbarian, Mage, Rogue) with idle / walk / sit-at-desk / hit-reaction animations
+- Camera controls: overview / focus / free pan (desktop arrow grid + mobile toggle)
 - Authenticated web lane control (select lane, send instruction)
 - Live session feed (user, agent, tool events)
 - Task runs and flow tracking
 - Logs and process visibility
 - Telegram sync support
-- Mobile-friendly dashboard experience
+- Mobile-friendly dashboard experience with toggleable pan controls
 
 ## Product Surfaces
 
@@ -38,7 +42,16 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
 - Next.js 14
 - React
 - TypeScript
-- Three.js / react-three-fiber
+- Three.js / react-three-fiber / @react-three/drei
+- OBJ + GLB asset loaders (three-stdlib)
+
+## 3D Assets
+
+All third-party 3D assets used in the scenes are CC0 / free commercial-use:
+
+- **KayKit Character Pack: Adventurers** (CC0) — rigged adventurer models with animations
+- **KayKit Dungeon Remastered** (CC0) — dungeon floor tiles, walls, banners, torches, barrels, chest, pillars
+- **MariaIsMe 3D Voxel Office Pack** — office furniture (desks, chairs, cubicles, cabinets, coffee machines, plants, wall art)
 
 ## Development
 
@@ -54,6 +67,3 @@ npm run build
 npm run start
 ```
 
-## Internal Ops Notes
-
-Operational deployment details, internal paths, and team-specific runbooks are maintained in `README.internal.md`.

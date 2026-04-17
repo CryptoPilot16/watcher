@@ -7,19 +7,30 @@
 :root {
   color-scheme: dark;
   --watch-bg: #0f0d09;
+  --watch-bg-soft: #15110c;
   --watch-panel: rgba(24, 20, 14, 0.92);
   --watch-panel-strong: rgba(19, 16, 11, 0.98);
-  --watch-panel-border: rgba(214, 189, 111, 0.22);
-  --watch-panel-border-strong: rgba(214, 189, 111, 0.38);
+  --watch-panel-border: rgba(214, 189, 111, 0.18);
+  --watch-panel-border-strong: rgba(214, 189, 111, 0.34);
+  --watch-stone: rgba(28, 24, 16, 0.92);
+  --watch-stone-dark: rgba(18, 15, 10, 0.96);
   --watch-text: #f0ece0;
-  --watch-text-bright: rgba(255, 255, 255, 0.92);
+  --watch-text-bright: rgba(255, 255, 255, 0.94);
   --watch-text-code: rgba(255, 255, 255, 0.82);
-  --watch-text-muted: rgba(230, 220, 185, 0.5);
+  --watch-text-muted: rgba(230, 220, 185, 0.68);
   --watch-accent: #d4ba68;
   --watch-accent-strong: #ecd58d;
   --watch-accent-soft: rgba(212, 186, 104, 0.14);
+  --watch-ok: #4ade80;
+  --watch-warn: #fbbf24;
   --watch-danger: #f09070;
+  --watch-magenta: #c084fc;
+  --watch-cyan: #67e8f9;
+  --watch-green: #4ade80;
   --watch-grid: rgba(214, 189, 111, 0.05);
+  --font-display: 'JetBrains Mono', monospace;
+  --font-ui: 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', monospace;
   /* activity tag colors */
   --watch-tag-voice: #67e8f9;
   --watch-tag-http: #818cf8;
@@ -44,8 +55,9 @@ body {
   background:
     radial-gradient(circle at top, rgba(236, 213, 141, 0.12), transparent 32%),
     linear-gradient(180deg, #0c0a07 0%, #13100b 52%, #0d0b08 100%);
+  background-color: var(--watch-bg);
   color: var(--watch-text);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   position: relative;
 }
 
@@ -59,6 +71,59 @@ body::before {
     linear-gradient(to bottom, var(--watch-grid) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 92%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.32 0 0 0 0 0.25 0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+}
+
+.watch-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--watch-accent);
+}
+
+.watch-panel {
+  background: linear-gradient(180deg, var(--watch-panel), var(--watch-panel-strong));
+  border: 1px solid var(--watch-panel-border);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.watch-pill {
+  border-radius: 6px;
+  padding: 0.34rem 0.72rem;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--watch-panel-border-strong);
+  background: rgba(15, 13, 9, 0.92);
+  color: var(--watch-text);
+  transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.watch-pill:hover {
+  color: var(--watch-text-bright);
+  border-color: var(--watch-accent);
+  background: rgba(19, 16, 11, 0.96);
+}
+.watch-pill--active {
+  color: var(--watch-accent-strong);
+  border-color: var(--watch-accent);
+  background: rgba(19, 16, 11, 0.96);
+  box-shadow: 0 0 0 1px rgba(214, 189, 111, 0.35) inset;
 }
 
 a {
@@ -83,7 +148,7 @@ pre {
 
 ::-webkit-scrollbar-thumb {
   background: rgba(212, 186, 104, 0.32);
-  border-radius: 2px;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {

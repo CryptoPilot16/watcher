@@ -36,6 +36,12 @@ yarn-error.log*
 .env.*.local
 /.state/
 
+# internal-only docs and local tooling
+README.internal.md
+/.claude/
+/.watch-state.json
+/test-results/
+
 # vercel
 .vercel
 

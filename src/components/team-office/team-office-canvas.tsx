@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Billboard, ContactShadows, Float, OrbitControls, RoundedBox } from '@react-three/drei';
+import { Billboard, ContactShadows, Float, OrbitControls, Outlines, RoundedBox, useAnimations, useGLTF } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { MTLLoader, OBJLoader, SkeletonUtils } from 'three-stdlib';
 import * as THREE from 'three';
 import { topicDisplayLabel, type TeamTaskSource, type TeamTopic } from '@/lib/watch-team';
 import {
@@ -63,7 +65,17 @@ function sourceLabel(source: TeamTaskSource) {
 }
 
 function hasAssignedTask(topic: TeamTopic) {
-  return topic.live.status === 'running' || topic.live.status === 'recent' || topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
+  if (topic.live.status === 'running' || topic.live.status === 'recent') return true;
+  if (topic.live.status === 'missing') return false;
+  if (topic.live.status === 'idle') return false;
+  return topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
+}
+
+function hasFreshTaskSignal(topic: TeamTopic, maxAgeMs = 3 * 60 * 1000) {
+  if (topic.currentTask.source === 'none' && !topic.currentTask.snippet) return false;
+  const updatedAt = topic.currentTask.updatedAt ? Date.parse(topic.currentTask.updatedAt) : Number.NaN;
+  if (!Number.isFinite(updatedAt)) return topic.live.status === 'running' || topic.live.status === 'recent';
+  return Date.now() - updatedAt <= maxAgeMs;
 }
 
 function isAssistantTopic(topic: TeamTopic) {
@@ -80,7 +92,8 @@ function isHousekeepingTopic(topic: TeamTopic) {
 }
 
 function staysAtDesk(topic: TeamTopic) {
-  return isHousekeepingTopic(topic);
+  if (isHousekeepingTopic(topic)) return true;
+  return isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent');
 }
 
 function actionLabel(topic: TeamTopic) {
@@ -114,6 +127,79 @@ function paletteForTopic(topic: TeamTopic) {
   const top = ['#d74f52', '#60c977', '#2f3340', '#7ea6ef', '#f0c84e', '#e7b04f', '#2f7aa6'][(seed >> 4) % 7];
   const bottom = ['#2d3645', '#3a3d46', '#4c5a6b', '#3d4551', '#64728b'][(seed >> 6) % 5];
   return { skin, hair, top, bottom };
+}
+
+let sharedToonGradient: THREE.DataTexture | null = null;
+function getToonGradient(): THREE.DataTexture {
+  if (!sharedToonGradient) {
+    const data = new Uint8Array([40, 40, 40, 255, 140, 140, 140, 255, 255, 255, 255, 255]);
+    const tex = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    sharedToonGradient = tex;
+  }
+  return sharedToonGradient;
+}
+
+function buildCarpetTexture(baseHex: string, accentHex: string, seed = 1): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = baseHex;
+  ctx.fillRect(0, 0, size, size);
+  let s = seed * 9301 + 49297;
+  const rand = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  for (let i = 0; i < 38; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 60 + rand() * 140;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, accentHex + '22');
+    g.addColorStop(1, accentHex + '00');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+let sharedBaseFloorTexture: THREE.CanvasTexture | null | undefined;
+function getBaseFloorTexture(): THREE.CanvasTexture | null {
+  if (sharedBaseFloorTexture === undefined) {
+    sharedBaseFloorTexture = buildCarpetTexture('#dfe3ea', '#b9c1cc', 1);
+    if (sharedBaseFloorTexture) sharedBaseFloorTexture.repeat.set(4, 3);
+  }
+  return sharedBaseFloorTexture;
+}
+let sharedAisleTexture: THREE.CanvasTexture | null | undefined;
+function getAisleTexture(): THREE.CanvasTexture | null {
+  if (sharedAisleTexture === undefined) {
+    sharedAisleTexture = buildCarpetTexture('#d9ece6', '#b1cbc2', 2);
+    if (sharedAisleTexture) sharedAisleTexture.repeat.set(2, 4);
+  }
+  return sharedAisleTexture;
+}
+let sharedDeskPadTexture: THREE.CanvasTexture | null | undefined;
+function getDeskPadTexture(): THREE.CanvasTexture | null {
+  if (sharedDeskPadTexture === undefined) {
+    sharedDeskPadTexture = buildCarpetTexture('#cfd6df', '#9fa9b6', 3);
+    if (sharedDeskPadTexture) sharedDeskPadTexture.repeat.set(1.4, 4);
+  }
+  return sharedDeskPadTexture;
+}
+function FloorTexturedMaterial({ which, color, roughness }: { which: 'base' | 'aisle' | 'desk'; color: string; roughness: number }) {
+  const tex = which === 'base' ? getBaseFloorTexture() : which === 'aisle' ? getAisleTexture() : getDeskPadTexture();
+  return <meshStandardMaterial color={tex ? '#ffffff' : color} map={tex ?? undefined} roughness={roughness} />;
 }
 
 type WorkerStyle = {
@@ -205,7 +291,7 @@ function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
     rotationY: Math.PI,
   };
   if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
-  if (label.includes('echo') || label.includes('gustavo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
   if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.11, maxHeight: 0.11, ...base };
   return null;
 }
@@ -455,18 +541,18 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
     <group>
       <mesh castShadow position={[0, 0.92, -0.045]} scale={capScale}>
         <sphereGeometry args={[0.122, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.86]} />
-        <meshStandardMaterial color={palette.hair} roughness={0.72} />
+        <meshStandardMaterial color={palette.hair} roughness={0.72}  flatShading />
       </mesh>
       {style.hairStyle === 'bob' && (
         <>
           <mesh castShadow position={[0, 0.835, -0.055]} scale={[style.headScale[0] * 1.02, style.headScale[1] * 0.82, style.headScale[2] * 0.92]}>
             <sphereGeometry args={[0.108, 18, 18, 0, Math.PI * 2, Math.PI / 2.35, Math.PI / 1.65]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.76} />
+            <meshStandardMaterial color={palette.hair} roughness={0.76}  flatShading />
           </mesh>
           {[-0.1, 0.1].map((x) => (
             <mesh key={`bob-side-${x}`} castShadow position={[x, 0.84, -0.025]} scale={[0.88, 1.18, 0.78]}>
-              <sphereGeometry args={[0.042, 12, 12]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.76} />
+              <sphereGeometry args={[0.042, 8, 8]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.76}  flatShading />
             </mesh>
           ))}
         </>
@@ -475,24 +561,24 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
         <>
           <mesh castShadow position={[0, 0.885, 0.012]} rotation={[0.22, 0, 0]}>
             <boxGeometry args={[0.18, 0.028, 0.05]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7}  flatShading />
           </mesh>
           <mesh castShadow position={[-0.06, 0.845, 0.022]} rotation={[0.2, 0.2, -0.18]}>
             <boxGeometry args={[0.065, 0.11, 0.03]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.7} />
+            <meshStandardMaterial color={palette.hair} roughness={0.7}  flatShading />
           </mesh>
         </>
       )}
       {style.hairStyle === 'bun' && (
         <>
           <mesh castShadow position={[0, 0.81, -0.09]}>
-            <sphereGeometry args={[0.06, 14, 14]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            <sphereGeometry args={[0.06, 8, 8]} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72}  flatShading />
           </mesh>
           {[-0.082, 0.082].map((x) => (
             <mesh key={`bun-side-${x}`} castShadow position={[x, 0.87, -0.01]} scale={[0.75, 1.15, 0.72]}>
-              <sphereGeometry args={[0.038, 12, 12]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+              <sphereGeometry args={[0.038, 8, 8]} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72}  flatShading />
             </mesh>
           ))}
         </>
@@ -500,25 +586,242 @@ function AvatarHair({ palette, style }: { palette: ReturnType<typeof paletteForT
       {style.hairStyle === 'crop' && (
         <mesh castShadow position={[0, 0.905, 0.03]} rotation={[0.36, 0, 0]}>
           <boxGeometry args={[0.19, 0.038, 0.07]} />
-          <meshStandardMaterial color={palette.hair} roughness={0.66} />
+          <meshStandardMaterial color={palette.hair} roughness={0.66}  flatShading />
         </mesh>
       )}
       {style.hairStyle === 'flip' && (
         <>
           <mesh castShadow position={[0, 0.84, -0.07]} scale={[1, 0.95, 0.9]}>
             <sphereGeometry args={[0.1, 16, 16, 0, Math.PI * 2, Math.PI / 2.45, Math.PI / 1.7]} />
-            <meshStandardMaterial color={palette.hair} roughness={0.72} />
+            <meshStandardMaterial color={palette.hair} roughness={0.72}  flatShading />
           </mesh>
           {[-0.11, 0.11].map((x) => (
             <mesh key={`flip-side-${x}`} castShadow position={[x, 0.83, -0.01]} rotation={[0, 0, x < 0 ? -0.35 : 0.35]}>
               <boxGeometry args={[0.04, 0.1, 0.028]} />
-              <meshStandardMaterial color={palette.hair} roughness={0.72} />
+              <meshStandardMaterial color={palette.hair} roughness={0.72}  flatShading />
             </mesh>
           ))}
         </>
       )}
     </group>
   );
+}
+
+const CHARACTER_MODELS = [
+  '/models/chars/Knight.glb',
+  '/models/chars/Barbarian.glb',
+  '/models/chars/Mage.glb',
+  '/models/chars/Rogue.glb',
+  '/models/chars/Rogue_Hooded.glb',
+];
+CHARACTER_MODELS.forEach((p) => { try { (useGLTF as unknown as { preload: (p: string) => void }).preload(p); } catch {} });
+
+function modelPathForTopic(topic: TeamTopic): string {
+  const seed = hashLabel(topic.topicId);
+  return CHARACTER_MODELS[seed % CHARACTER_MODELS.length];
+}
+
+function GLTFAvatar({ modelPath, animationName }: { modelPath: string; animationName: string }) {
+  const gltf = useGLTF(modelPath);
+  const cloned = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
+  const group = useRef<THREE.Group>(null);
+  const { actions, names } = useAnimations(gltf.animations, group);
+  useEffect(() => {
+    const resolved = names.includes(animationName) ? animationName : (names.find((n) => n.toLowerCase() === 'idle') ?? names[0]);
+    const action = resolved ? actions[resolved] : null;
+    if (action) {
+      action.reset().fadeIn(0.25).play();
+      return () => { action.fadeOut(0.25); };
+    }
+    return undefined;
+  }, [animationName, actions, names]);
+  return (
+    <group ref={group} scale={0.5} position={[0, 0, 0]}>
+      <primitive object={cloned} />
+    </group>
+  );
+}
+
+const ENV_ASSETS = [
+  '/models/env/floor_wood.glb',
+  '/models/env/wall.glb',
+  '/models/env/wall_corner.glb',
+  '/models/env/torch_mounted.glb',
+  '/models/env/torch_lit.glb',
+  '/models/env/banner_green.glb',
+  '/models/env/banner_blue.glb',
+  '/models/env/banner_red.glb',
+  '/models/env/shelf_large.glb',
+  '/models/env/shelf_small.glb',
+  '/models/env/barrel_large.glb',
+  '/models/env/barrel_small.glb',
+  '/models/env/crates.glb',
+  '/models/env/candle_triple.glb',
+  '/models/env/candle_lit.glb',
+  '/models/env/chest_gold.glb',
+  '/models/env/pillar.glb',
+  '/models/env/pillar_decorated.glb',
+  '/models/env/chair.glb',
+  '/models/env/table_medium.glb',
+];
+ENV_ASSETS.forEach((p) => (useGLTF as unknown as { preload: (p: string) => void }).preload(p));
+
+function GLBTile({ url, position, rotationY = 0 }: { url: string; position: [number, number, number]; rotationY?: number }) {
+  const gltf = useGLTF(url);
+  const cloned = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
+  return <primitive object={cloned} position={position} rotation={[0, rotationY, 0]} />;
+}
+
+function GLTFFloorGrid() {
+  const tiles: Array<[number, number, number]> = [];
+  for (let x = -10; x < 10; x += 4) {
+    for (let z = -8; z < 8; z += 4) {
+      tiles.push([x + 2, 0, z + 2]);
+    }
+  }
+  return <group>{tiles.map((p, i) => <GLBTile key={i} url="/models/env/floor_tile.glb" position={p} />)}</group>;
+}
+
+function VoxelObjInner({ base, position = [0, 0, 0], rotationY = 0, scale = 1 }: { base: string; position?: [number, number, number]; rotationY?: number; scale?: number }) {
+  const mtlUrl = `/models/voxel/${base}.mtl`;
+  const objUrl = `/models/voxel/${base}.obj`;
+  const mtl = useLoader(MTLLoader, mtlUrl);
+  const obj = useLoader(OBJLoader, objUrl, (loader) => {
+    mtl.preload();
+    (loader as OBJLoader).setMaterials(mtl);
+  });
+  const cloned = useMemo(() => (obj as THREE.Group).clone(true), [obj]);
+  return <primitive object={cloned} position={position} rotation={[0, rotationY, 0]} scale={scale} />;
+}
+
+function VoxelObj(props: { base: string; position?: [number, number, number]; rotationY?: number; scale?: number }) {
+  return (
+    <Suspense fallback={null}>
+      <VoxelObjInner {...props} />
+    </Suspense>
+  );
+}
+
+function VoxelOfficeScene() {
+  const S = 0.95;
+  return (
+    <>
+      {/* Uniform mid-grey floor — matches pilot desk body */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, -0.5]} receiveShadow>
+        <planeGeometry args={[24, 20]} />
+        <meshStandardMaterial color="#b8bcc2" roughness={0.9} />
+      </mesh>
+      {/* Central carpet (outer trim) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, -1]} receiveShadow>
+        <planeGeometry args={[14.5, 14]} />
+        <meshStandardMaterial color="#6e7379" roughness={0.95} />
+      </mesh>
+      {/* Central carpet (inner) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0015, -1]} receiveShadow>
+        <planeGeometry args={[13.8, 13.4]} />
+        <meshStandardMaterial color="#838890" roughness={0.95} />
+      </mesh>
+      {/* Walls */}
+      <mesh position={[0, 2, -9.95]}><boxGeometry args={[24, 4, 0.1]} /><meshStandardMaterial color="#b4b8bd" roughness={0.92} /></mesh>
+      <mesh position={[-11.95, 2, 0]}><boxGeometry args={[0.1, 4, 20]} /><meshStandardMaterial color="#b4b8bd" roughness={0.92} /></mesh>
+      <mesh position={[11.95, 2, 0]}><boxGeometry args={[0.1, 4, 20]} /><meshStandardMaterial color="#b4b8bd" roughness={0.92} /></mesh>
+
+      {/* Back wall fixtures — flush at wall plane, facing pilot */}
+      <group position={[0, 1, -10.65]} scale={[S * 1.1, S * 1.1, -S * 1.1]}>
+        <VoxelObj base="Office_Misc_Whiteboard_02" />
+      </group>
+      <group position={[5.2, 1, -10.65]} scale={[S * 1.1, S * 1.1, -S * 1.1]}>
+        <VoxelObj base="Office_Misc_Wall_Corkboard_02" />
+      </group>
+
+      {/* LEFT SIDE — Printer station */}
+      <VoxelObj base="Office_Table_Brown_2x1_01" position={[-10, 0, -1]} rotationY={Math.PI / 2} scale={S} />
+      <VoxelObj base="Office_Misc_Printer" position={[-10, 1.1, -1.4]} scale={S * 0.8} />
+      <VoxelObj base="Office_Misc_Fax" position={[-10, 1.1, 0.2]} scale={S * 0.8} />
+
+      {/* BREAK AREA — right-front corner with proper spacing */}
+      <VoxelObj base="Office_Couch_White_01" position={[9.5, 0, 2.5]} rotationY={-Math.PI / 2} scale={S} />
+      <VoxelObj base="Office_Couch_Black_01" position={[9.5, 0, 6.8]} rotationY={-Math.PI / 2} scale={S} />
+      <VoxelObj base="Office_Table_Coffee_01_Black" position={[7.2, 0, 4.6]} rotationY={Math.PI / 2} scale={S} />
+      <VoxelObj base="Office_Misc_Coffee_Mug" position={[7.2, 0.5, 4.3]} scale={S} />
+      <VoxelObj base="Office_Misc_Coffee_Mug" position={[7.2, 0.5, 4.9]} scale={S} />
+      <VoxelObj base="Office_Misc_Plant_03" position={[10.8, 0, 0]} scale={S * 1.1} />
+
+      {/* Filing cabinet (back-left corner) */}
+      <VoxelObj base="Office_Misc_Cabinet_01" position={[-10.8, 0, -9]} rotationY={Math.PI / 2} scale={S} />
+
+      {/* Filing cabinets along back-right */}
+      <VoxelObj base="Office_Misc_Cabinet_01" position={[10.8, 0, -9]} rotationY={-Math.PI / 2} scale={S} />
+
+      {/* Side door */}
+      <VoxelObj base="Office_Misc_Door_01" position={[-11.7, 0, 8]} rotationY={Math.PI / 2} scale={S * 1.1} />
+
+      {/* Plants — floor accents in corners */}
+      <VoxelObj base="Office_Misc_Plant_03" position={[-11, 0, -4.5]} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Plant_02" position={[-11, 0, 5.5]} scale={S} />
+      <VoxelObj base="Office_Misc_Plant_01" position={[10.8, 0, 9]} scale={S} />
+    </>
+  );
+}
+
+function MedievalDecorations() {
+  const props: Array<{ url: string; pos: [number, number, number]; ry?: number; scale?: number }> = [
+    // Wall-mounted torches on back wall (flush at z=-8.0)
+    { url: '/models/env/torch_lit.glb', pos: [-6, 2.5, -8.0], ry: 0 },
+    { url: '/models/env/torch_lit.glb', pos: [-2, 2.5, -8.0], ry: 0 },
+    { url: '/models/env/torch_lit.glb', pos: [2, 2.5, -8.0], ry: 0 },
+    { url: '/models/env/torch_lit.glb', pos: [6, 2.5, -8.0], ry: 0 },
+    // Side walls (left wall face at x=-10, right at x=+10)
+    { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, -4], ry: Math.PI / 2 },
+    { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, 4], ry: Math.PI / 2 },
+    { url: '/models/env/torch_lit.glb', pos: [10, 2.5, -4], ry: -Math.PI / 2 },
+    { url: '/models/env/torch_lit.glb', pos: [10, 2.5, 4], ry: -Math.PI / 2 },
+    // Banners on back wall between torches
+    { url: '/models/env/banner_green.glb', pos: [-4, 0, -8.3], ry: 0 },
+    { url: '/models/env/banner_red.glb', pos: [0, 0, -8.3], ry: 0 },
+    { url: '/models/env/banner_blue.glb', pos: [4, 0, -8.3], ry: 0 },
+    // Back corners — barrels + crates on the floor
+    { url: '/models/env/barrel_large.glb', pos: [-9, 0, -7], ry: 0 },
+    { url: '/models/env/barrel_small.glb', pos: [-8, 0, -7.5], ry: 0.3 },
+    { url: '/models/env/crates.glb', pos: [9, 0, -7], ry: -0.4 },
+    // Shelves along side walls
+    { url: '/models/env/shelf_large.glb', pos: [-10, 1.4, 0], ry: Math.PI / 2 },
+    { url: '/models/env/shelf_large.glb', pos: [10, 1.4, 0], ry: -Math.PI / 2 },
+    // Decorative pillars — back in corners, rotated to face each other
+    { url: '/models/env/pillar_decorated.glb', pos: [-9.2, 0, 7], ry: Math.PI / 2 },
+    { url: '/models/env/pillar_decorated.glb', pos: [9.2, 0, 7], ry: -Math.PI / 2 },
+    // Golden chest centered along back wall
+    { url: '/models/env/chest_gold.glb', pos: [0, 0, -7.2], ry: 0 },
+    // Candles near pillars
+    { url: '/models/env/candle_triple.glb', pos: [-9.2, 0, 6], ry: 0.2 },
+    { url: '/models/env/candle_triple.glb', pos: [9.2, 0, 6], ry: -0.2 },
+  ];
+  return <group>{props.map((p, i) => <GLBTile key={i} url={p.url} position={p.pos} rotationY={p.ry ?? 0} />)}</group>;
+}
+
+function GLTFWalls() {
+  const walls: Array<{ pos: [number, number, number]; ry: number; url: string }> = [];
+  // Back wall (z=-8.5, flush with floor back edge at z=-8)
+  for (const x of [-8, -4, 0, 4, 8]) walls.push({ pos: [x, 0, -8.5], ry: 0, url: '/models/env/wall.glb' });
+  // Left wall (x=-10.5, flush with floor left edge at x=-10)
+  for (const z of [-6, -2, 2, 6]) walls.push({ pos: [-10.5, 0, z], ry: Math.PI / 2, url: '/models/env/wall.glb' });
+  // Right wall (x=+10.5)
+  for (const z of [-6, -2, 2, 6]) walls.push({ pos: [10.5, 0, z], ry: -Math.PI / 2, url: '/models/env/wall.glb' });
+  // Back corners
+  walls.push({ pos: [-10.5, 0, -8.5], ry: 0, url: '/models/env/wall_corner.glb' });
+  walls.push({ pos: [10.5, 0, -8.5], ry: -Math.PI / 2, url: '/models/env/wall_corner.glb' });
+  return <group>{walls.map((w, i) => <GLBTile key={i} url={w.url} position={w.pos} rotationY={w.ry} />)}</group>;
+}
+
+function animationForMode(mode: string, status: string): string {
+  if (mode === 'victim') return 'Hit_A';
+  if (mode === 'discipline') return 'Unarmed_Melee_Attack_Punch_A';
+  if (mode === 'delivery') return 'Walking_A';
+  if (mode === 'job-front') return 'Walking_A';
+  if (mode === 'desk-watch') return 'Sit_Chair_Idle';
+  if (mode === 'desk-stand') return 'Idle';
+  if (status === 'running') return 'Interact';
+  return 'Idle';
 }
 
 function WorkerAvatar({
@@ -531,6 +834,8 @@ function WorkerAvatar({
   deliveryPosition,
   disciplineTargetPosition,
   beingDisciplined,
+  disciplineContactRef,
+  avatarPositionsRef,
   deskFacing,
   reducedMotion,
   seed,
@@ -549,6 +854,8 @@ function WorkerAvatar({
   deliveryPosition: [number, number, number];
   disciplineTargetPosition: [number, number, number] | null;
   beingDisciplined?: boolean;
+  disciplineContactRef?: { current: boolean };
+  avatarPositionsRef?: { current: Map<string, THREE.Vector3> };
   deskFacing: number;
   reducedMotion: boolean;
   seed: number;
@@ -579,26 +886,42 @@ function WorkerAvatar({
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
-  const offline = topic.live.status === 'missing';
   const housekeeping = isHousekeepingTopic(topic);
   const showHousekeepingAlert = housekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
   const disciplineMode = housekeeping && Boolean(disciplineTargetPosition);
   const isAssistant = isAssistantTopic(topic);
   const assistantSeated = isAssistant && (topic.live.status === 'running' || topic.live.status === 'recent');
-  const mode = disciplineMode
-    ? 'discipline'
-    : housekeeping
-      ? 'desk-watch'
-      : assistantSeated
+  const cloneSeated = isCloneTopic(topic) && hasFreshTaskSignal(topic);
+  const fixedDesk = staysAtDesk(topic) || cloneSeated;
+  const [hitPulse, setHitPulse] = useState(false);
+  const lastHitRef = useRef(0);
+  const contactStartRef = useRef(0);
+  useEffect(() => {
+    if (!beingDisciplined) { setHitPulse(false); lastHitRef.current = 0; contactStartRef.current = 0; }
+  }, [beingDisciplined]);
+
+  const mode = hitPulse
+    ? 'victim'
+    : disciplineMode
+      ? 'discipline'
+      : (fixedDesk && (housekeeping || assistantSeated || cloneSeated))
         ? 'desk-watch'
-        : offline
-          ? 'hidden'
+        : fixedDesk
+          ? 'desk-stand'
           : topic.live.status === 'recent'
             ? 'delivery'
-            : topic.live.status === 'running'
+            : assigned
               ? 'job-front'
               : 'standby';
   const showHockeyStick = housekeeping && mode === 'discipline';
+  const showActivityDiamond = topic.live.status === 'running' || cloneSeated || (emphasized && !showHousekeepingAlert);
+  const rawAgent = (topic.configured.agent || '').trim();
+  const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
+    ? topicDisplayLabel(topic)
+    : rawAgent;
+  const hoverLabel = emphasized ? `AGENT ${resolvedAgentLabel}` : topicDisplayLabel(topic);
+  const showFloorHalo = topic.live.status === 'running' || emphasized || selected;
+  const haloOpacity = topic.live.status === 'running' ? 0.4 : (emphasized || selected ? 0.16 : 0);
 
   useFrame(({ clock }) => {
     if (!group.current) return;
@@ -631,7 +954,7 @@ function WorkerAvatar({
         : atFront
           ? taskTableFacing
           : 0;
-    const baseY = atDesk ? -0.16 : atFront ? 0.06 : 0.07;
+    const baseY = atDesk ? 0.05 : atFront ? 0.06 : 0.07;
     const bob = atFront
       ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
       : atDesk
@@ -644,18 +967,74 @@ function WorkerAvatar({
       initialized.current = true;
       group.current.position.copy(moveTarget.current);
     }
+
+    // Compute separation vector from other avatars (local avoidance)
+    const separation = new THREE.Vector3();
+    if (avatarPositionsRef?.current && !reducedMotion) {
+      const AVOID_RADIUS = 0.95;
+      const curX = group.current.position.x;
+      const curZ = group.current.position.z;
+      for (const [otherId, otherPos] of avatarPositionsRef.current) {
+        if (otherId === topic.topicId) continue;
+        const dx = curX - otherPos.x;
+        const dz = curZ - otherPos.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < AVOID_RADIUS * AVOID_RADIUS && d2 > 0.0001) {
+          const d = Math.sqrt(d2);
+          const push = (AVOID_RADIUS - d) / AVOID_RADIUS;
+          separation.x += (dx / d) * push;
+          separation.z += (dz / d) * push;
+        }
+      }
+    }
+
     const dist = group.current.position.distanceTo(moveTarget.current);
-    if (atDiscipline && dist > 0.15 && !reducedMotion) {
-      group.current.position.lerp(moveTarget.current, 0.025);
-      const walkFacing = Math.atan2(moveTarget.current.x - group.current.position.x, moveTarget.current.z - group.current.position.z);
+    const moving = dist > 0.15 && !reducedMotion;
+    if (moving) {
+      const stepFactor = atDiscipline ? 0.025 : 0.06;
+      // Apply separation offset to movement target during travel
+      const adjTarget = new THREE.Vector3().copy(moveTarget.current);
+      if (separation.lengthSq() > 0) adjTarget.add(separation.multiplyScalar(0.6));
+      group.current.position.lerp(adjTarget, stepFactor);
+      const walkFacing = Math.atan2(adjTarget.x - group.current.position.x, adjTarget.z - group.current.position.z);
       group.current.rotation.set(0, walkFacing, 0);
-    } else if (!atDiscipline && dist > 0.15 && !reducedMotion) {
-      group.current.position.lerp(moveTarget.current, 0.06);
-      const walkFacing = Math.atan2(moveTarget.current.x - group.current.position.x, moveTarget.current.z - group.current.position.z);
-      group.current.rotation.set(0, walkFacing, 0);
+    } else if (separation.lengthSq() > 0) {
+      // Even when "at rest", gently push apart if overlapping
+      group.current.position.x += separation.x * 0.04;
+      group.current.position.z += separation.z * 0.04;
+      group.current.rotation.set(0, facing, 0);
     } else {
       group.current.position.copy(moveTarget.current);
       group.current.rotation.set(0, facing, 0);
+    }
+
+    // Publish own position to the shared map
+    if (avatarPositionsRef?.current) {
+      let p = avatarPositionsRef.current.get(topic.topicId);
+      if (!p) { p = new THREE.Vector3(); avatarPositionsRef.current.set(topic.topicId, p); }
+      p.copy(group.current.position);
+    }
+
+    // Housekeeper signals contact state; victim reads it to trigger hit pulses
+    if (mode === 'discipline' && disciplineContactRef) {
+      const distToTarget = disciplineAnchor ? Math.hypot(group.current.position.x - disciplineAnchor[0], group.current.position.z - disciplineAnchor[2]) : 999;
+      disciplineContactRef.current = distToTarget < 1.4;
+    }
+    if (beingDisciplined) {
+      const tNow = clock.getElapsedTime();
+      if (disciplineContactRef?.current) {
+        if (contactStartRef.current === 0) contactStartRef.current = tNow;
+        const elapsedSinceContact = tNow - contactStartRef.current;
+        // Wait for housekeeper's first strike to actually land (punch animation startup)
+        if (elapsedSinceContact > 1.1 && tNow - lastHitRef.current > 1.4) {
+          lastHitRef.current = tNow;
+          setHitPulse(true);
+          window.setTimeout(() => setHitPulse(false), 450);
+        }
+      } else {
+        contactStartRef.current = 0;
+        lastHitRef.current = 0;
+      }
     }
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
@@ -731,179 +1110,19 @@ function WorkerAvatar({
     }
   });
 
-  if (mode === 'hidden') return null;
-
   return (
     <group ref={group}>
       <mesh position={[0, 0.012, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.13, 0.17, 18]} />
-        <meshBasicMaterial color={accent} transparent opacity={topic.live.status === 'running' ? 0.48 : 0.2} />
+        <meshBasicMaterial color={accent} transparent opacity={showFloorHalo ? haloOpacity : 0} />
       </mesh>
-      <group scale={style.bodyScale}>
-        <mesh castShadow position={[0, 0.59, 0.02]}>
-          <capsuleGeometry args={[0.125, 0.14, 6, 12]} />
-          <meshStandardMaterial color={style.blouseColor} />
-        </mesh>
-        <mesh ref={chest} castShadow position={[0, 0.45, 0.02]}>
-          <capsuleGeometry args={[0.118, 0.28, 8, 14]} />
-          <meshStandardMaterial color={palette.top} emissive={accent} emissiveIntensity={topic.live.status === 'running' ? 0.14 : 0.02} />
-        </mesh>
-        <mesh castShadow position={[0, 0.33, 0.06]}>
-          <capsuleGeometry args={[0.095, 0.08, 6, 10]} />
-          <meshStandardMaterial color={palette.bottom} />
-        </mesh>
-        {style.hasVest && (
-          <mesh castShadow position={[0, 0.45, 0.1]}>
-            <capsuleGeometry args={[0.11, 0.24, 8, 12]} />
-            <meshStandardMaterial color={style.vestColor} />
-          </mesh>
-        )}
-        {style.hasJacket && (
-          <mesh castShadow position={[0, 0.45, 0.09]}>
-            <capsuleGeometry args={[0.128, 0.3, 8, 14]} />
-            <meshStandardMaterial color={style.jacketColor} />
-          </mesh>
-        )}
-        {style.accentStripe && (
-          <mesh castShadow position={[0, 0.45, 0.145]}>
-            <boxGeometry args={[0.04, 0.25, 0.02]} />
-            <meshStandardMaterial color="#f2eddd" />
-          </mesh>
-        )}
-        {style.hasTie && (
-          <>
-            <mesh castShadow position={[0, 0.55, 0.145]} rotation={[0, 0, Math.PI / 4]}>
-              <boxGeometry args={[0.035, 0.035, 0.018]} />
-              <meshStandardMaterial color={style.tieColor} />
-            </mesh>
-            <mesh castShadow position={[0, 0.46, 0.15]}>
-              <boxGeometry args={[0.03, 0.16, 0.018]} />
-              <meshStandardMaterial color={style.tieColor} />
-            </mesh>
-          </>
-        )}
-        {style.skirt ? (
-          <mesh castShadow position={[0, 0.18, 0.05]}>
-            <cylinderGeometry args={[0.11, 0.16, 0.22, 10]} />
-            <meshStandardMaterial color={palette.bottom} />
-          </mesh>
-        ) : (
-          <>
-            <mesh castShadow position={[-0.045, 0.18, 0.05]}>
-              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
-              <meshStandardMaterial color={palette.bottom} />
-            </mesh>
-            <mesh castShadow position={[0.045, 0.18, 0.05]}>
-              <capsuleGeometry args={[0.05, 0.14, 4, 8]} />
-              <meshStandardMaterial color={palette.bottom} />
-            </mesh>
-          </>
-        )}
-        {style.hasApron && (
-          <mesh castShadow position={[0, 0.33, 0.13]}>
-            <boxGeometry args={[0.14, 0.18, 0.025]} />
-            <meshStandardMaterial color={style.apronColor} />
-          </mesh>
-        )}
-        <mesh castShadow position={[0, 0.68, 0.02]}>
-          <capsuleGeometry args={[0.03, 0.034, 4, 8]} />
-          <meshStandardMaterial color={palette.skin} />
-        </mesh>
-        <mesh castShadow position={[0, 0.83, -0.01]} scale={style.headScale}>
-          <sphereGeometry args={[0.125, 22, 22]} />
-          <meshStandardMaterial color={palette.skin} />
-        </mesh>
-        <AvatarHair palette={palette} style={style} />
-        <mesh castShadow position={[0, 0.818, 0.1]} scale={[0.56, 0.66, 0.28]}>
-          <sphereGeometry args={[0.082, 18, 18]} />
-          <meshStandardMaterial color={palette.skin} />
-        </mesh>
-        {/* face features — rendered in front only to avoid poking through the back */}
-        {[-0.046, 0.046].map((x) => (
-          <mesh key={`eye-${x}`} position={[x, 0.842, 0.118]} scale={[1.26, 1, 0.3]}>
-            <sphereGeometry args={[0.011, 10, 10]} />
-            <meshBasicMaterial color="#2b241f" />
-          </mesh>
-        ))}
-        {style.hasHat && (
-          <group position={[0, 0.965, -0.01]}>
-            <mesh castShadow scale={[1.04, 0.72, 1.02]}>
-              <sphereGeometry args={[0.132, 20, 20, 0, Math.PI * 2, 0, Math.PI / 1.85]} />
-              <meshStandardMaterial color={style.hatColor} roughness={0.82} />
-            </mesh>
-            <mesh castShadow position={[0, -0.012, 0.086]} rotation={[0.28, 0, 0]}>
-              <boxGeometry args={[0.16, 0.02, 0.09]} />
-              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
-            </mesh>
-            <mesh castShadow position={[0, -0.055, -0.055]}>
-              <boxGeometry args={[0.16, 0.05, 0.12]} />
-              <meshStandardMaterial color={style.hatBrimColor} roughness={0.84} />
-            </mesh>
-          </group>
-        )}
-      </group>
+      <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status)} />
 
-      <group ref={leftArm} position={[-style.shoulderWidth, 0.5, 0.04]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
-          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
-        </mesh>
-        <mesh castShadow position={[0, -0.29, 0.01]}>
-          <sphereGeometry args={[0.043, 12, 12]} />
-          <meshStandardMaterial color={palette.skin} />
-        </mesh>
-      </group>
-      <group ref={rightArm} position={[style.shoulderWidth, 0.5, 0.04]}>
-        <mesh castShadow position={[0, -0.12, 0]}>
-          <capsuleGeometry args={[0.034, style.armLength, 4, 9]} />
-          <meshStandardMaterial color={style.hasVest ? style.vestColor : palette.top} />
-        </mesh>
-        <mesh castShadow position={[0, -0.29, 0.01]}>
-          <sphereGeometry args={[0.043, 12, 12]} />
-          <meshStandardMaterial color={palette.skin} />
-        </mesh>
-        {showHockeyStick && (
-          <group position={[0.03, -0.33, 0.06]} rotation={[0.1, 0.05, -0.9]}>
-            <mesh castShadow position={[0, -0.24, 0]}>
-              <cylinderGeometry args={[0.015, 0.017, 0.68, 12]} />
-              <meshStandardMaterial color="#d8b887" roughness={0.62} />
-            </mesh>
-            <mesh castShadow position={[0, -0.57, 0.07]} rotation={[0, 0.2, 0]}>
-              <boxGeometry args={[0.045, 0.05, 0.2]} />
-              <meshStandardMaterial color="#16181f" roughness={0.45} />
-            </mesh>
-            <mesh castShadow position={[0, 0.09, 0]}>
-              <cylinderGeometry args={[0.018, 0.018, 0.05, 12]} />
-              <meshStandardMaterial color="#21242d" roughness={0.48} />
-            </mesh>
-          </group>
-        )}
-      </group>
-      <group ref={leftLeg} position={[-0.06, 0.2, 0.06]}>
-        <mesh castShadow position={[0, -0.11, 0]}>
-          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
-          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
-        </mesh>
-        <mesh castShadow position={[0, -0.25, 0.06]}>
-          <boxGeometry args={[0.09, 0.04, 0.15]} />
-          <meshStandardMaterial color={style.shoeColor} />
-        </mesh>
-      </group>
-      <group ref={rightLeg} position={[0.06, 0.2, 0.06]}>
-        <mesh castShadow position={[0, -0.11, 0]}>
-          <capsuleGeometry args={[0.038, style.legHeight, 4, 9]} />
-          <meshStandardMaterial color={style.skirt ? style.sockColor : palette.bottom} />
-        </mesh>
-        <mesh castShadow position={[0, -0.25, 0.06]}>
-          <boxGeometry args={[0.09, 0.04, 0.15]} />
-          <meshStandardMaterial color={style.shoeColor} />
-        </mesh>
-      </group>
 
-      <ActivityDiamond visible={emphasized || topic.live.status === 'running'} hasBar={topic.live.status === 'running'} />
+      <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
       <AgentProgressBar topic={topic} />
       <AlertDiamond visible={showHousekeepingAlert} />
-      <FloatingNameTag name={topicDisplayLabel(topic)} color={statusColor(topic.live.status)} position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
+      <FloatingNameTag name={hoverLabel} color={statusColor(topic.live.status)} position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
 
       <mesh
         position={[0, 0.55, 0]}
@@ -920,24 +1139,26 @@ function WorkerAvatar({
           onSelect();
         }}
       >
-        <capsuleGeometry args={[0.35, 1.3, 6, 12]} />
+        <capsuleGeometry args={[0.35, 1.3, 3, 6]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
   );
 }
 
-function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, activeDeskWork }: {
+function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, activeDeskWork, sideWallSign = 1 }: {
   glow: THREE.Color;
   glowStrength: number;
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
   activeDeskWork: boolean;
+  sideWallSign?: 1 | -1;
 }) {
   const monitor = useRef<THREE.Mesh>(null);
   const lamp = useRef<THREE.Mesh>(null);
   const screen = useRef<THREE.Mesh>(null);
+  const auxScreen = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() + seed * 0.22;
@@ -946,16 +1167,38 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, act
       if (lamp.current) lamp.current.rotation.z = -0.22 + Math.sin(t * 2.2) * 0.03;
     }
 
+    if (monitor.current) {
+      const material = monitor.current.material as THREE.MeshStandardMaterial;
+      if (activeDeskWork) {
+        material.emissive.set('#4bbfff');
+        material.emissiveIntensity = 0.08;
+      } else {
+        material.emissive.set('#000000');
+        material.emissiveIntensity = 0;
+      }
+    }
+
     if (screen.current) {
       const material = screen.current.material as THREE.MeshStandardMaterial;
       if (activeDeskWork) {
-        // on — matches PILOT screen style
-        material.color.set('#9fc9d9');
-        material.emissive.set('#9fc9d9');
-        material.emissiveIntensity = 0.38;
+        material.color.set('#9edfff');
+        material.emissive.set('#9edfff');
+        material.emissiveIntensity = 0.46;
       } else {
-        // off — dark
         material.color.set('#14181c');
+        material.emissive.set('#000000');
+        material.emissiveIntensity = 0;
+      }
+    }
+
+    if (auxScreen.current) {
+      const material = auxScreen.current.material as THREE.MeshStandardMaterial;
+      if (activeDeskWork) {
+        material.color.set('#72d0ff');
+        material.emissive.set('#72d0ff');
+        material.emissiveIntensity = 0.28;
+      } else {
+        material.color.set('#182029');
         material.emissive.set('#000000');
         material.emissiveIntensity = 0;
       }
@@ -1002,7 +1245,7 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, act
       <RoundedBox args={[0.46, 0.34, 0.36]} radius={0.015} smoothness={3} position={[-0.1, 0.82, -0.27]} castShadow ref={monitor as never}>
         <meshStandardMaterial color="#cdc7b9" roughness={0.62} />
       </RoundedBox>
-      <mesh position={[-0.1, 0.84, -0.45]} castShadow ref={screen as never}>
+      <mesh position={[-0.1, 0.84, -0.088]} castShadow ref={screen as never}>
         <boxGeometry args={[0.32, 0.2, 0.018]} />
         <meshStandardMaterial color="#9fc8d8" emissive={glow} emissiveIntensity={glowStrength * 0.48} />
       </mesh>
@@ -1018,7 +1261,7 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, act
       <RoundedBox args={[0.28, 0.24, 0.24]} radius={0.014} smoothness={3} position={[0.3, 0.75, -0.16]} castShadow>
         <meshStandardMaterial color="#c2bcaf" roughness={0.62} />
       </RoundedBox>
-      <mesh position={[0.3, 0.76, -0.29]} castShadow>
+      <mesh position={[0.3, 0.76, -0.028]} castShadow ref={auxScreen as never}>
         <boxGeometry args={[0.18, 0.12, 0.015]} />
         <meshStandardMaterial color="#8fb7ca" emissive={glow} emissiveIntensity={glowStrength * 0.22} />
       </mesh>
@@ -1029,11 +1272,11 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, act
 
       <mesh position={[0.58, 0.55, -0.08]} castShadow rotation={[0, 0, -0.28]} ref={lamp}>
         <boxGeometry args={[0.04, 0.34, 0.04]} />
-        <meshStandardMaterial color="#57534d" emissive={glow} emissiveIntensity={glowStrength * 0.1} />
+        <meshStandardMaterial color="#57534d" emissive={glow} emissiveIntensity={glowStrength * 0.05} />
       </mesh>
       <mesh position={[0.66, 0.73, -0.15]} castShadow rotation={[0, 0, 0.22]}>
         <coneGeometry args={[0.1, 0.16, 4]} />
-        <meshStandardMaterial color="#e8dfcf" emissive="#efe6d7" emissiveIntensity={0.18} />
+        <meshStandardMaterial color="#e8dfcf" emissive="#efe6d7" emissiveIntensity={0.08} />
       </mesh>
       <mesh position={[0.53, 0.49, -0.03]} castShadow>
         <cylinderGeometry args={[0.08, 0.08, 0.025, 14]} />
@@ -1060,14 +1303,45 @@ function DeskFallback({ glow, glowStrength, reducedMotion, seed, emphasized, act
         <boxGeometry args={[1.4, 0.32, 0.01]} />
         <meshStandardMaterial color="#95a8a0" />
       </mesh>
-      <RoundedBox args={[0.06, 0.5, 1.02]} radius={0.02} smoothness={4} position={[0.8, 0.84, 0.1]} castShadow>
+      <RoundedBox args={[0.06, 0.5, 1.02]} radius={0.02} smoothness={4} position={[0.8 * sideWallSign, 0.84, 0.1]} castShadow>
         <meshStandardMaterial color="#b8b6ac" />
       </RoundedBox>
-      <mesh position={[0.76, 0.86, 0.1]} rotation={[0, Math.PI / 2, 0]}>
+      <mesh position={[0.76 * sideWallSign, 0.86, 0.1]} rotation={[0, sideWallSign > 0 ? Math.PI / 2 : -Math.PI / 2, 0]}>
         <boxGeometry args={[1, 0.32, 0.01]} />
         <meshStandardMaterial color="#95a8a0" />
       </mesh>
     </>
+  );
+}
+
+function DeskMonitorOverlay({ active }: { active: boolean }) {
+  return (
+    <group>
+      <mesh position={[-0.1, 0.84, -0.084]} renderOrder={24}>
+        <boxGeometry args={[0.372, 0.242, 0.012]} />
+        <meshStandardMaterial
+          color={active ? '#2a3e4a' : '#1b232d'}
+          emissive={active ? '#0a1218' : '#000000'}
+          emissiveIntensity={active ? 0.03 : 0}
+          transparent
+          opacity={active ? 0.96 : 0.56}
+          metalness={0.02}
+          roughness={0.22}
+        />
+      </mesh>
+      <mesh position={[-0.1, 0.84, -0.078]} renderOrder={25}>
+        <planeGeometry args={[0.338, 0.204]} />
+        <meshBasicMaterial
+          color={active ? '#b7f4ff' : '#0f141a'}
+          transparent
+          opacity={active ? 0.92 : 0.14}
+          side={THREE.FrontSide}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -1138,11 +1412,16 @@ function DeskUnit({ topic, position, rotationY, reducedMotion, seed, emphasized,
 }) {
   const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const glowStrength = statusGlow(topic.live.status);
-  const activeDeskWork = isHousekeepingTopic(topic) || (isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent'));
+  const assistantSeated = isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent');
+  const cloneSeated = isCloneTopic(topic) && hasFreshTaskSignal(topic);
+  const seatedAtDesk = isHousekeepingTopic(topic) || assistantSeated || cloneSeated;
+  const activeDeskWork = seatedAtDesk;
+  const sideWallSign: 1 | -1 = position[0] > 0 ? -1 : 1;
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} activeDeskWork={activeDeskWork} />} />
+      <OfficeAssetSlot slot="desk" manifest={manifest} fallback={<DeskFallback glow={glow} glowStrength={glowStrength} reducedMotion={reducedMotion} seed={seed} emphasized={emphasized} activeDeskWork={activeDeskWork} sideWallSign={sideWallSign} />} />
+      <DeskMonitorOverlay active={activeDeskWork} />
 
       <OfficeAssetSlot slot="deskChair" manifest={manifest} position={[0.08, 0.02, 0.58]} fallback={<ChairFallback glow={glow} glowStrength={glowStrength} />} />
       <ProjectDeskBadge topic={topic} />
@@ -1350,25 +1629,28 @@ function CommonTaskTableFallback() {
   );
 }
 
-function HubFallback() {
+function HubFallback({ sceneStyle = 'dungeon' }: { sceneStyle?: SceneStyle }) {
+  const topColor = '#ddd4c5';
+  const frontColor = '#cfc4b3';
+  const legColor = '#8b7968';
   return (
     <>
       <RoundedBox args={[3.2, 0.1, 1.55]} radius={0.05} smoothness={4} position={[0, 0.47, 0]} castShadow>
-        <meshStandardMaterial color="#ddd4c5" roughness={0.9} />
+        <meshStandardMaterial color={topColor} roughness={0.9} />
       </RoundedBox>
       <RoundedBox args={[3.08, 0.42, 0.16]} radius={0.04} smoothness={4} position={[0, 0.24, 0.69]} castShadow>
-        <meshStandardMaterial color="#cfc4b3" roughness={0.92} />
+        <meshStandardMaterial color={frontColor} roughness={0.92} />
       </RoundedBox>
       {[-1.35, 1.35].map((x, i) => (
         <mesh key={i} position={[x, 0.23, -0.56]} castShadow>
           <boxGeometry args={[0.14, 0.46, 0.14]} />
-          <meshStandardMaterial color="#8b7968" />
+          <meshStandardMaterial color={legColor} />
         </mesh>
       ))}
       {[-1.35, 1.35].map((x, i) => (
         <mesh key={`front-${i}`} position={[x, 0.23, 0.56]} castShadow>
           <boxGeometry args={[0.14, 0.46, 0.14]} />
-          <meshStandardMaterial color="#8b7968" />
+          <meshStandardMaterial color={legColor} />
         </mesh>
       ))}
 
@@ -1472,42 +1754,24 @@ function WindowBlindsFallback() {
   );
 }
 
-function OfficeShell({ manifest }: { manifest?: OfficeAssetManifestOverride }) {
+function OfficeShell({ manifest, sceneStyle = 'dungeon' }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle }) {
   return (
     <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[24, 22]} />
-        <meshStandardMaterial color="#edf3f4" roughness={0.96} />
-      </mesh>
+      {sceneStyle === 'dungeon' && (
+        <>
+          <GLTFFloorGrid />
+          <GLTFWalls />
+          <MedievalDecorations />
+        </>
+      )}
+      {sceneStyle === 'office' && <VoxelOfficeScene />}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0.05]} receiveShadow>
-        <planeGeometry args={[8.2, 12.8]} />
-        <meshStandardMaterial color="#d9ece6" roughness={0.98} />
-      </mesh>
-
-      {[-4.5, 4.5].map((x) => (
-        <mesh key={`desk-pad-${x}`} position={[x, 0.015, -1.6]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[3.4, 15.2]} />
-          <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
+      {sceneStyle === 'dungeon' && (
+        <mesh position={[0, 0.015, 4.45]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[11.4, 2.2]} />
+          <meshStandardMaterial color="#dee3ea" roughness={0.98} />
         </mesh>
-      ))}
-
-      <mesh position={[0, 0.015, 4.38]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[6.4, 2.2]} />
-        <meshStandardMaterial color="#dfe8ee" roughness={0.98} />
-      </mesh>
-
-      {[-3.4, -1.7, 0, 1.7, 3.4].map((x) => (
-        <mesh key={`review-line-${x}`} position={[x, 0.02, 3.15]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.6, 0.05]} />
-          <meshBasicMaterial color="#b8d4d7" transparent opacity={0.32} />
-        </mesh>
-      ))}
-
-      <mesh position={[0, 0.02, 4.1]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[6.2, 2.6]} />
-        <meshBasicMaterial color="#d7e5f2" transparent opacity={0.85} />
-      </mesh>
+      )}
     </>
   );
 }
@@ -1541,7 +1805,7 @@ function isCoderTopic(topic: TeamTopic) {
 function buildDeskLayouts(topics: TeamTopic[]) {
   // Layout: left=projects+general+assistant, right=coders+housekeeping+clone
   const projectSky = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('sky'));
-  const projectEchoes = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('echo') || l.includes('gustavo'); });
+  const projectEchoes = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('echo'));
   const projectOdds = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('odds') || l.includes('gap'); });
   const coders = topics.filter((t) => isCoderTopic(t));
   const generals = topics.filter((t) => {
@@ -1581,11 +1845,6 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
   const totalRows = maxRows;
   const assignedTopics = topics.filter((topic) => hasAssignedTask(topic));
-  const inactiveTopics = topics.filter((topic) => !hasAssignedTask(topic) && !['running', 'recent'].includes(topic.live.status));
-  const inactiveColumns = Math.min(3, Math.max(1, inactiveTopics.length));
-  const inactiveSpacingX = 0.96;
-  const inactiveSpacingZ = 0.82;
-  const inactiveIndexById = new Map(inactiveTopics.map((topic, index) => [topic.topicId, index]));
   const assignedIndexById = new Map(assignedTopics.map((topic, index) => [topic.topicId, index]));
   const pilotDeskCenter: [number, number, number] = [0, 0, 4.45];
   const frontRowCenter: [number, number, number] = [0, 0, 2.62];
@@ -1598,12 +1857,6 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
     const deskX = side === 0 ? -4.3 : 4.3;
     const deskZ = (row - (totalRows - 1) / 2) * 2.28 - 1.8 + jitter;
-
-    const inactiveIndex = inactiveIndexById.get(topic.topicId) ?? index;
-    const inactiveRow = Math.floor(inactiveIndex / inactiveColumns);
-    const inactiveColumn = inactiveIndex % inactiveColumns;
-    const standbyX = (inactiveColumn - (inactiveColumns - 1) / 2) * inactiveSpacingX;
-    const standbyZ = -3.55 + inactiveRow * inactiveSpacingZ;
 
     const assignedIndex = assignedIndexById.get(topic.topicId);
     const slot = assignedIndex === undefined ? [0, 0, -0.72] as const : frontSlots[assignedIndex % frontSlots.length];
@@ -1629,13 +1882,19 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       0,
       deskZ + standingLocalOffset[0] * sinY + standingLocalOffset[2] * cosY,
     ];
+    // Idle/standby should be beside each desk on the aisle side.
+    const standbyPosition: [number, number, number] = [
+      deskX + (side === 0 ? 1.65 : -1.65),
+      0,
+      deskZ + 0.02,
+    ];
 
     return {
       topic,
       position: [deskX, 0, deskZ] as [number, number, number],
       rotationY,
       workerDeskPosition: taskTablePosition,
-      standbyPosition: [standbyX, 0, standbyZ] as [number, number, number],
+      standbyPosition,
       taskTablePosition,
       taskTableFacing,
       deliveryPosition: [deliveryX, 0, deliveryZ] as [number, number, number],
@@ -1649,7 +1908,8 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
   if (staysAtDesk(topic)) {
-    const anchor = topic.live.status === 'running' ? layout.deskSeatPosition : layout.deskStandPosition;
+    const seated = isHousekeepingTopic(topic) || (isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent'));
+    const anchor = seated ? layout.deskSeatPosition : layout.deskStandPosition;
     return [anchor[0], 0.92, anchor[2]] as [number, number, number];
   }
   if (topic.live.status === 'running') return layout.focusPoint;
@@ -1658,18 +1918,23 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemo, manifest, onHover, onLeave, onSelect }: {
+type SceneStyle = 'dungeon' | 'office';
+
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemo, manifest, sceneStyle = 'dungeon', onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
   disciplineDemo?: boolean;
   manifest?: OfficeAssetManifestOverride;
+  sceneStyle?: SceneStyle;
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
 }) {
   const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
+  const disciplineContactRef = useRef(false);
+  const avatarPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
 
   const disciplineVictimId = useMemo(() => {
     if (!disciplineDemo) return null;
@@ -1680,15 +1945,14 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   return (
     <>
       <color attach="background" args={['#eef5f6']} />
-      <fog attach="fog" args={['#eef5f6', 28, 56]} />
       <ambientLight intensity={1.2} color="#ffffff" />
       <hemisphereLight args={['#ffffff', '#dbe8ea', 1.18]} />
       <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" />
       <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
-      <OfficeShell manifest={manifest} />
+      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} />
 
-      <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.45]} fallback={<HubFallback />} />
+      <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.45]} fallback={<HubFallback sceneStyle={sceneStyle} />} />
       <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.45]} visible />
 
       {deskLayouts.map((desk, index) => {
@@ -1736,6 +2000,8 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                   })()
                 : null}
               beingDisciplined={desk.topic.topicId === disciplineVictimId}
+              disciplineContactRef={disciplineContactRef}
+              avatarPositionsRef={avatarPositionsRef}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
               reducedMotion={reducedMotion}
               seed={index + 1}
@@ -1791,8 +2057,8 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
 
     const overviewTarget: [number, number, number] = isMobile ? [0, 1.05, 1.35] : [0, 1.15, 1.9];
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [10.2, 4.8, 11.4] : [12.6, 5.7, 13.9];
-    const overviewOffset: [number, number, number] = isMobile ? [13.7, 6.1, 14.6] : [13.2, 5.9, 14.4];
+    const focusOffset: [number, number, number] = isMobile ? [3.2, 2.0, 3.6] : [3.8, 2.3, 4.3];
+    const overviewOffset: [number, number, number] = isMobile ? [0, 7.4, 14.5] : [0, 7.2, 14.6];
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -1989,36 +2255,123 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   );
 }
 
-function SceneHud({ running, recent, mode, isMobile, onMode }: {
+function CameraPanControls({ controlsRef, onUse, isMobile = false, mobileControlsOpen = false }: { controlsRef: RefObject<OrbitControlsImpl>; onUse?: () => void; isMobile?: boolean; mobileControlsOpen?: boolean }) {
+  if (isMobile && !mobileControlsOpen) return null;
+  const activeDirs = useRef<Set<'up' | 'down' | 'left' | 'right'>>(new Set());
+  const rafRef = useRef<number | null>(null);
+  const lastT = useRef<number | null>(null);
+
+  const step = (ts: number) => {
+    const controls = controlsRef.current;
+    if (!controls) { rafRef.current = null; lastT.current = null; return; }
+    const dt = lastT.current == null ? 16 : ts - lastT.current;
+    lastT.current = ts;
+    if (activeDirs.current.size === 0) { rafRef.current = null; lastT.current = null; return; }
+    const PAN_SPEED = 4.2; // units per second
+    const camera = controls.object;
+    const forward = new THREE.Vector3().subVectors(controls.target, camera.position);
+    forward.y = 0;
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const delta = new THREE.Vector3();
+    const amount = PAN_SPEED * (dt / 1000);
+    if (activeDirs.current.has('up')) delta.add(forward.clone().multiplyScalar(amount));
+    if (activeDirs.current.has('down')) delta.add(forward.clone().multiplyScalar(-amount));
+    if (activeDirs.current.has('right')) delta.add(right.clone().multiplyScalar(amount));
+    if (activeDirs.current.has('left')) delta.add(right.clone().multiplyScalar(-amount));
+    camera.position.add(delta);
+    controls.target.add(delta);
+    controls.update();
+    rafRef.current = requestAnimationFrame(step);
+  };
+
+  const startDir = (dir: 'up' | 'down' | 'left' | 'right') => {
+    if (activeDirs.current.size === 0) onUse?.();
+    activeDirs.current.add(dir);
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(step);
+  };
+  const stopDir = (dir: 'up' | 'down' | 'left' | 'right') => {
+    activeDirs.current.delete(dir);
+  };
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const handlers = (dir: 'up' | 'down' | 'left' | 'right') => ({
+    onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); (e.target as Element).setPointerCapture?.(e.pointerId); startDir(dir); },
+    onPointerUp: () => stopDir(dir),
+    onPointerLeave: () => stopDir(dir),
+    onPointerCancel: () => stopDir(dir),
+  });
+
+  const btnCls = isMobile
+    ? 'watch-pill h-11 w-11 !p-0 flex items-center justify-center text-[16px] select-none'
+    : 'watch-pill h-7 w-7 !p-0 flex items-center justify-center text-[10px] select-none';
+  const gridCls = isMobile
+    ? 'pointer-events-auto absolute right-3 bottom-[60px] z-10 grid grid-cols-3 grid-rows-3 gap-1.5 w-[132px]'
+    : 'pointer-events-auto absolute right-3 bottom-[52px] z-10 grid grid-cols-3 grid-rows-3 gap-1 w-[84px]';
+
+  return (
+    <div className={gridCls}>
+      <div />
+      <button type="button" className={btnCls} aria-label="pan up" {...handlers('up')}>▲</button>
+      <div />
+      <button type="button" className={btnCls} aria-label="pan left" {...handlers('left')}>◀</button>
+      <div />
+      <button type="button" className={btnCls} aria-label="pan right" {...handlers('right')}>▶</button>
+      <div />
+      <button type="button" className={btnCls} aria-label="pan down" {...handlers('down')}>▼</button>
+      <div />
+    </div>
+  );
+}
+
+function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle, mobileControlsOpen = false, onToggleMobileControls }: {
   running: number;
   recent: number;
   mode: CameraMode;
   isMobile: boolean;
   onMode: (mode: CameraMode) => void;
+  sceneStyle: SceneStyle;
+  onStyle: (style: SceneStyle) => void;
+  mobileControlsOpen?: boolean;
+  onToggleMobileControls?: () => void;
 }) {
+  const styleBtn = (target: SceneStyle) =>
+    `watch-pill text-[11px] uppercase ${sceneStyle === target ? 'watch-pill--active' : ''}`;
+
   if (isMobile) {
+    const compactStyleBtn = (target: SceneStyle) =>
+      `watch-pill !px-2 !py-1 text-[10px] uppercase ${sceneStyle === target ? 'watch-pill--active' : ''}`;
     return (
-      <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1.5">
+      <>
+        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1">
+          <button type="button" className={compactStyleBtn('office')} onClick={() => onStyle('office')}>office</button>
+          <button type="button" className={compactStyleBtn('dungeon')} onClick={() => onStyle('dungeon')}>dungeon</button>
+          <button type="button" onClick={() => onMode('overview')} className="watch-pill !px-2 !py-1 text-[10px] uppercase">reset</button>
+        </div>
+        {/* Arrow-grid hide/show toggle on the side */}
         <button
           type="button"
-          onClick={() => onMode('overview')}
-          className="rounded-md border border-white/10 bg-[rgba(10,10,14,0.8)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70"
+          onClick={onToggleMobileControls}
+          aria-label={mobileControlsOpen ? 'hide arrows' : 'show arrows'}
+          className="pointer-events-auto absolute right-3 bottom-3 z-10 watch-pill !p-0 w-11 h-11 flex items-center justify-center text-[16px]"
         >
-          reset
+          {mobileControlsOpen ? '✕' : '⤡'}
         </button>
-      </div>
+      </>
     );
   }
 
   const buttonCls = (target: CameraMode) =>
-    `rounded border px-2 py-1 text-[10px] uppercase tracking-[0.14em] transition-colors ${
-      mode === target
-        ? 'border-[rgba(103,232,249,0.45)] bg-[rgba(103,232,249,0.14)] text-[rgb(103,232,249)]'
-        : 'border-white/10 bg-[rgba(10,10,14,0.72)] text-white/70 hover:text-white'
-    }`;
+    `watch-pill text-[11px] uppercase ${mode === target ? 'watch-pill--active' : ''}`;
 
   return (
     <>
+      <div className="pointer-events-auto absolute left-3 top-3 z-10 flex items-center gap-1.5">
+        <button type="button" className={styleBtn('office')} onClick={() => onStyle('office')}>office</button>
+        <button type="button" className={styleBtn('dungeon')} onClick={() => onStyle('dungeon')}>dungeon</button>
+      </div>
       <div className="pointer-events-auto absolute right-3 bottom-3 z-10 flex items-center gap-1.5">
         <button type="button" className={buttonCls('overview')} onClick={() => onMode('overview')}>overview</button>
         <button type="button" className={buttonCls('focus')} onClick={() => onMode('focus')}>focus</button>
@@ -2028,7 +2381,7 @@ function SceneHud({ running, recent, mode, isMobile, onMode }: {
   );
 }
 
-export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride }) {
+export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = false }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride; demo?: boolean }) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -2039,6 +2392,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
   const [disciplineDemo, setDisciplineDemo] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
+  const [sceneStyle, setSceneStyle] = useState<SceneStyle>('office');
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
 
   useEffect(() => {
@@ -2083,7 +2438,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
   const defaultTopic = topics.find((topic) => topic.live.status === 'running') || topics.find((topic) => topic.live.status === 'recent') || topics[0] || null;
   const hoveredTopic = topics.find((topic) => topic.topicId === hoveredTopicId) || null;
   const selectedTopic = topics.find((topic) => topic.topicId === selectedTopicId) || null;
-  const activeTopic = isMobile ? (selectedTopic || hoveredTopic || defaultTopic) : (hoveredTopic || selectedTopic || defaultTopic);
+  const activeTopic = selectedTopic;
 
   const focusTopic = selectedTopic || hoveredTopic || defaultTopic;
   const focusLayout = focusTopic ? layoutById.get(focusTopic.topicId) : null;
@@ -2117,9 +2472,9 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
   if (fallback) return <FallbackOffice topics={topics} />;
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.12)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}>
+    <div className={`relative overflow-hidden bg-[rgba(0,0,0,0.12)] ${demo ? 'h-full w-full min-h-[320px]' : `rounded-xl border border-[var(--watch-panel-border)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}`}>
       <Canvas
-        camera={{ position: [13.2, 7.05, 16.3], fov: isMobile ? 44 : 43, near: 0.1, far: 180 }}
+        camera={{ position: [0, 8.4, 16.5], fov: isMobile ? 44 : 40, near: 0.1, far: 180 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
           camera.lookAt(0, 1.15, 1.65);
@@ -2130,23 +2485,26 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
           if (!isMobile) setCameraMode('overview');
         }}
       >
-        <OfficeRoom
-          topics={topics}
-          reducedMotion={reducedMotion}
-          hoveredTopicId={hoveredTopicId}
-          selectedTopicId={selectedTopicId}
-          disciplineDemo={disciplineDemo}
-          manifest={resolvedAssetManifest}
-          onHover={setHoveredTopicId}
-          onLeave={(topicId) => {
-            setHoveredTopicId((current) => (current === topicId ? null : current));
-          }}
-          onSelect={(topicId) => {
-            setSelectedTopicId(topicId);
-            setCameraMode('focus');
-            if (isMobile) setMobileInfoExpanded(true);
-          }}
-        />
+        <Suspense fallback={null}>
+          <OfficeRoom
+            topics={topics}
+            reducedMotion={reducedMotion}
+            hoveredTopicId={hoveredTopicId}
+            selectedTopicId={selectedTopicId}
+            disciplineDemo={disciplineDemo}
+            manifest={resolvedAssetManifest}
+            sceneStyle={sceneStyle}
+            onHover={setHoveredTopicId}
+            onLeave={(topicId) => {
+              setHoveredTopicId((current) => (current === topicId ? null : current));
+            }}
+            onSelect={(topicId) => {
+              setSelectedTopicId(topicId);
+              setCameraMode('focus');
+              if (isMobile) setMobileInfoExpanded(true);
+            }}
+          />
+        </Suspense>
 
         <CameraDirector
           controlsRef={controlsRef}
@@ -2163,7 +2521,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
           enableRotate
           enableDamping
           dampingFactor={0.08}
-          minDistance={5.2}
+          minDistance={3.5}
           maxDistance={48}
           zoomSpeed={1.35}
           panSpeed={1.2}
@@ -2177,7 +2535,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
         />
       </Canvas>
 
-      <SceneHud running={runningCount} recent={recentCount} mode={cameraMode} isMobile={isMobile} onMode={setCameraMode} />
+      <SceneHud running={runningCount} recent={recentCount} mode={cameraMode} isMobile={isMobile} onMode={setCameraMode} sceneStyle={sceneStyle} onStyle={setSceneStyle} mobileControlsOpen={mobileControlsOpen} onToggleMobileControls={() => setMobileControlsOpen((v) => !v)} />
+      {!demo && <CameraPanControls controlsRef={controlsRef} onUse={() => setCameraMode('free')} isMobile={isMobile} mobileControlsOpen={mobileControlsOpen} />}
 
       <TopicInfoCard
         topic={activeTopic}
@@ -2190,7 +2549,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest }: { topi
       />
 
       {!isMobile && (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-wrap gap-2">
+        <div className="pointer-events-none absolute bottom-3 left-[132px] z-10 flex flex-wrap gap-2">
           <div className="rounded-md bg-[rgba(10,10,14,0.78)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">drag to orbit</div>
           <div className="rounded-md bg-[rgba(10,10,14,0.78)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">F focus · O overview · Esc reset</div>
         </div>
