@@ -11,6 +11,36 @@ Website: https://cryptopilot.dev/watcher
 Watcher is a real operator surface for a live OpenClaw setup, not a mock dashboard.
 It gives you one place to read the active session, see lane state, inspect recent runs and flows, watch service health, and steer the right lane from the browser when something needs intervention.
 
+## Quick setup
+
+```bash
+# 1. install deps
+npm install
+
+# 2. fetch 3D assets (idempotent; skips anything already present)
+bash scripts/fetch-models.sh
+
+# 3. copy env template and set your values
+cp .env.example .env.local
+
+# 4. run dev
+npm run dev
+```
+
+Required for dashboard access:
+
+```bash
+WATCH_PASSWORD=choose-your-own-password
+```
+
+Fast local showcase mode:
+
+```bash
+WATCH_PASSWORD=demo
+WATCH_DEMO_MODE=1
+npm run dev
+```
+
 ## What ships today
 
 - Public landing page at `/`
@@ -123,27 +153,7 @@ Third-party 3D assets used in the scenes are free commercial-use / CC0:
 
 Assets are not checked into the repo. Fetch them with `scripts/fetch-models.sh`. Output goes to `public/models/{chars,env,voxel}`, which is gitignored.
 
-## Setup
-
-```bash
-# 1. install deps
-npm install
-
-# 2. fetch 3D assets (idempotent; skips anything already present)
-bash scripts/fetch-models.sh
-
-# 3. copy env template and set your values
-cp .env.example .env.local
-
-# 4. run dev
-npm run dev
-```
-
-Required for dashboard access:
-
-```bash
-WATCH_PASSWORD=choose-your-own-password
-```
+## Setup details
 
 Optional env vars:
 
