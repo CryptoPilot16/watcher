@@ -762,6 +762,7 @@ CHARACTER_MODELS.forEach((p) => { try { (useGLTF as unknown as { preload: (p: st
 function modelPathForTopic(topic: TeamTopic): string {
   if (isCloneTopic(topic)) return '/models/chars/Rogue_Hooded.glb';
   if (isProjectDeskTopic(topic)) return '/models/chars/Mage.glb';
+  if (isAssistantTopic(topic) || isCoderTopic(topic)) return '/models/chars/Knight.glb';
   const seed = hashLabel(topic.topicId);
   return CHARACTER_MODELS[seed % CHARACTER_MODELS.length];
 }
