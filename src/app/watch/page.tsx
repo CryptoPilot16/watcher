@@ -821,7 +821,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
               : 'border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
           }`}
         >
-          <div className="text-[10px] uppercase tracking-[0.16em]">{tab.label}</div>
+          <div className="text-[9px] uppercase tracking-[0.1em] leading-tight break-words">{tab.label}</div>
         </button>
       );
     }
@@ -844,7 +844,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
 
   return (
     <div className="border-b border-[var(--watch-panel-border)]">
-      <div className="grid grid-cols-5 gap-1.5 px-2 py-2 sm:hidden">
+      <div className="grid grid-cols-3 gap-1.5 px-2 py-2 sm:hidden">
         {sectionTabs.map((tab) => renderTab(tab, true))}
       </div>
       <div className="hidden items-stretch overflow-x-auto sm:flex">
