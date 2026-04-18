@@ -17,6 +17,11 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
   - **Office** — voxel-art modern workspace with workstations, break area, wall fixtures (MariaIsMe voxel pack)
   - **Dungeon** — medieval tavern with stone walls, torches, banners, treasure chest (KayKit Dungeon pack)
 - Rigged character avatars (KayKit Adventurers: Knight, Barbarian, Mage, Rogue) with idle / walk / sit-at-desk / hit-reaction animations
+- Explicit lane casting in the office scene:
+  - `AI Clone` uses the hooded rogue
+  - `General` uses the rogue
+  - `Assistant` and `Coder 1/2/3` use the knight
+  - `Skybuddy`, `Echoes`, and `OddsGap` use mage / wizard models
 - Lane-aware seating model: running and recent workers stay at their own desks, idle workers return to standby, offline workers remain visible in-lane
 - Progress bars with completion burst animation and short post-finish linger
 - Camera controls: overview / focus / free pan (desktop arrow grid + mobile toggle)
@@ -39,6 +44,7 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
 - Authenticated dashboard access
 - Public preview intentionally sanitized (no private task text)
 - Web lane control routes instructions into the exact bound lane session instead of broadcasting to a generic agent target
+- Topic/session resolution avoids cross-lane fallback, so one lane cannot inherit another lane's identity just because its own session file is missing
 - Runtime secrets are environment variables and are not stored in this README
 
 ## Tech Stack
@@ -98,4 +104,5 @@ npm run start
 - Web-to-chat transfer for Team Office lane control resolves the concrete session for the selected lane, including Telegram forum topics.
 - The public office preview can expose a lightweight debug HUD with `?debug=1` when you need to verify seating, targets, and progress behavior without relying on WebGL output alone.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
+- Character casting is deterministic by lane role now, so the public office view keeps a stable visual identity instead of reshuffling character classes between refreshes.
 
