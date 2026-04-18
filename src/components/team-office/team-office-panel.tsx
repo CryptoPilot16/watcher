@@ -41,9 +41,9 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
       <div className="hidden flex-wrap items-start justify-between gap-3 px-1 sm:flex sm:px-0">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">▌ office view</div>
-          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with side desks, one forward PILOT desk, a front job row, and a back standby row.</div>
+          <div className="mt-1 text-base text-[var(--watch-text-bright)] sm:text-lg">Open office floor with side desks, one forward PILOT desk, and workers anchored to their own lanes.</div>
           <div className="mt-2 hidden max-w-3xl text-xs leading-6 text-[var(--watch-text-muted)] sm:block sm:text-[13px]">
-            Anyone attached to a job stays in front of PILOT, active lanes glow there, unassigned lanes wait in the back row, and recent deliveries queue nearest the desk.
+            Active and recent workers stay at their own desk seats, idle lanes wait in their standby spots, and offline lanes remain visible in place.
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
@@ -69,10 +69,10 @@ export function TeamOfficePanel({ topology }: { topology: TeamTopology }) {
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">scene legend</div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {([
-              { status: 'running', title: 'running', desc: 'worker actively executing in front of the PILOT desk with green diamond' },
-              { status: 'recent', title: 'handoff', desc: 'worker presenting output nearest the PILOT desk' },
-              { status: 'idle', title: 'idle', desc: 'job-linked workers wait in front of PILOT, unassigned lanes wait in the back row' },
-              { status: 'missing', title: 'offline', desc: 'agent stays visible at desk with an offline marker' },
+              { status: 'running', title: 'running', desc: 'worker actively executing from their own desk with a green activity marker' },
+              { status: 'recent', title: 'handoff', desc: 'worker remains at their desk after a fresh delivery' },
+              { status: 'idle', title: 'idle', desc: 'lane is parked in its standby spot until work arrives' },
+              { status: 'missing', title: 'offline', desc: 'agent stays visible in-lane with an offline marker' },
             ] as const).map((item) => {
               const tone = statusTone(item.status);
               return (
