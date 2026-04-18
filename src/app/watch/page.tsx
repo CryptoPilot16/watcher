@@ -40,15 +40,30 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-type SectionTab = 'status' | 'office' | 'team' | 'activity' | 'logs' | 'processes';
+type PM2Process = {
+  name?: string;
+  pid?: number;
+  monit?: {
+    cpu?: number;
+    memory?: number;
+  };
+  pm2_env?: {
+    status?: string;
+    exec_mode?: string;
+    restart_time?: number;
+    pm_uptime?: number;
+    version?: string;
+  };
+};
+
+type SectionTab = 'status' | 'office' | 'team' | 'activity' | 'processes';
 
 const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'status',    label: 'status',    hint: 'mission control' },
   { id: 'office',    label: 'office',    hint: '3d operator floor' },
   { id: 'team',      label: 'team',      hint: 'lanes & roster' },
-  { id: 'activity',  label: 'activity',  hint: 'recent runs + flows' },
-  { id: 'logs',      label: 'logs',      hint: 'raw output streams' },
-  { id: 'processes', label: 'processes', hint: 'pm2 status' },
+  { id: 'activity',  label: 'activity',  hint: 'runs, flows, signals' },
+  { id: 'processes', label: 'processes', hint: 'service health' },
 ];
 
 const TeamOfficePanel = dynamic(
@@ -90,24 +105,45 @@ function RunStatusBadge({ status }: { status: string }) {
   return <HealthBadge level={level} label={status} />;
 }
 
+function parsePm2(raw: string | undefined): PM2Process[] {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatMem(bytes?: number) {
+  if (!bytes || !Number.isFinite(bytes)) return '0 MB';
+  return `${(bytes / 1024 / 1024).toFixed(bytes >= 1024 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function formatUptime(startedAt?: number) {
+  if (!startedAt || !Number.isFinite(startedAt)) return '—';
+  const ms = Math.max(0, Date.now() - startedAt);
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+function tailMeaningfulLines(content: string | undefined, limit = 2) {
+  return (content || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => line !== '(empty)')
+    .slice(-limit);
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">
       ▌ {children}
-    </div>
-  );
-}
-
-function LogPanel({ label, hint, content }: { label: string; hint: string; content: string }) {
-  return (
-    <div className="flex flex-col overflow-hidden rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.2)]">
-      <div className="flex items-baseline gap-2 border-b border-[var(--watch-panel-border)] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--watch-accent-strong)]">{label}</span>
-        <span className="text-[10px] text-[var(--watch-text-muted)]">— {hint}</span>
-      </div>
-      <pre className="max-h-[38vh] overflow-auto p-3 text-[11px] leading-[1.7] text-[var(--watch-text-code)] sm:max-h-[44vh]">
-        {content || '(empty)'}
-      </pre>
     </div>
   );
 }
@@ -439,13 +475,19 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
 
 // ── ACTIVITY TAB ─────────────────────────────────────────────────────────────
 
-function ActivitySection({ runs, flows }: { runs: RunRecord[]; flows: FlowRecord[] }) {
-  const recentRuns = runs.slice(0, 8);
-  const recentFlows = flows.slice(0, 6);
+function ActivitySection({ data, runs, flows }: { data: WatchData | null; runs: RunRecord[]; flows: FlowRecord[] }) {
+  const recentRuns = runs.slice(0, 6);
+  const recentFlows = flows.slice(0, 4);
   const runningRuns = recentRuns.filter((run) => run.status === 'running').length;
   const openFlows = recentFlows.filter((flow) => !['succeeded', 'failed'].includes(flow.status)).length;
   const failedRuns = recentRuns.filter((run) => run.status === 'failed').length;
   const blockedFlows = recentFlows.filter((flow) => Boolean(flow.blocked_summary)).length;
+  const serviceSignals = [
+    ...tailMeaningfulLines(data?.sections.snapmoltErr, 2).map((text) => ({ source: 'snapmolt err', text, level: 'error' as HealthLevel })),
+    ...tailMeaningfulLines(data?.sections.echoesErr, 2).map((text) => ({ source: 'echoes err', text, level: 'error' as HealthLevel })),
+    ...tailMeaningfulLines(data?.sections.updateResult, 1).map((text) => ({ source: 'update', text, level: 'warn' as HealthLevel })),
+    ...tailMeaningfulLines(data?.sections.snapmoltOut, 2).map((text) => ({ source: 'snapmolt', text, level: 'ok' as HealthLevel })),
+  ].slice(-6);
 
   const flowLevel = (status: string): HealthLevel => {
     if (status === 'succeeded') return 'ok';
@@ -469,28 +511,51 @@ function ActivitySection({ runs, flows }: { runs: RunRecord[]; flows: FlowRecord
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline gap-2">
-            <SectionLabel>recent runs</SectionLabel>
-            <span className="text-[10px] text-[var(--watch-text-muted)]">most recent task executions</span>
-          </div>
-          <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
-            {recentRuns.length === 0 ? (
-              <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No runs recorded yet.</div>
-            ) : (
-              recentRuns.map((run) => (
-                <div key={run.task_id} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <RunStatusBadge status={run.status} />
-                    <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">{run.ts?.slice(0, 16).replace('T', ' ') ?? '—'}</span>
-                    {run.label && <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{run.label}</span>}
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline gap-2">
+              <SectionLabel>recent runs</SectionLabel>
+              <span className="text-[10px] text-[var(--watch-text-muted)]">most recent task executions</span>
+            </div>
+            <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
+              {recentRuns.length === 0 ? (
+                <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No runs recorded yet.</div>
+              ) : (
+                recentRuns.map((run) => (
+                  <div key={run.task_id} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <RunStatusBadge status={run.status} />
+                      <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">{run.ts?.slice(0, 16).replace('T', ' ') ?? '—'}</span>
+                      {run.label && <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{run.label}</span>}
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-[var(--watch-text-bright)]">{run.task}</div>
+                    {run.error && <div className="mt-1 text-[11px] text-[#f87171]">✕ {run.error}</div>}
                   </div>
-                  <div className="mt-2 text-sm leading-6 text-[var(--watch-text-bright)]">{run.task}</div>
-                  {run.error && <div className="mt-1 text-[11px] text-[#f87171]">✕ {run.error}</div>}
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline gap-2">
+              <SectionLabel>service signals</SectionLabel>
+              <span className="text-[10px] text-[var(--watch-text-muted)]">latest useful lines from the logs</span>
+            </div>
+            <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
+              {serviceSignals.length === 0 ? (
+                <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No recent service signals.</div>
+              ) : (
+                serviceSignals.map((item, index) => (
+                  <div key={`${item.source}-${index}`} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                    <div className="flex items-center gap-2">
+                      <HealthBadge level={item.level} label={item.source} />
+                    </div>
+                    <div className="mt-2 text-xs leading-6 text-[var(--watch-text-bright)] break-words">{item.text}</div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -651,39 +716,90 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
   );
 }
 
-// ── LOGS TAB ─────────────────────────────────────────────────────────────────
-
-function LogsSection({ data }: { data: WatchData | null }) {
-  const streams = [
-    { key: 'snapmoltOut', label: 'snapmolt stdout', hint: 'agent output log' },
-    { key: 'snapmoltErr', label: 'snapmolt stderr', hint: 'agent error log' },
-    { key: 'echoesOut',   label: 'echoes stdout',   hint: 'backend output' },
-    { key: 'echoesErr',   label: 'echoes stderr',   hint: 'backend errors' },
-  ];
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {streams.map(({ key, label, hint }) => (
-        <LogPanel key={key} label={label} hint={hint} content={data?.sections[key] || ''} />
-      ))}
-    </div>
-  );
-}
-
 // ── PROCESSES TAB ─────────────────────────────────────────────────────────────
 
 function ProcessesSection({ data }: { data: WatchData | null }) {
+  const processes = parsePm2(data?.sections.pm2Json)
+    .sort((a, b) => {
+      const aOnline = a.pm2_env?.status === 'online' ? 1 : 0;
+      const bOnline = b.pm2_env?.status === 'online' ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      return (b.pm2_env?.pm_uptime || 0) - (a.pm2_env?.pm_uptime || 0);
+    });
+  const online = processes.filter((proc) => proc.pm2_env?.status === 'online');
+  const unhealthy = processes.filter((proc) => proc.pm2_env?.status && proc.pm2_env.status !== 'online');
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-2">
-        <SectionLabel>pm2 process manager</SectionLabel>
-        <span className="text-[10px] text-[var(--watch-text-muted)]">
-          — name · mode · status · restarts · cpu · mem · uptime
-        </span>
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: 'online', value: online.length },
+          { label: 'issues', value: unhealthy.length },
+          { label: 'total', value: processes.length },
+        ].map((item) => (
+          <div key={item.label} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">{item.label}</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--watch-text-bright)]">{item.value}</div>
+          </div>
+        ))}
       </div>
-      <div className="overflow-hidden rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.2)]">
-        <pre className="overflow-auto p-3 text-[11px] leading-[1.7] text-[var(--watch-text-code)]">
-          {data?.sections.pm2 || 'Loading PM2 data…'}
-        </pre>
+
+      {unhealthy.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>attention</SectionLabel>
+          <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
+            {unhealthy.map((proc) => (
+              <div key={`${proc.name}-${proc.pid || 0}`} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <HealthBadge level="error" label={proc.pm2_env?.status || 'unknown'} />
+                  <span className="text-sm font-semibold text-[var(--watch-text-bright)]">{proc.name || 'unknown'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <SectionLabel>services</SectionLabel>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {processes.map((proc) => {
+            const status = proc.pm2_env?.status || 'unknown';
+            const level: HealthLevel = status === 'online' ? 'ok' : status === 'stopped' ? 'warn' : 'error';
+            return (
+              <div key={`${proc.name}-${proc.pid || 0}`} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{proc.name || 'unknown'}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
+                      {(proc.pm2_env?.exec_mode || '—').replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                  <HealthBadge level={level} label={status} />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-[var(--watch-text-muted)]">
+                  <div className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2">
+                    <div className="uppercase tracking-[0.14em]">uptime</div>
+                    <div className="mt-1 text-[var(--watch-text-bright)]">{formatUptime(proc.pm2_env?.pm_uptime)}</div>
+                  </div>
+                  <div className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2">
+                    <div className="uppercase tracking-[0.14em]">restarts</div>
+                    <div className="mt-1 text-[var(--watch-text-bright)]">{proc.pm2_env?.restart_time ?? 0}</div>
+                  </div>
+                  <div className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2">
+                    <div className="uppercase tracking-[0.14em]">cpu</div>
+                    <div className="mt-1 text-[var(--watch-text-bright)]">{proc.monit?.cpu ?? 0}%</div>
+                  </div>
+                  <div className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-2.5 py-2">
+                    <div className="uppercase tracking-[0.14em]">mem</div>
+                    <div className="mt-1 text-[var(--watch-text-bright)]">{formatMem(proc.monit?.memory)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -836,8 +952,7 @@ export default function WatchPage() {
                 {activeSection === 'status'    && <StatusSection    data={data} health={health} meta={meta} runs={runs} cron={cron} turns={turns} sessionRunning={sessionRunning} />}
                 {activeSection === 'office'    && <OfficeSection    topology={teamTopology} />}
                 {activeSection === 'team'      && <TeamSection      topology={teamTopology} />}
-                {activeSection === 'activity'  && <ActivitySection  runs={runs} flows={flows} />}
-                {activeSection === 'logs'      && <LogsSection      data={data} />}
+                {activeSection === 'activity'  && <ActivitySection  data={data} runs={runs} flows={flows} />}
                 {activeSection === 'processes' && <ProcessesSection data={data} />}
               </>
             )}

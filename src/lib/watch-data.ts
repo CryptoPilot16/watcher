@@ -354,6 +354,7 @@ export function getWatchSnapshot(): WatchSnapshot {
       teamTopology:    getTeamTopology(),
       watchFaultState: JSON.stringify(readWatchState()),
       pm2:           run('pm2 list'),
+      pm2Json:       run('pm2 jlist'),
       updateResult:  run('cat /root/.openclaw/tasks/update-command.result 2>/dev/null || true'),
       snapmoltOut:   readMergedLog('/root/.pm2/logs/snapmolt-out*.log', 120, 160),
       snapmoltErr:   readMergedLog('/root/.pm2/logs/snapmolt-error*.log', 80, 120),
