@@ -1,70 +1,101 @@
 # Watcher
 
-Self-hosted mission control for agent teams.
+Self-hosted mission control for OpenClaw agent teams.
 
 Website: https://cryptopilot.dev/watcher
 
 ![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-17.png)
 
-## What It Is
+## What ships today
 
-Watcher is a self-hosted operations dashboard for OpenClaw-style agent systems. It gives operators one place to monitor live session activity, team lanes, recent runs and flows, and service health, with a 3D office view layered on top.
+Watcher is a real operator surface for a live OpenClaw setup. Right now the repo includes:
 
-## Core Capabilities
+- Public landing page for the project
+- Authenticated `/watch` dashboard with five tabs:
+  - **status**: mission banner, live session feed, auth health, session freshness, recent runs, cron state
+  - **office**: interactive 3D team office with camera controls, desk ownership, progress bars, and lane states
+  - **team**: lane cards plus a task board view of what each topic is doing
+  - **activity**: recent runs, flows, cron-derived signals, and useful service log lines
+  - **processes**: readable PM2 service health cards
+- Interactive Team Office scene with two styles:
+  - **Office**: voxel workspace with desks, break area, and operator-floor layout
+  - **Dungeon**: tavern-style scene using KayKit dungeon assets
+- Lane-aware worker placement:
+  - running lanes stay at their own desks
+  - recent lanes linger at their desk briefly after delivery
+  - idle lanes park in standby spots
+  - missing lanes remain visible as offline
+- Lane progress parsing from plans and inline progress text, surfaced as progress bars in the office scene
+- Web relay from the office UI into the exact bound lane session, including Telegram topic sessions and ACP-bound Telegram sessions
+- Public read-only office preview at `/office-preview` with sanitized labels and stripped task text
+- Public debug HUD at `/office-preview?debug=1` for DOM-side verification of mode, target, and progress when WebGL is unreliable
+- Optional Telegram mirror loop for Watcher summaries
+- Mobile-friendly layout across landing page, dashboard, and office view
 
-- Public landing page for the open source project
-- Authenticated `/watch` dashboard with:
-  - mission status banner
-  - live session feed
-  - team lane overview
-  - recent activity (runs, flows, service signals)
-  - readable process health cards
-- Interactive 3D Team Office scene with two swappable styles:
-  - **Office** — voxel-art modern workspace with workstations, break area, wall fixtures (MariaIsMe voxel pack)
-  - **Dungeon** — medieval tavern with stone walls, torches, banners, treasure chest (KayKit Dungeon pack)
-- Rigged character avatars (KayKit Adventurers: Knight, Barbarian, Mage, Rogue) with idle / walk / sit-at-desk / hit-reaction animations
-- Lane-aware seating model: running and recent workers stay at their own desks, idle workers return to standby, offline workers remain visible in-lane
-- Progress bars with completion burst animation and short post-finish linger
-- Camera controls: overview / focus / free pan (desktop arrow grid + mobile toggle)
-- Authenticated web lane control with session-aware topic routing for Telegram forum lanes
-- Public read-only office preview with sanitized lane labels and optional debug HUD
-- Telegram watcher loop for mirrored status summaries
-- Mobile-friendly dashboard experience
+## Product surfaces
 
-## Product Surfaces
-
-- `/` — public open source landing page
-- `/watch` — primary authenticated operations dashboard
-- `/office-preview` — public read-only office visualization
-- `/office-preview?debug=1` — public debug view for lane mode / target / progress inspection
+- `/` — public landing page
+- `/login` — password gate for the dashboard
+- `/watch` — authenticated operations dashboard
+- `/office-preview` — public sanitized office visualization
+- `/office-preview?debug=1` — public debug HUD
 - `/docs` — authenticated in-app reference
+- `/api/watch` — JSON snapshot of the current Watcher state
+- `/api/watch-telegram` — Telegram mirror sync endpoint
 
-## Security Model
+## What the dashboard actually reads
 
-- Authenticated dashboard access via `WATCH_PASSWORD`
-- Public office preview is intentionally sanitized and strips private task text
-- Web lane control routes instructions into the exact bound lane session instead of broadcasting to a generic agent target
-- Topic/session resolution accepts both standard topic sessions and ACP-bound Telegram sessions
-- Topic/session resolution avoids cross-lane fallback, so one lane cannot inherit another lane's identity just because its own session file is missing
-- Runtime secrets live in environment variables and are not stored in this README
+Watcher is not a mock dashboard. It reads from the live local system:
 
-## Tech Stack
+- OpenClaw session files for the active conversation feed
+- OpenClaw `runs.sqlite` for task history
+- OpenClaw flow registry for long-running multi-step work
+- OpenClaw cron run logs for scheduled job snapshots
+- PM2 for service/process health
+- Team topology derived from lane/session bindings and recent activity
+
+That split matters:
+
+- the **live session feed** shows real-time conversation turns from the active session JSONL
+- **runs** only capture completed or discrete task executions
+- the **office/team views** use lane topology plus recent messages/tool events to infer live state and progress
+
+## Team office and routing
+
+The Team Office is the main differentiator in this repo.
+
+- Workers have stable visual identities and stay anchored to their own lanes
+- Camera modes support overview, focus, and free pan
+- The floor view supports desk selection and lane inspection
+- The office panel can send instructions directly into the bound lane session instead of broadcasting to a generic agent target
+- Session resolution supports standard Telegram topic keys and ACP Telegram-bound sessions
+- Public preview mode strips private task text and exposes only sanitized role/activity information
+
+## Security model
+
+- Dashboard access is gated by `WATCH_PASSWORD`
+- `WATCH_SESSION_SECRET` can be set for browser session signing
+- `WATCH_API_KEY` can be used for separate automation access
+- Public office preview intentionally strips private task text
+- Runtime secrets stay in environment variables, not this repo
+
+## Tech stack
 
 - Next.js 14
 - React
 - TypeScript
 - Three.js / react-three-fiber / @react-three/drei
-- OBJ + GLB asset loaders (three-stdlib)
+- OBJ + GLB asset loaders
 
-## 3D Assets
+## 3D assets
 
-All third-party 3D assets used in the scenes are CC0 / free commercial-use:
+Third-party 3D assets used in the scenes are free commercial-use / CC0:
 
-- **KayKit Character Pack: Adventurers** (CC0) — rigged adventurer models with animations
-- **KayKit Dungeon Remastered** (CC0) — dungeon floor tiles, walls, banners, torches, barrels, chest, pillars
-- **MariaIsMe 3D Voxel Office Pack** — office furniture (desks, chairs, cubicles, cabinets, coffee machines, plants, wall art)
+- **KayKit Character Pack: Adventurers** — rigged adventurer models with animations
+- **KayKit Dungeon Remastered** — dungeon floor tiles, walls, props, and fixtures
+- **MariaIsMe 3D Voxel Office Pack** — office furniture and environment assets
 
-Assets are not checked into the repo — they're downloaded on setup by `scripts/fetch-models.sh` (KayKit from GitHub, MariaIsMe from itch.io). Output goes to `public/models/{chars,env,voxel}`, which is gitignored.
+Assets are not checked into the repo. Fetch them with `scripts/fetch-models.sh`. Output goes to `public/models/{chars,env,voxel}`, which is gitignored.
 
 ## Setup
 
@@ -75,17 +106,31 @@ npm install
 # 2. fetch 3D assets (idempotent; skips anything already present)
 bash scripts/fetch-models.sh
 
-# 3. copy env template and set WATCH_PASSWORD + optional Telegram token
+# 3. copy env template and set your values
 cp .env.example .env.local
-# edit .env.local — WATCH_PASSWORD is whatever you want; this is the
-# password you'll type into /login to access your dashboard. There is
-# no pre-set value; anyone self-hosting picks their own.
 
 # 4. run dev
 npm run dev
 ```
 
-If `fetch-models.sh` can't reach itch.io for the voxel office pack, it prints a fallback note with the manual download URL — just drop the OBJ zip into `public/models/voxel/` and re-run.
+Required for dashboard access:
+
+```bash
+WATCH_PASSWORD=choose-your-own-password
+```
+
+Optional env vars:
+
+```bash
+WATCH_API_KEY=
+WATCH_SESSION_SECRET=
+WATCH_TELEGRAM_BOT_TOKEN=
+WATCH_TELEGRAM_CHAT_ID=
+WATCH_URL=http://127.0.0.1:3012
+WATCH_TELEGRAM_INTERVAL_MS=60000
+```
+
+If `fetch-models.sh` cannot fetch the voxel office pack automatically, it prints the fallback/manual download path. Drop the required files into `public/models/voxel/` and rerun the script.
 
 ## Development
 
@@ -100,18 +145,23 @@ npm run build
 npm run start
 ```
 
-## Current Interaction Model Notes
+## Telegram mirror loop
 
-- Web-to-chat transfer for Team Office lane control resolves the concrete session for the selected lane, including Telegram forum topics.
-- Session-bound web relays queue the lane run immediately and let the lane deliver the reply back into Telegram, so the web UI does not block on the full agent turn before showing success.
-- The public office preview can expose a lightweight debug HUD with `?debug=1` when you need to verify seating, targets, and progress behavior without relying on WebGL output alone.
+Optional script:
+
+```bash
+npm run telegram:loop
+```
+
+Behavior:
+
+- Uses `WATCH_TELEGRAM_BOT_TOKEN`
+- Uses `WATCH_TELEGRAM_CHAT_ID` if set
+- Falls back to the most recent bot chat if chat id is omitted
+- Tries Telegram draft streaming first, then falls back to editing a normal message when drafts are unavailable
+
+## Notes
+
+- The public debug HUD exists because headless Chromium and WebGL are not always trustworthy for validation on every host. The DOM debug view is the reliable path when you need to confirm avatar mode and progress state.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
-- Character casting is deterministic by lane role, so the public office view keeps a stable visual identity instead of reshuffling classes between refreshes.
-
-## Lane Binding Modes
-
-- Standard Telegram topic lanes bind as `agent:<agent>:telegram:group:<groupId>:topic:<threadId>`.
-- Some lanes, especially ACP-backed ones like Echoes, can bind through ACP Telegram session keys instead of the standard topic-key form.
-- Watcher treats both binding styles as valid lane targets for web relays.
-- For session-bound lanes, the web UI should feel closer to chat: the request is queued fast, the lane runs in the background, and the reply is delivered back into the Telegram topic.
-
+- Worker casting is deterministic by lane role so the office view does not reshuffle identities on refresh.
