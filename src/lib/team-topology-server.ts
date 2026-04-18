@@ -501,8 +501,6 @@ function resolveSessionFile(agentId: string, topicId: string, session: SessionIn
 
     const topicFile = files.find((name) => name.endsWith(topicSuffix));
     if (topicFile) return `${sessionsDir}/${topicFile}`;
-
-    if (files.length > 0) return `${sessionsDir}/${files[0]}`;
   } catch {
     // ignore filesystem read errors
   }
