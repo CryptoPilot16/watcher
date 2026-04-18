@@ -1485,7 +1485,10 @@ function DeskMonitorOverlay({ active }: { active: boolean }) {
           opacity={active ? 0.92 : 0.14}
           side={THREE.FrontSide}
           depthWrite={false}
-          depthTest={false}
+          depthTest
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
           toneMapped={false}
         />
       </mesh>
