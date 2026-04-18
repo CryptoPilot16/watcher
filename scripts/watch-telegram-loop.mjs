@@ -1,12 +1,16 @@
 const WATCH_URL = process.env.WATCH_URL || 'http://127.0.0.1:3012';
-const WATCH_PASSWORD = process.env.WATCH_PASSWORD || process.env.WATCH_API_KEY || '';
+const WATCH_API_KEY = process.env.WATCH_API_KEY || process.env.WATCH_PASSWORD || '';
 const INTERVAL_MS = Number(process.env.WATCH_TELEGRAM_INTERVAL_MS || 60_000);
 
 async function tick() {
   const url = new URL('/api/watch-telegram', WATCH_URL);
-  url.searchParams.set('api_key', WATCH_PASSWORD);
 
-  const res = await fetch(url.toString(), { method: 'POST' });
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${WATCH_API_KEY}`,
+    },
+  });
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
@@ -17,8 +21,8 @@ async function tick() {
 }
 
 async function main() {
-  if (!WATCH_PASSWORD) {
-    throw new Error('Missing WATCH_PASSWORD');
+  if (!WATCH_API_KEY) {
+    throw new Error('Missing WATCH_API_KEY or WATCH_PASSWORD');
   }
 
   await tick();

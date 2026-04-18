@@ -27,7 +27,7 @@ function getRedirectUrl(request: NextRequest, pathname: string, search = '') {
   return url;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
@@ -41,7 +41,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isAuthed(request)) {
+  if (await isAuthed(request)) {
     return NextResponse.next();
   }
 
