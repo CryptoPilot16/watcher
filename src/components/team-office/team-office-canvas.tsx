@@ -2250,8 +2250,9 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
 
   const agentId = topic.configured.agent || '';
+  const sessionKey = topic.sessionKey || '';
   const threadId = topic.telegram.threadId;
-  const canSend = Boolean(agentId && text.trim() && !sending);
+  const canSend = Boolean(agentId && sessionKey && text.trim() && !sending);
 
   async function submit() {
     const message = text.trim();
@@ -2262,7 +2263,7 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
       const res = await fetch('/api/team-office/instruct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, groupId, threadId, message }),
+        body: JSON.stringify({ agentId, sessionKey, groupId, threadId, message }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
@@ -2278,7 +2279,7 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
     }
   }
 
-  const disabledReason = !agentId ? 'no agent bound' : null;
+  const disabledReason = !agentId ? 'no agent bound' : !sessionKey ? 'no session bound' : null;
 
   return (
     <div className="pointer-events-auto mt-3 border-t border-white/10 pt-3">

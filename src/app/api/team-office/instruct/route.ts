@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -8,10 +10,24 @@ const run = promisify(execFile);
 
 type Body = {
   agentId?: string;
+  sessionKey?: string;
   groupId?: string;
   threadId?: number | string;
   message?: string;
 };
+
+function resolveSessionId(agentId: string, sessionKey: string) {
+  if (!agentId || !sessionKey) return null;
+  const sessionsPath = path.join('/root/.openclaw/agents', agentId, 'sessions', 'sessions.json');
+  try {
+    const raw = fs.readFileSync(sessionsPath, 'utf8');
+    const parsed = JSON.parse(raw) as Record<string, { sessionId?: string }>;
+    const entry = parsed?.[sessionKey];
+    return typeof entry?.sessionId === 'string' && entry.sessionId.trim() ? entry.sessionId.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 async function openclaw(args: string[]) {
   return run('openclaw', args, { timeout: 20_000 });
@@ -26,6 +42,7 @@ export async function POST(request: Request) {
   }
 
   const agentId = String(body.agentId || '').trim();
+  const sessionKey = String(body.sessionKey || '').trim();
   const groupId = String(body.groupId || '').trim();
   const threadId = body.threadId === undefined || body.threadId === null ? '' : String(body.threadId).trim();
   const message = String(body.message || '').trim();
@@ -34,9 +51,12 @@ export async function POST(request: Request) {
   if (!message) return NextResponse.json({ ok: false, error: 'empty message' }, { status: 400 });
   if (message.length > 4000) return NextResponse.json({ ok: false, error: 'message too long' }, { status: 400 });
 
-  const injectArgs = ['agent', '--agent', agentId, '-m', message, '--json'];
+  const sessionId = resolveSessionId(agentId, sessionKey);
+  const injectArgs = sessionId
+    ? ['agent', '--session-id', sessionId, '-m', message, '--json']
+    : ['agent', '--agent', agentId, '-m', message, '--json'];
   const mirrorArgs = groupId && threadId
-    ? ['message', 'send', '--target', groupId, '--thread-id', threadId, '--message', `[from web] ${message}`, '--json']
+    ? ['message', 'send', '--channel', 'telegram', '--target', groupId, '--thread-id', threadId, '--message', `[from web] ${message}`, '--json']
     : null;
 
   const [injectResult, mirrorResult] = await Promise.allSettled([
@@ -65,6 +85,8 @@ export async function POST(request: Request) {
     injected: true,
     mirrored,
     mirrorError,
+    sessionResolved: Boolean(sessionId),
+    sessionId,
     stdout: injectResult.value.stdout.trim(),
   });
 }
