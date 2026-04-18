@@ -525,6 +525,7 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
   const fill = useRef<THREE.Mesh>(null);
   const wellMaterial = useRef<THREE.MeshBasicMaterial>(null);
   const fillMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const stripeTexture = useMemo(() => buildStripeTexture(), []);
   const exactProgress = topicProgress(topic);
   const isRunning = topic.live.status === 'running';
   const hiddenForTopic = isHousekeepingTopic(topic);
@@ -534,6 +535,10 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
   const lastStatus = useRef<TeamTopic['live']['status']>(topic.live.status);
   const completionStartTime = useRef<number | null>(null);
   const completionFrom = useRef(0);
+
+  useEffect(() => () => {
+    stripeTexture.dispose();
+  }, [stripeTexture]);
 
   useFrame(({ clock }, delta) => {
     if (!group.current || !fill.current || !wellMaterial.current || !fillMaterial.current || hiddenForTopic) {
@@ -587,6 +592,8 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
     group.current.visible = displayedOpacity.current > 0.02;
     wellMaterial.current.opacity = displayedOpacity.current * 0.96;
     fillMaterial.current.opacity = displayedOpacity.current;
+    fillMaterial.current.color.setHSL(0.36, 1, 0.52 + Math.sin(t * 5.4) * 0.05);
+    stripeTexture.offset.y = isRunning ? -(t * 0.75) % 1 : 0;
   });
 
   if (hiddenForTopic) return null;
@@ -599,7 +606,7 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
       </RoundedBox>
       {/* fill — deeper than well so it shows on front AND back */}
       <RoundedBox ref={fill as never} args={[0.062, 0.44, 0.05]} radius={0.028} smoothness={6} position={[0, 0, 0]}>
-        <meshBasicMaterial ref={fillMaterial as never} color="#4aff6e" toneMapped={false} transparent opacity={0} />
+        <meshBasicMaterial ref={fillMaterial as never} color="#4aff6e" map={stripeTexture} toneMapped={false} transparent opacity={0} />
       </RoundedBox>
     </Billboard>
   );
