@@ -31,6 +31,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
+    pathname === '/' ||
     pathname === '/login' ||
     pathname.startsWith('/office-preview') ||
     pathname.startsWith('/api/auth/login') ||
@@ -38,10 +39,6 @@ export function middleware(request: NextRequest) {
     PUBLIC_FILE.test(pathname)
   ) {
     return NextResponse.next();
-  }
-
-  if (pathname === '/') {
-    return NextResponse.redirect(getRedirectUrl(request, '/watch'));
   }
 
   if (isAuthed(request)) {

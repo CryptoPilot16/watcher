@@ -9,7 +9,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Watcher',
-  description: 'Private monitoring dashboard',
+  description: 'Self-hosted mission control for agent teams.',
   appleWebApp: {
     capable: true,
     title: 'Watch',

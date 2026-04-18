@@ -1,6 +1,6 @@
 # Watcher
 
-Mission control for multi-agent operations.
+Self-hosted mission control for agent teams.
 
 Website: https://cryptopilot.dev/watcher
 
@@ -8,45 +8,45 @@ Website: https://cryptopilot.dev/watcher
 
 ## What It Is
 
-Watcher is a self-hosted operations dashboard for agent systems. It gives operators one place to monitor system health, team activity, and execution state, then intervene from the web UI when needed.
+Watcher is a self-hosted operations dashboard for OpenClaw-style agent systems. It gives operators one place to monitor live session activity, team lanes, recent runs and flows, and service health, with a 3D office view layered on top.
 
 ## Core Capabilities
 
-- Live mission status with system-level health context
+- Public landing page for the open source project
+- Authenticated `/watch` dashboard with:
+  - mission status banner
+  - live session feed
+  - team lane overview
+  - recent activity (runs, flows, service signals)
+  - readable process health cards
 - Interactive 3D Team Office scene with two swappable styles:
   - **Office** — voxel-art modern workspace with workstations, break area, wall fixtures (MariaIsMe voxel pack)
   - **Dungeon** — medieval tavern with stone walls, torches, banners, treasure chest (KayKit Dungeon pack)
 - Rigged character avatars (KayKit Adventurers: Knight, Barbarian, Mage, Rogue) with idle / walk / sit-at-desk / hit-reaction animations
-- Explicit lane casting in the office scene:
-  - `AI Clone` uses the hooded rogue
-  - `General` uses the rogue
-  - `Assistant` and `Coder 1/2/3` use the knight
-  - `Skybuddy`, `Echoes`, and `OddsGap` use mage / wizard models
 - Lane-aware seating model: running and recent workers stay at their own desks, idle workers return to standby, offline workers remain visible in-lane
 - Progress bars with completion burst animation and short post-finish linger
 - Camera controls: overview / focus / free pan (desktop arrow grid + mobile toggle)
-- Authenticated web lane control (select lane, send instruction) with session-aware topic routing for Telegram forum lanes
-- Live session feed (user, agent, tool events)
-- Task runs and flow tracking
-- Logs and process visibility
-- Telegram sync support
-- Mobile-friendly dashboard experience with toggleable pan controls
+- Authenticated web lane control with session-aware topic routing for Telegram forum lanes
+- Public read-only office preview with sanitized lane labels and optional debug HUD
+- Telegram watcher loop for mirrored status summaries
+- Mobile-friendly dashboard experience
 
 ## Product Surfaces
 
-- `/watch` — primary operations dashboard
+- `/` — public open source landing page
+- `/watch` — primary authenticated operations dashboard
 - `/office-preview` — public read-only office visualization
 - `/office-preview?debug=1` — public debug view for lane mode / target / progress inspection
-- `/docs` — in-app reference
+- `/docs` — authenticated in-app reference
 
 ## Security Model
 
-- Authenticated dashboard access
-- Public preview intentionally sanitized (no private task text)
+- Authenticated dashboard access via `WATCH_PASSWORD`
+- Public office preview is intentionally sanitized and strips private task text
 - Web lane control routes instructions into the exact bound lane session instead of broadcasting to a generic agent target
-- Topic/session resolution accepts both standard topic sessions and ACP-bound Telegram sessions, so lanes like Echoes still count as correctly bound
+- Topic/session resolution accepts both standard topic sessions and ACP-bound Telegram sessions
 - Topic/session resolution avoids cross-lane fallback, so one lane cannot inherit another lane's identity just because its own session file is missing
-- Runtime secrets are environment variables and are not stored in this README
+- Runtime secrets live in environment variables and are not stored in this README
 
 ## Tech Stack
 
@@ -100,13 +100,13 @@ npm run build
 npm run start
 ```
 
-## Recent Interaction Model Notes
+## Current Interaction Model Notes
 
 - Web-to-chat transfer for Team Office lane control resolves the concrete session for the selected lane, including Telegram forum topics.
-- Session-bound web relays now queue the lane run immediately and let the lane deliver the reply back into Telegram, so the web UI no longer blocks on the full agent turn before showing success.
+- Session-bound web relays queue the lane run immediately and let the lane deliver the reply back into Telegram, so the web UI does not block on the full agent turn before showing success.
 - The public office preview can expose a lightweight debug HUD with `?debug=1` when you need to verify seating, targets, and progress behavior without relying on WebGL output alone.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
-- Character casting is deterministic by lane role now, so the public office view keeps a stable visual identity instead of reshuffling character classes between refreshes.
+- Character casting is deterministic by lane role, so the public office view keeps a stable visual identity instead of reshuffling classes between refreshes.
 
 ## Lane Binding Modes
 
