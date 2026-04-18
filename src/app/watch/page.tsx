@@ -4,14 +4,6 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { WatchShellHeader } from '@/components/watch-shell-header';
 import {
-  getPrimarySnapmoltText,
-  getLatestSnapmoltError,
-  getStructuredSnapmoltActivity,
-  getActivityBreakdown,
-  type ActivityTag,
-  type ActivityItem,
-} from '@/lib/snapmolt-mirror';
-import {
   computeHealth,
   parseMeta,
   parseRuns,
@@ -48,7 +40,7 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-type SectionTab = 'status' | 'office' | 'team' | 'runs' | 'flows' | 'snapmolt' | 'logs' | 'processes';
+type SectionTab = 'status' | 'office' | 'team' | 'runs' | 'flows' | 'logs' | 'processes';
 
 const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'status',    label: 'status',    hint: 'mission control' },
@@ -56,7 +48,6 @@ const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'team',      label: 'team',      hint: 'lanes & roster' },
   { id: 'runs',      label: 'runs',      hint: 'openclaw activity' },
   { id: 'flows',     label: 'flows',     hint: 'multi-step goals' },
-  { id: 'snapmolt',  label: 'snapmolt',  hint: 'voice & agent feed' },
   { id: 'logs',      label: 'logs',      hint: 'raw output streams' },
   { id: 'processes', label: 'processes', hint: 'pm2 status' },
 ];
@@ -98,28 +89,6 @@ function RunStatusBadge({ status }: { status: string }) {
   };
   const level = map[status] ?? 'warn';
   return <HealthBadge level={level} label={status} />;
-}
-
-const TAG_META: Record<ActivityTag, { label: string; color: string; bg: string }> = {
-  voice:  { label: 'voice',  color: '#67e8f9', bg: 'rgba(103,232,249,0.10)' },
-  http:   { label: 'http',   color: '#818cf8', bg: 'rgba(129,140,248,0.10)' },
-  event:  { label: 'event',  color: '#c084fc', bg: 'rgba(192,132,252,0.10)' },
-  error:  { label: 'error',  color: '#f09070', bg: 'rgba(240,144,112,0.10)' },
-  system: { label: 'system', color: '#86efac', bg: 'rgba(134,239,172,0.10)' },
-  task:   { label: 'task',   color: '#fcd34d', bg: 'rgba(252,211,77,0.10)'  },
-  log:    { label: 'log',    color: 'rgba(242,232,186,0.5)', bg: 'rgba(242,232,186,0.05)' },
-};
-
-function TagBadge({ tag }: { tag: ActivityTag }) {
-  const meta = TAG_META[tag];
-  return (
-    <span
-      className="inline-block shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-[0.15em] font-medium leading-none"
-      style={{ color: meta.color, background: meta.bg, border: `1px solid ${meta.color}22` }}
-    >
-      {meta.label}
-    </span>
-  );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -589,89 +558,6 @@ function FlowsSection({ flows }: { flows: FlowRecord[] }) {
   );
 }
 
-// ── SNAPMOLT TAB ─────────────────────────────────────────────────────────────
-
-function SnapmoltSection({ data }: { data: WatchData | null }) {
-  const primaryTask = data
-    ? getPrimarySnapmoltText(data.sections.snapmoltOut, data.sections.snapmoltErr)
-    : 'loading…';
-  const latestError = data ? getLatestSnapmoltError(data.sections.snapmoltErr) : null;
-  const activity: ActivityItem[] = data
-    ? getStructuredSnapmoltActivity(data.sections.snapmoltOut, 12) : [];
-  const breakdown = getActivityBreakdown(activity);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <SectionLabel>current task</SectionLabel>
-        <div className="rounded border border-[var(--watch-panel-border-strong)] bg-[rgba(0,0,0,0.28)] p-4">
-          <pre className="whitespace-pre-wrap text-sm leading-7 text-[var(--watch-text-bright)]">
-            {primaryTask}
-          </pre>
-        </div>
-      </div>
-
-      {latestError && (
-        <div className="flex items-start gap-2 rounded border border-[#f09070]/20 bg-[rgba(240,144,112,0.07)] px-3 py-2.5">
-          <TagBadge tag="error" />
-          <pre className="whitespace-pre-wrap text-xs leading-6 text-[var(--watch-danger)]">
-            {latestError}
-          </pre>
-        </div>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_200px]">
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>activity feed</SectionLabel>
-          <div className="flex flex-col rounded border border-[var(--watch-panel-border)] overflow-hidden">
-            {activity.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-[var(--watch-text-muted)]">
-                {data ? 'No recent activity' : 'Loading…'}
-              </div>
-            ) : activity.map((item, i) => (
-              <div key={i} className="flex items-start gap-3 border-b border-[var(--watch-panel-border)] px-3 py-2.5 last:border-b-0 hover:bg-white/[0.02] transition-colors">
-                <TagBadge tag={item.tag} />
-                <span className="min-w-0 flex-1 text-xs leading-6 text-[var(--watch-text-bright)] break-words">
-                  {item.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>breakdown</SectionLabel>
-          <div className="flex flex-col rounded border border-[var(--watch-panel-border)] overflow-hidden">
-            {breakdown.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-[var(--watch-text-muted)]">—</div>
-            ) : breakdown.map(({ tag, count }) => {
-              const meta = TAG_META[tag];
-              const maxCount = breakdown[0].count;
-              const barWidth = Math.max(8, Math.round((count / maxCount) * 100));
-              return (
-                <div key={tag} className="flex items-center gap-2.5 border-b border-[var(--watch-panel-border)] px-3 py-2 last:border-b-0">
-                  <span className="w-[44px] shrink-0 text-[10px] uppercase tracking-[0.15em]" style={{ color: meta.color }}>
-                    {meta.label}
-                  </span>
-                  <div className="flex flex-1 items-center">
-                    <div className="h-1 rounded-sm" style={{ width: `${barWidth}%`, background: meta.color, opacity: 0.6 }} />
-                  </div>
-                  <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">×{count}</span>
-                </div>
-              );
-            })}
-            {activity.length > 0 && (
-              <div className="px-3 py-2 text-[10px] text-[var(--watch-text-muted)]">
-                {activity.length} events tracked
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── TEAM TAB ─────────────────────────────────────────────────────────────────
 
 function OfficeSection({ topology }: { topology: TeamTopology }) {
@@ -987,7 +873,6 @@ export default function WatchPage() {
                 {activeSection === 'team'      && <TeamSection      topology={teamTopology} />}
                 {activeSection === 'runs'      && <RunsSection      runs={runs} />}
                 {activeSection === 'flows'     && <FlowsSection     flows={flows} />}
-                {activeSection === 'snapmolt'  && <SnapmoltSection  data={data} />}
                 {activeSection === 'logs'      && <LogsSection      data={data} />}
                 {activeSection === 'processes' && <ProcessesSection data={data} />}
               </>
