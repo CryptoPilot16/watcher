@@ -923,7 +923,7 @@ export default function WatchPage() {
   const teamTopology   = parseTeamTopology(data?.sections.teamTopology);
   const faultState: FaultState = parseFaultState(data?.sections.watchFaultState);
   const health         = computeHealth(meta, runs, faultState);
-  const sessionRunning = meta.sessions.some((s) => s.key === 'agent:main:main' && s.status === 'running');
+  const sessionRunning = meta.sessions.some((s) => ['running', 'busy'].includes(String(s.status || '').toLowerCase()));
   const canClearStaleFaults = health.issues.some((issue) => /consecutive runs failed|recent run failure|of last .* runs failed|Agent session idle for/i.test(issue.message));
 
   async function clearRunFaults() {

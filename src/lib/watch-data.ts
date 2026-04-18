@@ -36,6 +36,16 @@ const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
 const OPENCLAW_DIR  = '/root/.openclaw';
 const WATCH_STATE_FILE = path.join(process.cwd(), '.state', 'watch-state.json');
 
+type SessionIndexEntry = {
+  sessionFile?: string;
+  updatedAt?: number;
+  status?: string;
+  acp?: {
+    state?: string;
+    lastActivityAt?: number;
+  };
+};
+
 function listAgentIds(): string[] {
   const agentsDir = path.join(OPENCLAW_DIR, 'agents');
   try {
@@ -45,6 +55,68 @@ function listAgentIds(): string[] {
   } catch {
     return ['main'];
   }
+}
+
+function listSessionCandidates() {
+  return listAgentIds().flatMap((agentId) => {
+    const sessionsFile = path.join(OPENCLAW_DIR, 'agents', agentId, 'sessions', 'sessions.json');
+    const parsed = parseSafe(run(`cat ${sessionsFile} 2>/dev/null`)) || {};
+
+    return Object.entries(parsed as Record<string, SessionIndexEntry>)
+      .filter(([key]) => key !== 'version')
+      .map(([key, value]) => {
+        const explicitFile = typeof value?.sessionFile === 'string' ? value.sessionFile : null;
+        const updatedAt =
+          typeof value?.updatedAt === 'number'
+            ? value.updatedAt
+            : typeof value?.acp?.lastActivityAt === 'number'
+              ? value.acp.lastActivityAt
+              : 0;
+        const status = String(value?.acp?.state || value?.status || '').toLowerCase();
+        const exists = explicitFile ? fs.existsSync(explicitFile) : false;
+
+        return {
+          key,
+          sessionFile: exists ? explicitFile : null,
+          updatedAt,
+          isTopicSession: key.includes(':topic:'),
+          isDirectSession: key.includes(':direct:'),
+          isSlashSession: key.includes(':slash:'),
+          isMainSession: key.endsWith(':main'),
+          isRunning: status === 'running' || status === 'busy',
+        };
+      });
+  });
+}
+
+function findLatestSessionFile(): string | null {
+  const ranked = listSessionCandidates()
+    .filter((candidate) => candidate.sessionFile)
+    .sort((a, b) => {
+      const aScore =
+        (a.isRunning ? 10_000_000_000_000 : 0) +
+        (a.isTopicSession ? 1_000_000_000_000 : 0) +
+        (a.isDirectSession ? 900_000_000_000 : 0) +
+        (a.isSlashSession ? 100_000_000_000 : 0) +
+        (!a.isMainSession ? 10_000_000_000 : 0) +
+        (a.updatedAt || 0);
+      const bScore =
+        (b.isRunning ? 10_000_000_000_000 : 0) +
+        (b.isTopicSession ? 1_000_000_000_000 : 0) +
+        (b.isDirectSession ? 900_000_000_000 : 0) +
+        (b.isSlashSession ? 100_000_000_000 : 0) +
+        (!b.isMainSession ? 10_000_000_000 : 0) +
+        (b.updatedAt || 0);
+      return bScore - aScore;
+    });
+
+  if (ranked[0]?.sessionFile) return ranked[0].sessionFile;
+
+  const fallback = run(
+    `find ${OPENCLAW_DIR}/agents -path '*/sessions/*.jsonl' -not -name '*.reset*' -not -name '*.deleted*' -not -name '*.bak*' -not -name '*.lock*' -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-`,
+  );
+  if (fallback && !fallback.startsWith('ERROR')) return fallback.trim();
+  return null;
 }
 
 function readWatchState(): { clearedRunFaultAt: number | null; clearedSessionIdleAt: number | null } {
@@ -98,13 +170,8 @@ function getOpenClawRuns(): string {
 
 // ── live session ────────────────────────────────────────────────────────────
 function getOpenClawSession(): string {
-  const SESS_DIR = `${OPENCLAW_DIR}/agents/main/sessions`;
-
-  // Find the most recently modified active session file
-  const sessionFile = run(
-    `ls -1t ${SESS_DIR}/*.jsonl 2>/dev/null | grep -v '\\.reset\\|\\.deleted\\|\\.bak\\|\\.lock' | head -1`,
-  );
-  if (!sessionFile || sessionFile.startsWith('ERROR')) return '[]';
+  const sessionFile = findLatestSessionFile();
+  if (!sessionFile) return '[]';
 
   // tail -n 100 reads complete lines (some lines are 2-6KB each)
   const raw = run(`tail -n 100 "${sessionFile.trim()}" 2>/dev/null`);
