@@ -2166,12 +2166,13 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   );
 }
 
-function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotion }: {
+function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotion, demo = false }: {
   controlsRef: RefObject<OrbitControlsImpl>;
   mode: CameraMode;
   focusTarget: [number, number, number] | null;
   isMobile: boolean;
   reducedMotion: boolean;
+  demo?: boolean;
 }) {
   const { camera } = useThree();
   const targetVec = useRef(new THREE.Vector3());
@@ -2196,10 +2197,14 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
 
     if (mode === 'free' || !animating.current) return;
 
-    const overviewTarget: [number, number, number] = isMobile ? [0, 1.05, 1.35] : [0, 1.15, 1.9];
+    const overviewTarget: [number, number, number] = demo
+      ? (isMobile ? [0, 0.95, 1.45] : [0, 1.1, 1.75])
+      : (isMobile ? [0, 1.05, 1.35] : [0, 1.15, 1.9]);
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
     const focusOffset: [number, number, number] = isMobile ? [3.2, 2.0, 3.6] : [3.8, 2.3, 4.3];
-    const overviewOffset: [number, number, number] = isMobile ? [0, 7.4, 14.5] : [0, 7.2, 14.6];
+    const overviewOffset: [number, number, number] = demo
+      ? (isMobile ? [0, 5.2, 10.4] : [0, 6.1, 12.2])
+      : (isMobile ? [0, 7.4, 14.5] : [0, 7.2, 14.6]);
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -2474,7 +2479,7 @@ function CameraPanControls({ controlsRef, onUse, isMobile = false, mobileControl
   );
 }
 
-function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle, mobileControlsOpen = false, onToggleMobileControls }: {
+function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle, mobileControlsOpen = false, onToggleMobileControls, demo = false }: {
   running: number;
   recent: number;
   mode: CameraMode;
@@ -2484,6 +2489,7 @@ function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle
   onStyle: (style: SceneStyle) => void;
   mobileControlsOpen?: boolean;
   onToggleMobileControls?: () => void;
+  demo?: boolean;
 }) {
   const styleBtn = (target: SceneStyle) =>
     `watch-pill text-[11px] uppercase ${sceneStyle === target ? 'watch-pill--active' : ''}`;
@@ -2498,15 +2504,16 @@ function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle
           <button type="button" className={compactStyleBtn('dungeon')} onClick={() => onStyle('dungeon')}>dungeon</button>
           <button type="button" onClick={() => onMode('overview')} className="watch-pill !px-2 !py-1 text-[10px] uppercase">reset</button>
         </div>
-        {/* Arrow-grid hide/show toggle on the side */}
-        <button
-          type="button"
-          onClick={onToggleMobileControls}
-          aria-label={mobileControlsOpen ? 'hide arrows' : 'show arrows'}
-          className="pointer-events-auto absolute right-3 bottom-3 z-10 watch-pill !p-0 w-11 h-11 flex items-center justify-center text-[16px]"
-        >
-          {mobileControlsOpen ? '✕' : '⤡'}
-        </button>
+        {!demo && (
+          <button
+            type="button"
+            onClick={onToggleMobileControls}
+            aria-label={mobileControlsOpen ? 'hide arrows' : 'show arrows'}
+            className="pointer-events-auto absolute right-3 bottom-3 z-10 watch-pill !p-0 w-11 h-11 flex items-center justify-center text-[16px]"
+          >
+            {mobileControlsOpen ? '✕' : '⤡'}
+          </button>
+        )}
       </>
     );
   }
@@ -2662,7 +2669,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   return (
     <div className={`relative overflow-hidden bg-[rgba(0,0,0,0.12)] ${demo ? 'h-full w-full min-h-[320px]' : `rounded-xl border border-[var(--watch-panel-border)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}`}>
       <Canvas
-        camera={{ position: [0, 8.4, 16.5], fov: isMobile ? 44 : 40, near: 0.1, far: 180 }}
+        camera={{ position: demo ? (isMobile ? [0, 6.2, 11.6] : [0, 7.1, 13.2]) : [0, 8.4, 16.5], fov: isMobile ? 44 : 40, near: 0.1, far: 180 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
           camera.lookAt(0, 1.15, 1.65);
@@ -2701,6 +2708,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
           focusTarget={focusTarget}
           isMobile={isMobile}
           reducedMotion={reducedMotion}
+          demo={demo}
         />
 
         <OrbitControls
@@ -2724,7 +2732,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
         />
       </Canvas>
 
-      <SceneHud running={runningCount} recent={recentCount} mode={cameraMode} isMobile={isMobile} onMode={setCameraMode} sceneStyle={sceneStyle} onStyle={setSceneStyle} mobileControlsOpen={mobileControlsOpen} onToggleMobileControls={() => setMobileControlsOpen((v) => !v)} />
+      <SceneHud running={runningCount} recent={recentCount} mode={cameraMode} isMobile={isMobile} onMode={setCameraMode} sceneStyle={sceneStyle} onStyle={setSceneStyle} mobileControlsOpen={mobileControlsOpen} onToggleMobileControls={() => setMobileControlsOpen((v) => !v)} demo={demo} />
       {!demo && <CameraPanControls controlsRef={controlsRef} onUse={() => setCameraMode('free')} isMobile={isMobile} mobileControlsOpen={mobileControlsOpen} />}
 
       <TopicInfoCard
