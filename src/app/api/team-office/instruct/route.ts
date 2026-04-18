@@ -16,6 +16,11 @@ type Body = {
   message?: string;
 };
 
+function deriveSessionKey(agentId: string, groupId: string, threadId: string) {
+  if (!agentId || !groupId || !threadId) return null;
+  return `agent:${agentId}:telegram:group:${groupId}:topic:${threadId}`;
+}
+
 function resolveSessionId(agentId: string, sessionKey: string) {
   if (!agentId || !sessionKey) return null;
   const sessionsPath = path.join('/root/.openclaw/agents', agentId, 'sessions', 'sessions.json');
@@ -51,7 +56,8 @@ export async function POST(request: Request) {
   if (!message) return NextResponse.json({ ok: false, error: 'empty message' }, { status: 400 });
   if (message.length > 4000) return NextResponse.json({ ok: false, error: 'message too long' }, { status: 400 });
 
-  const sessionId = resolveSessionId(agentId, sessionKey);
+  const effectiveSessionKey = sessionKey || deriveSessionKey(agentId, groupId, threadId) || '';
+  const sessionId = resolveSessionId(agentId, effectiveSessionKey);
   const injectArgs = sessionId
     ? ['agent', '--session-id', sessionId, '-m', message, '--json']
     : ['agent', '--agent', agentId, '-m', message, '--json'];
@@ -86,6 +92,7 @@ export async function POST(request: Request) {
     mirrored,
     mirrorError,
     sessionResolved: Boolean(sessionId),
+    sessionKey: effectiveSessionKey || null,
     sessionId,
     stdout: injectResult.value.stdout.trim(),
   });
