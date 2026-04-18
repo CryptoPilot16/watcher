@@ -108,3 +108,10 @@ npm run start
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 - Character casting is deterministic by lane role now, so the public office view keeps a stable visual identity instead of reshuffling character classes between refreshes.
 
+## Lane Binding Modes
+
+- Standard Telegram topic lanes bind as `agent:<agent>:telegram:group:<groupId>:topic:<threadId>`.
+- Some lanes, especially ACP-backed ones like Echoes, can bind through ACP Telegram session keys instead of the standard topic-key form.
+- Watcher treats both binding styles as valid lane targets for web relays.
+- For session-bound lanes, the web UI should feel closer to chat: the request is queued fast, the lane runs in the background, and the reply is delivered back into the Telegram topic.
+
