@@ -7,6 +7,8 @@ import { promisify } from 'util';
 export const dynamic = 'force-dynamic';
 
 const run = promisify(execFile);
+const INJECT_TIMEOUT_MS = 90_000;
+const MIRROR_TIMEOUT_MS = 20_000;
 
 type Body = {
   agentId?: string;
@@ -34,8 +36,8 @@ function resolveSessionId(agentId: string, sessionKey: string) {
   }
 }
 
-async function openclaw(args: string[]) {
-  return run('openclaw', args, { timeout: 20_000 });
+async function openclaw(args: string[], timeout: number) {
+  return run('openclaw', args, { timeout });
 }
 
 export async function POST(request: Request) {
@@ -66,16 +68,19 @@ export async function POST(request: Request) {
     : null;
 
   const [injectResult, mirrorResult] = await Promise.allSettled([
-    openclaw(injectArgs),
-    mirrorArgs ? openclaw(mirrorArgs) : Promise.resolve(null),
+    openclaw(injectArgs, INJECT_TIMEOUT_MS),
+    mirrorArgs ? openclaw(mirrorArgs, MIRROR_TIMEOUT_MS) : Promise.resolve(null),
   ]);
 
   if (injectResult.status === 'rejected') {
-    const error = injectResult.reason;
+    const error = injectResult.reason as any;
+    const timedOut = Boolean(error?.killed || error?.signal === 'SIGTERM');
     return NextResponse.json(
       {
         ok: false,
-        error: String(error?.stderr || error?.message || 'agent inject failed').trim(),
+        error: timedOut
+          ? 'agent turn timed out before Watcher got a response'
+          : String(error?.stderr || error?.message || 'agent inject failed').trim(),
       },
       { status: 500 },
     );
