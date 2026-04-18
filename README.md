@@ -17,8 +17,10 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
   - **Office** — voxel-art modern workspace with workstations, break area, wall fixtures (MariaIsMe voxel pack)
   - **Dungeon** — medieval tavern with stone walls, torches, banners, treasure chest (KayKit Dungeon pack)
 - Rigged character avatars (KayKit Adventurers: Knight, Barbarian, Mage, Rogue) with idle / walk / sit-at-desk / hit-reaction animations
+- Lane-aware seating model: running and recent workers stay at their own desks, idle workers return to standby, offline workers remain visible in-lane
+- Progress bars with completion burst animation and short post-finish linger
 - Camera controls: overview / focus / free pan (desktop arrow grid + mobile toggle)
-- Authenticated web lane control (select lane, send instruction)
+- Authenticated web lane control (select lane, send instruction) with session-aware topic routing for Telegram forum lanes
 - Live session feed (user, agent, tool events)
 - Task runs and flow tracking
 - Logs and process visibility
@@ -29,12 +31,14 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
 
 - `/watch` — primary operations dashboard
 - `/office-preview` — public read-only office visualization
+- `/office-preview?debug=1` — public debug view for lane mode / target / progress inspection
 - `/docs` — in-app reference
 
 ## Security Model
 
 - Authenticated dashboard access
 - Public preview intentionally sanitized (no private task text)
+- Web lane control routes instructions into the exact bound lane session instead of broadcasting to a generic agent target
 - Runtime secrets are environment variables and are not stored in this README
 
 ## Tech Stack
@@ -88,4 +92,10 @@ npm run dev
 npm run build
 npm run start
 ```
+
+## Recent Interaction Model Notes
+
+- Web-to-chat transfer for Team Office lane control resolves the concrete session for the selected lane, including Telegram forum topics.
+- The public office preview can expose a lightweight debug HUD with `?debug=1` when you need to verify seating, targets, and progress behavior without relying on WebGL output alone.
+- Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 
