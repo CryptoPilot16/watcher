@@ -815,7 +815,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`rounded border px-2.5 py-1.5 text-left transition-colors ${
+          className={`min-w-0 rounded border px-2 py-1.5 text-center transition-colors ${
             isActive
               ? 'border-[var(--watch-accent)]/50 bg-[rgba(212,186,104,0.12)] text-[var(--watch-text)]'
               : 'border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
@@ -844,7 +844,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
 
   return (
     <div className="border-b border-[var(--watch-panel-border)]">
-      <div className="flex gap-1.5 overflow-x-auto px-2 py-2 sm:hidden">
+      <div className="grid grid-cols-5 gap-1.5 px-2 py-2 sm:hidden">
         {sectionTabs.map((tab) => renderTab(tab, true))}
       </div>
       <div className="hidden items-stretch overflow-x-auto sm:flex">
