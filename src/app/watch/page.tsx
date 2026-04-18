@@ -58,12 +58,12 @@ type PM2Process = {
 
 type SectionTab = 'status' | 'office' | 'team' | 'activity' | 'processes';
 
-const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
-  { id: 'status',    label: 'status',    hint: 'mission control' },
-  { id: 'office',    label: 'office',    hint: '3d operator floor' },
-  { id: 'team',      label: 'team',      hint: 'lanes & roster' },
-  { id: 'activity',  label: 'activity',  hint: 'runs, flows, signals' },
-  { id: 'processes', label: 'processes', hint: 'service health' },
+const sectionTabs: { id: SectionTab; label: string; mobileLabel: string; hint: string }[] = [
+  { id: 'status',    label: 'status',    mobileLabel: 'status', hint: 'mission control' },
+  { id: 'office',    label: 'office',    mobileLabel: 'office', hint: '3d operator floor' },
+  { id: 'team',      label: 'team',      mobileLabel: 'team',   hint: 'lanes & roster' },
+  { id: 'activity',  label: 'activity',  mobileLabel: 'feed',   hint: 'runs, flows, signals' },
+  { id: 'processes', label: 'processes', mobileLabel: 'ops',    hint: 'service health' },
 ];
 
 const TeamOfficePanel = dynamic(
@@ -806,7 +806,7 @@ function ProcessesSection({ data }: { data: WatchData | null }) {
 }
 
 function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab; onChange: (tab: SectionTab) => void }) {
-  function renderTab(tab: { id: SectionTab; label: string; hint: string }, compact: boolean) {
+  function renderTab(tab: { id: SectionTab; label: string; mobileLabel: string; hint: string }, compact: boolean) {
     const isActive = tab.id === activeSection;
 
     if (compact) {
@@ -821,7 +821,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
               : 'border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
           }`}
         >
-          <div className="text-[9px] uppercase tracking-[0.1em] leading-tight break-words">{tab.label}</div>
+          <div className="text-[8px] uppercase tracking-[0.08em] leading-tight">{tab.mobileLabel}</div>
         </button>
       );
     }
@@ -844,7 +844,7 @@ function SectionTabsBar({ activeSection, onChange }: { activeSection: SectionTab
 
   return (
     <div className="border-b border-[var(--watch-panel-border)]">
-      <div className="grid grid-cols-3 gap-1.5 px-2 py-2 sm:hidden">
+      <div className="grid grid-cols-5 gap-1 px-2 py-2 sm:hidden">
         {sectionTabs.map((tab) => renderTab(tab, true))}
       </div>
       <div className="hidden items-stretch overflow-x-auto sm:flex">
