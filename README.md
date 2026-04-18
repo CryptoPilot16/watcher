@@ -44,6 +44,7 @@ Watcher is a self-hosted operations dashboard for agent systems. It gives operat
 - Authenticated dashboard access
 - Public preview intentionally sanitized (no private task text)
 - Web lane control routes instructions into the exact bound lane session instead of broadcasting to a generic agent target
+- Topic/session resolution accepts both standard topic sessions and ACP-bound Telegram sessions, so lanes like Echoes still count as correctly bound
 - Topic/session resolution avoids cross-lane fallback, so one lane cannot inherit another lane's identity just because its own session file is missing
 - Runtime secrets are environment variables and are not stored in this README
 
@@ -102,6 +103,7 @@ npm run start
 ## Recent Interaction Model Notes
 
 - Web-to-chat transfer for Team Office lane control resolves the concrete session for the selected lane, including Telegram forum topics.
+- Session-bound web relays now queue the lane run immediately and let the lane deliver the reply back into Telegram, so the web UI no longer blocks on the full agent turn before showing success.
 - The public office preview can expose a lightweight debug HUD with `?debug=1` when you need to verify seating, targets, and progress behavior without relying on WebGL output alone.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 - Character casting is deterministic by lane role now, so the public office view keeps a stable visual identity instead of reshuffling character classes between refreshes.

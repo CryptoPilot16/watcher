@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 
 export const dynamic = 'force-dynamic';
@@ -23,21 +23,46 @@ function deriveSessionKey(agentId: string, groupId: string, threadId: string) {
   return `agent:${agentId}:telegram:group:${groupId}:topic:${threadId}`;
 }
 
-function resolveSessionId(agentId: string, sessionKey: string) {
-  if (!agentId || !sessionKey) return null;
+function resolveSession(agentId: string, sessionKey: string, threadId: string) {
+  if (!agentId) return { sessionId: null, resolvedKey: sessionKey || null, acpBound: false };
   const sessionsPath = path.join('/root/.openclaw/agents', agentId, 'sessions', 'sessions.json');
   try {
     const raw = fs.readFileSync(sessionsPath, 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, { sessionId?: string }>;
-    const entry = parsed?.[sessionKey];
-    return typeof entry?.sessionId === 'string' && entry.sessionId.trim() ? entry.sessionId.trim() : null;
+    const parsed = JSON.parse(raw) as Record<string, { sessionId?: string; deliveryContext?: { threadId?: number | string } }>;
+    const direct = sessionKey ? parsed?.[sessionKey] : null;
+    if (typeof direct?.sessionId === 'string' && direct.sessionId.trim()) {
+      return { sessionId: direct.sessionId.trim(), resolvedKey: sessionKey || null, acpBound: false };
+    }
+
+    const fallback = Object.entries(parsed).find(([key, value]) => {
+      if (!threadId) return false;
+      const resolvedThreadId = value?.deliveryContext?.threadId;
+      return String(resolvedThreadId || '') === threadId && key.includes(':telegram:');
+    });
+    if (fallback && typeof fallback[1]?.sessionId === 'string' && fallback[1].sessionId.trim()) {
+      return {
+        sessionId: fallback[1].sessionId.trim(),
+        resolvedKey: fallback[0],
+        acpBound: !fallback[0].includes(':topic:'),
+      };
+    }
   } catch {
-    return null;
+    // ignore
   }
+  return { sessionId: null, resolvedKey: sessionKey || null, acpBound: false };
 }
 
 async function openclaw(args: string[], timeout: number) {
   return run('openclaw', args, { timeout });
+}
+
+function launchOpenclaw(args: string[]) {
+  const child = spawn('openclaw', args, {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+  return child.pid ?? null;
 }
 
 export async function POST(request: Request) {
@@ -59,31 +84,62 @@ export async function POST(request: Request) {
   if (message.length > 4000) return NextResponse.json({ ok: false, error: 'message too long' }, { status: 400 });
 
   const effectiveSessionKey = sessionKey || deriveSessionKey(agentId, groupId, threadId) || '';
-  const sessionId = resolveSessionId(agentId, effectiveSessionKey);
-  const injectArgs = sessionId
-    ? ['agent', '--session-id', sessionId, '-m', message, '--deliver', '--json']
+  const resolved = resolveSession(agentId, effectiveSessionKey, threadId);
+  const injectArgs = resolved.sessionId
+    ? ['agent', '--session-id', resolved.sessionId, '-m', message, '--deliver', '--json']
     : ['agent', '--agent', agentId, '-m', message, '--json'];
   const mirrorArgs = groupId && threadId
     ? ['message', 'send', '--channel', 'telegram', '--target', groupId, '--thread-id', threadId, '--message', `[from web] ${message}`, '--json']
     : null;
 
-  const [injectResult, mirrorResult] = await Promise.allSettled([
-    openclaw(injectArgs, INJECT_TIMEOUT_MS),
-    mirrorArgs ? openclaw(mirrorArgs, MIRROR_TIMEOUT_MS) : Promise.resolve(null),
-  ]);
+  let injectPid: number | null = null;
+  if (resolved.sessionId) {
+    try {
+      injectPid = launchOpenclaw(injectArgs);
+    } catch (error: any) {
+      return NextResponse.json(
+        { ok: false, error: String(error?.message || 'agent inject failed').trim() },
+        { status: 500 },
+      );
+    }
+  }
 
-  if (injectResult.status === 'rejected') {
-    const error = injectResult.reason as any;
-    const timedOut = Boolean(error?.killed || error?.signal === 'SIGTERM');
-    return NextResponse.json(
-      {
-        ok: false,
-        error: timedOut
-          ? 'agent turn timed out before Watcher got a response'
-          : String(error?.stderr || error?.message || 'agent inject failed').trim(),
-      },
-      { status: 500 },
-    );
+  const mirrorResult = mirrorArgs
+    ? await Promise.allSettled([openclaw(mirrorArgs, MIRROR_TIMEOUT_MS)]).then(([result]) => result)
+    : { status: 'fulfilled', value: null } as const;
+
+  if (!resolved.sessionId) {
+    const injectResult = await Promise.allSettled([openclaw(injectArgs, INJECT_TIMEOUT_MS)]).then(([result]) => result);
+    if (injectResult.status === 'rejected') {
+      const error = injectResult.reason as any;
+      const timedOut = Boolean(error?.killed || error?.signal === 'SIGTERM');
+      return NextResponse.json(
+        {
+          ok: false,
+          error: timedOut
+            ? 'agent turn timed out before Watcher got a response'
+            : String(error?.stderr || error?.message || 'agent inject failed').trim(),
+        },
+        { status: 500 },
+      );
+    }
+
+    const mirrored = mirrorResult.status === 'fulfilled' && mirrorResult.value !== null;
+    const mirrorError = mirrorResult.status === 'rejected'
+      ? String((mirrorResult.reason as any)?.stderr || (mirrorResult.reason as any)?.message || 'mirror failed').trim()
+      : null;
+
+    return NextResponse.json({
+      ok: true,
+      injected: true,
+      delivered: false,
+      mirrored,
+      mirrorError,
+      sessionResolved: false,
+      sessionKey: resolved.resolvedKey || null,
+      sessionId: null,
+      stdout: injectResult.value.stdout.trim(),
+    });
   }
 
   const mirrored = mirrorResult.status === 'fulfilled' && mirrorResult.value !== null;
@@ -94,12 +150,15 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     injected: true,
-    delivered: Boolean(sessionId),
+    delivered: true,
+    queued: true,
+    pid: injectPid,
     mirrored,
     mirrorError,
-    sessionResolved: Boolean(sessionId),
-    sessionKey: effectiveSessionKey || null,
-    sessionId,
-    stdout: injectResult.value.stdout.trim(),
+    sessionResolved: true,
+    sessionKey: resolved.resolvedKey || null,
+    sessionId: resolved.sessionId,
+    acpBound: resolved.acpBound,
+    stdout: '',
   });
 }
