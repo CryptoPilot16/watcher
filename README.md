@@ -1,81 +1,101 @@
 # Watcher
 
-Self-hosted mission control for OpenClaw agent teams.
+Self-hosted mission control for live OpenClaw agent teams.
 
 Website: https://cryptopilot.dev/watcher
 
 ![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-17.png)
 
+## What it is
+
+Watcher is a real operator surface for a live OpenClaw setup, not a mock dashboard.
+It gives you one place to read the active session, see lane state, inspect recent runs and flows, watch service health, and steer the right lane from the browser when something needs intervention.
+
 ## What ships today
 
-Watcher is a real operator surface for a live OpenClaw setup. Right now the repo includes:
-
-- Public landing page for the project
-- Authenticated `/watch` dashboard with five tabs:
-  - **status**: mission banner, live session feed, auth health, session freshness, recent runs, cron state
-  - **office**: interactive 3D team office with camera controls, desk ownership, progress bars, and lane states
+- Public landing page at `/`
+- Password-gated dashboard at `/watch`
+- Five dashboard tabs:
+  - **status**: mission banner, live session feed, auth health, session freshness, recent runs, cron state, stale-fault clearing
+  - **office**: interactive 3D team office with desk ownership, progress bars, camera controls, and office or dungeon scene styles
   - **team**: lane cards plus a task board view of what each topic is doing
   - **activity**: recent runs, flows, cron-derived signals, and useful service log lines
   - **processes**: readable PM2 service health cards
-- Interactive Team Office scene with two styles:
-  - **Office**: voxel workspace with desks, break area, and operator-floor layout
-  - **Dungeon**: tavern-style scene using KayKit dungeon assets
-- Lane-aware worker placement:
+- Interactive Team Office with lane-aware placement:
   - running lanes stay at their own desks
-  - recent lanes linger at their desk briefly after delivery
+  - recent lanes linger briefly after delivery
   - idle lanes park in standby spots
   - missing lanes remain visible as offline
 - Lane progress parsing from plans and inline progress text, surfaced as progress bars in the office scene
 - Web relay from the office UI into the exact bound lane session, including Telegram topic sessions and ACP-bound Telegram sessions
-- Public read-only office preview at `/office-preview` with sanitized labels and stripped task text
-- Public debug HUD at `/office-preview?debug=1` for DOM-side verification of mode, target, and progress when WebGL is unreliable
+- Public office preview at `/office-preview` with sanitized labels and stripped task text
+- Public debug HUD at `/office-preview?debug=1` for reliable DOM-side verification when WebGL is flaky
 - Optional Telegram mirror loop for Watcher summaries
+- Low-friction auth hardening:
+  - signed browser session cookies
+  - rate-limited login
+  - optional separate bearer token for automation
+  - logout route for clearing browser access
 - Mobile-friendly layout across landing page, dashboard, and office view
 
-## Product surfaces
+## Main surfaces
+
+### App routes
 
 - `/` — public landing page
 - `/login` — password gate for the dashboard
 - `/watch` — authenticated operations dashboard
-- `/office-preview` — public sanitized office visualization
-- `/office-preview?debug=1` — public debug HUD
 - `/docs` — authenticated in-app reference
+- `/office-preview` — public sanitized office visualization
+- `/office-preview?debug=1` — public DOM debug HUD
+
+### API routes
+
+- `/api/auth/login` — browser login endpoint
+- `/api/auth/logout` — clears the browser session cookie
 - `/api/watch` — JSON snapshot of the current Watcher state
+- `/api/watch/faults/clear` — clears stale run/session fault banners
+- `/api/team-office/instruct` — injects instructions into the bound lane session
 - `/api/watch-telegram` — Telegram mirror sync endpoint
+- `/api/watch-telegram/init` — forces a fresh Telegram summary message
 
 ## What the dashboard actually reads
 
-Watcher is not a mock dashboard. It reads from the live local system:
+Watcher reads from the live local system:
 
 - OpenClaw session files for the active conversation feed
 - OpenClaw `runs.sqlite` for task history
 - OpenClaw flow registry for long-running multi-step work
 - OpenClaw cron run logs for scheduled job snapshots
-- PM2 for service/process health
-- Team topology derived from lane/session bindings and recent activity
+- PM2 for service and process health
+- Team topology derived from lane bindings and recent activity
 
 That split matters:
 
-- the **live session feed** shows real-time conversation turns from the active session JSONL
-- **runs** only capture completed or discrete task executions
-- the **office/team views** use lane topology plus recent messages/tool events to infer live state and progress
+- the **live session feed** reads directly from the active session JSONL, so it captures real conversation turns
+- **runs** capture discrete task executions and outcomes
+- the **office** and **team** views combine topology, recent messages, and tool events to infer live state and progress
 
 ## Team office and routing
 
 The Team Office is the main differentiator in this repo.
 
-- Workers have stable visual identities and stay anchored to their own lanes
+- Workers keep stable visual identities instead of reshuffling on refresh
 - Camera modes support overview, focus, and free pan
 - The floor view supports desk selection and lane inspection
-- The office panel can send instructions directly into the bound lane session instead of broadcasting to a generic agent target
+- The office panel can send instructions directly into the bound lane session instead of broadcasting to a generic target
 - Session resolution supports standard Telegram topic keys and ACP Telegram-bound sessions
-- Public preview mode strips private task text and exposes only sanitized role/activity information
+- Public preview mode strips private task text and exposes only generic role and activity information
+- Scene styles can switch between the voxel office and the dungeon layout
 
 ## Security model
 
 - Dashboard access is gated by `WATCH_PASSWORD`
-- `WATCH_SESSION_SECRET` can be set for browser session signing
-- `WATCH_API_KEY` can be used for separate automation access
+- Browser sessions use a signed `watch_access` cookie with a 7-day lifetime
+- Set `WATCH_SESSION_SECRET` if you want browser session signing separate from the login password
+- Login attempts are rate-limited server-side
+- `WATCH_API_KEY` can be used as a separate bearer token for automation
+- Query-string auth is intentionally not supported
 - Public office preview intentionally strips private task text
 - Runtime secrets stay in environment variables, not this repo
 
@@ -130,7 +150,7 @@ WATCH_URL=http://127.0.0.1:3012
 WATCH_TELEGRAM_INTERVAL_MS=60000
 ```
 
-If `fetch-models.sh` cannot fetch the voxel office pack automatically, it prints the fallback/manual download path. Drop the required files into `public/models/voxel/` and rerun the script.
+If `fetch-models.sh` cannot fetch the voxel office pack automatically, it prints the fallback or manual download path. Drop the required files into `public/models/voxel/` and rerun the script.
 
 ## Development
 
@@ -158,7 +178,9 @@ Behavior:
 - Uses `WATCH_TELEGRAM_BOT_TOKEN`
 - Uses `WATCH_TELEGRAM_CHAT_ID` if set
 - Falls back to the most recent bot chat if chat id is omitted
+- Uses bearer auth against the Watcher API
 - Tries Telegram draft streaming first, then falls back to editing a normal message when drafts are unavailable
+- `/api/watch-telegram/init` can force a fresh summary message when you want to reset the mirror thread cleanly
 
 ## Notes
 

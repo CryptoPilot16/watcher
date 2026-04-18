@@ -9,7 +9,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Watcher',
-  description: 'Self-hosted mission control for agent teams.',
+  description: 'Self-hosted mission control for OpenClaw agent teams with live session feeds, office-floor visibility, lane control, and service health.',
   appleWebApp: {
     capable: true,
     title: 'Watch',

@@ -50,7 +50,7 @@ const telegramSections = [
   {
     title: 'Teleprompter mode',
     body:
-      'For private chats, the bot uses Telegram draft streaming to maintain a single live-updating summary message. Falls back to standard edit-in-place if draft streaming is unavailable.',
+      'For private chats, the bot uses Telegram draft streaming to maintain a single live-updating summary message. Falls back to standard edit-in-place if draft streaming is unavailable, and `/api/watch-telegram/init` can force a fresh summary message when needed.',
   },
 ];
 
@@ -105,10 +105,14 @@ export default function DocsPage() {
               routes
             </div>
             <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
+              <div>`/login` — password gate</div>
               <div>`/watch` — live ops dashboard</div>
+              <div>`/office-preview` — public sanitized office view</div>
               <div>`/docs` — this reference</div>
               <div>`/api/watch` — JSON snapshot</div>
-              <div>`/api/watch-telegram` — Telegram sync</div>
+              <div>`/api/team-office/instruct` — lane-bound instruction relay</div>
+              <div>`/api/watch/faults/clear` — stale-fault cleanup</div>
+              <div>`/api/watch-telegram` + `/init` — Telegram sync</div>
             </div>
           </article>
 
@@ -118,8 +122,9 @@ export default function DocsPage() {
             </div>
             <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
               <div>Gated by `WATCH_PASSWORD` env var.</div>
-              <div>No hardcoded fallback in repo code.</div>
-              <div>`watch_access` cookie, 30-day expiry.</div>
+              <div>Signed `watch_access` browser session cookie, 7-day expiry.</div>
+              <div>Server-side login rate limiting.</div>
+              <div>Optional `WATCH_API_KEY` bearer auth for automation.</div>
             </div>
           </article>
 
@@ -131,6 +136,7 @@ export default function DocsPage() {
               <div>Web on `127.0.0.1:3012`, Caddy proxy.</div>
               <div>PM2: watcher-web + watcher-telegram.</div>
               <div>Build required before restart.</div>
+              <div>`/api/auth/logout` clears browser access immediately.</div>
             </div>
           </article>
 

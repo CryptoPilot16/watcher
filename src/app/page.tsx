@@ -20,50 +20,54 @@ const featureCards = [
       'Send instructions into the exact bound Telegram or agent session from the office UI instead of tossing messages into the wrong lane.',
   },
   {
-    eyebrow: 'activity',
-    title: 'Runs, flows, and service signals',
-    body:
-      'Track recent task runs, multi-step flows, cron results, and useful log lines without digging through raw infrastructure output.',
-  },
-  {
     eyebrow: 'preview',
     title: 'Public office preview',
     body:
-      'Share a sanitized read-only office view publicly while stripping private task text, and enable a DOM debug HUD when you need to verify state without trusting WebGL.',
+      'Share a sanitized public office view while stripping private task text, and enable a DOM debug HUD when you need to verify state without trusting WebGL.',
   },
   {
     eyebrow: 'ops',
-    title: 'Readable service health',
+    title: 'Activity and service health',
     body:
-      'Keep PM2 services, auth state, and stale-fault cleanup in one place, with a layout that still works on mobile.',
+      'Track recent runs, flows, cron signals, Snapmolt mirror activity, and PM2 service health without digging through raw infrastructure output.',
+  },
+  {
+    eyebrow: 'auth',
+    title: 'Low-friction access hardening',
+    body:
+      'Keep the same simple login flow, but back it with signed browser sessions, rate-limited login, and optional bearer auth for automation.',
   },
 ];
 
 const routeCards = [
   { route: '/', note: 'public landing page' },
+  { route: '/login', note: 'password gate for the dashboard' },
   { route: '/watch', note: 'authenticated dashboard with status, office, team, activity, and processes tabs' },
   { route: '/office-preview', note: 'public sanitized office view' },
   { route: '/office-preview?debug=1', note: 'public DOM debug HUD for lane mode and progress checks' },
   { route: '/docs', note: 'authenticated in-app reference' },
   { route: '/api/watch', note: 'JSON snapshot for automation or external mirrors' },
+  { route: '/api/team-office/instruct', note: 'inject instructions into the correct bound lane' },
+  { route: '/api/watch/faults/clear', note: 'clear stale run and session fault banners' },
+  { route: '/api/watch-telegram', note: 'Telegram summary sync endpoint, plus /init for a fresh mirror message' },
 ];
 
 const shipCards = [
   'Mission banner with overall health, model, auth state, session activity, and stale-fault cleanup.',
   'Live session feed sourced from the active OpenClaw session file, not just task history.',
   'Tabbed dashboard: status, office, team, activity, and processes.',
-  'Interactive team office with lane seating, progress bars, camera controls, and office or dungeon styles.',
+  'Interactive team office with lane seating, progress bars, camera controls, and office or dungeon scene styles.',
   'Web-to-chat lane relay from the office UI into the correct bound session.',
   'Public office preview plus DOM debug mode for reliable state validation when WebGL is flaky.',
-  'Recent runs, flows, cron snapshots, and service signals in one operator view.',
-  'PM2 service health cards and optional Telegram watcher mirror loop.',
+  'Recent runs, flows, cron snapshots, service health, and mirror activity in one operator view.',
+  'Signed browser sessions, rate-limited login, optional bearer auth for automation, and a logout endpoint.',
 ];
 
 const stackCards = [
   'Next.js 14, React, and TypeScript for the app shell.',
   'Three.js, react-three-fiber, and drei for the office scene.',
   'OpenClaw session files, runs.sqlite, flow registry, cron logs, and PM2 as the live data sources.',
-  'Password-gated dashboard with optional API key, session secret, and Telegram loop config.',
+  'WATCH_PASSWORD for login, WATCH_SESSION_SECRET for separate session signing, and WATCH_API_KEY for automation if you want it.',
 ];
 
 export default function HomePage() {
@@ -85,12 +89,12 @@ export default function HomePage() {
                 <Link href="/office-preview" className="rounded border border-[var(--watch-panel-border)] px-3 py-2 text-xs uppercase tracking-[0.16em] text-[var(--watch-text)] transition-colors hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-accent-strong)]">
                   office preview
                 </Link>
+                <Link href="/docs" className="rounded border border-[var(--watch-panel-border)] px-3 py-2 text-xs uppercase tracking-[0.16em] text-[var(--watch-text)] transition-colors hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-accent-strong)]">
+                  docs
+                </Link>
                 <Link href="/login?redirect=%2Fwatch" className="rounded border border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] px-3 py-2 text-xs uppercase tracking-[0.16em] text-[var(--watch-text)] transition-colors hover:border-[var(--watch-accent)] hover:text-[var(--watch-accent-strong)]">
                   open dashboard
                 </Link>
-                <a href="https://github.com/CryptoPilot16/watcher" target="_blank" rel="noreferrer" className="rounded border border-[var(--watch-panel-border)] px-3 py-2 text-xs uppercase tracking-[0.16em] text-[var(--watch-text)] transition-colors hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-accent-strong)]">
-                  github
-                </a>
               </div>
             </div>
 
@@ -102,7 +106,8 @@ export default function HomePage() {
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--watch-text-muted)] sm:text-base">
                   Watcher is a self-hosted dashboard for OpenClaw environments. It pairs a real-time session feed, lane-aware team view,
-                  activity history, service health, and an interactive 3D office so you can see what the team is doing and steer the right lane fast.
+                  activity history, service health, and an interactive 3D office so you can see what the team is doing, spot drift fast,
+                  and steer the right lane without living inside terminals all day.
                 </p>
               </div>
 
@@ -134,7 +139,7 @@ export default function HomePage() {
         <section className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
           <article className="rounded border border-[var(--watch-panel-border)] bg-[var(--watch-panel)] p-4 sm:p-5">
             <div className="text-[10px] uppercase tracking-[0.28em] text-[var(--watch-text-muted)]">routes</div>
-            <div className="mt-4 flex flex-col gap-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {routeCards.map((card) => (
                 <div key={card.route} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
                   <div className="text-sm font-semibold text-[var(--watch-text-bright)]">{card.route}</div>
@@ -154,8 +159,9 @@ npm run dev`}</pre>
             </div>
             <div className="mt-3 flex flex-col gap-3 text-sm leading-7 text-[var(--watch-text-muted)]">
               <p>
-                Set <span className="text-[var(--watch-text-bright)]">WATCH_PASSWORD</span> for dashboard access. Add the optional API,
-                session, and Telegram env vars when you want browser sessions, automation, or the Telegram mirror loop.
+                Set <span className="text-[var(--watch-text-bright)]">WATCH_PASSWORD</span> for dashboard access. Add
+                <span className="text-[var(--watch-text-bright)]"> WATCH_SESSION_SECRET</span> if you want session signing separate from the login password,
+                and <span className="text-[var(--watch-text-bright)]">WATCH_API_KEY</span> if you want a separate bearer token for automation.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {stackCards.map((item) => (
