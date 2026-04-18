@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   const effectiveSessionKey = sessionKey || deriveSessionKey(agentId, groupId, threadId) || '';
   const sessionId = resolveSessionId(agentId, effectiveSessionKey);
   const injectArgs = sessionId
-    ? ['agent', '--session-id', sessionId, '-m', message, '--json']
+    ? ['agent', '--session-id', sessionId, '-m', message, '--deliver', '--json']
     : ['agent', '--agent', agentId, '-m', message, '--json'];
   const mirrorArgs = groupId && threadId
     ? ['message', 'send', '--channel', 'telegram', '--target', groupId, '--thread-id', threadId, '--message', `[from web] ${message}`, '--json']
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     injected: true,
+    delivered: Boolean(sessionId),
     mirrored,
     mirrorError,
     sessionResolved: Boolean(sessionId),
