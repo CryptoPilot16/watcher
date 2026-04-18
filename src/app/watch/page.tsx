@@ -40,14 +40,13 @@ type WatchData = {
   sections: Record<string, string>;
 };
 
-type SectionTab = 'status' | 'office' | 'team' | 'runs' | 'flows' | 'logs' | 'processes';
+type SectionTab = 'status' | 'office' | 'team' | 'activity' | 'logs' | 'processes';
 
 const sectionTabs: { id: SectionTab; label: string; hint: string }[] = [
   { id: 'status',    label: 'status',    hint: 'mission control' },
   { id: 'office',    label: 'office',    hint: '3d operator floor' },
   { id: 'team',      label: 'team',      hint: 'lanes & roster' },
-  { id: 'runs',      label: 'runs',      hint: 'openclaw activity' },
-  { id: 'flows',     label: 'flows',     hint: 'multi-step goals' },
+  { id: 'activity',  label: 'activity',  hint: 'recent runs + flows' },
   { id: 'logs',      label: 'logs',      hint: 'raw output streams' },
   { id: 'processes', label: 'processes', hint: 'pm2 status' },
 ];
@@ -438,121 +437,87 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
   );
 }
 
-// ── RUNS TAB ─────────────────────────────────────────────────────────────────
+// ── ACTIVITY TAB ─────────────────────────────────────────────────────────────
 
-function RunsSection({ runs }: { runs: RunRecord[] }) {
+function ActivitySection({ runs, flows }: { runs: RunRecord[]; flows: FlowRecord[] }) {
+  const recentRuns = runs.slice(0, 8);
+  const recentFlows = flows.slice(0, 6);
+  const runningRuns = recentRuns.filter((run) => run.status === 'running').length;
+  const openFlows = recentFlows.filter((flow) => !['succeeded', 'failed'].includes(flow.status)).length;
+  const failedRuns = recentRuns.filter((run) => run.status === 'failed').length;
+  const blockedFlows = recentFlows.filter((flow) => Boolean(flow.blocked_summary)).length;
+
+  const flowLevel = (status: string): HealthLevel => {
+    if (status === 'succeeded') return 'ok';
+    if (status === 'failed') return 'error';
+    return 'warn';
+  };
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-2">
-        <SectionLabel>openclaw task runs</SectionLabel>
-        <span className="text-[10px] text-[var(--watch-text-muted)]">— all agent tasks · most recent first</span>
-      </div>
-      <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
-        {runs.length === 0 ? (
-          <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No runs recorded yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[var(--watch-panel-border)]">
-                  {['time', 'status', 'label', 'task'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)] font-normal whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => (
-                  <tr key={run.task_id} className="border-b border-[var(--watch-panel-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors">
-                    <td className="px-3 py-2.5 tabular-nums text-[var(--watch-text-muted)] whitespace-nowrap align-top">
-                      {run.ts?.slice(0, 16).replace('T', ' ') ?? '—'}
-                    </td>
-                    <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                      <RunStatusBadge status={run.status} />
-                    </td>
-                    <td className="px-3 py-2.5 text-[var(--watch-text-muted)] whitespace-nowrap align-top max-w-[120px] truncate">
-                      {run.label || <span className="opacity-30">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-[var(--watch-text-bright)] align-top break-words max-w-[480px]">
-                      {run.task}
-                      {run.error && (
-                        <div className="mt-1 text-[10px] text-[#f87171]">✕ {run.error}</div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'running runs', value: runningRuns },
+          { label: 'open flows', value: openFlows },
+          { label: 'failed runs', value: failedRuns },
+          { label: 'blocked flows', value: blockedFlows },
+        ].map((item) => (
+          <div key={item.label} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)]">{item.label}</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--watch-text-bright)]">{item.value}</div>
           </div>
-        )}
+        ))}
       </div>
-      {runs.length > 0 && (
-        <div className="text-[10px] text-[var(--watch-text-muted)]">
-          {runs.length} runs shown · refreshes every 5s
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline gap-2">
+            <SectionLabel>recent runs</SectionLabel>
+            <span className="text-[10px] text-[var(--watch-text-muted)]">most recent task executions</span>
+          </div>
+          <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
+            {recentRuns.length === 0 ? (
+              <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No runs recorded yet.</div>
+            ) : (
+              recentRuns.map((run) => (
+                <div key={run.task_id} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <RunStatusBadge status={run.status} />
+                    <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">{run.ts?.slice(0, 16).replace('T', ' ') ?? '—'}</span>
+                    {run.label && <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">{run.label}</span>}
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-[var(--watch-text-bright)]">{run.task}</div>
+                  {run.error && <div className="mt-1 text-[11px] text-[#f87171]">✕ {run.error}</div>}
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-// ── FLOWS TAB ────────────────────────────────────────────────────────────────
-
-function FlowsSection({ flows }: { flows: FlowRecord[] }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-2">
-        <SectionLabel>multi-step flows</SectionLabel>
-        <span className="text-[10px] text-[var(--watch-text-muted)]">— orchestrated multi-turn sessions</span>
-      </div>
-      <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
-        {flows.length === 0 ? (
-          <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No flows recorded yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[var(--watch-panel-border)]">
-                  {['started', 'ended', 'status', 'goal', 'step / blocked'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] uppercase tracking-[0.2em] text-[var(--watch-text-muted)] font-normal whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {flows.map((f) => {
-                  const lvl: HealthLevel = f.status === 'succeeded' ? 'ok' : f.status === 'failed' ? 'error' : 'warn';
-                  return (
-                    <tr key={f.flow_id} className="border-b border-[var(--watch-panel-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors">
-                      <td className="px-3 py-2.5 tabular-nums text-[var(--watch-text-muted)] whitespace-nowrap align-top">
-                        {f.ts?.slice(0, 16).replace('T', ' ') ?? '—'}
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums text-[var(--watch-text-muted)] whitespace-nowrap align-top">
-                        {f.ended_at?.slice(0, 16).replace('T', ' ') ?? '—'}
-                      </td>
-                      <td className="px-3 py-2.5 align-top whitespace-nowrap">
-                        <HealthBadge level={lvl} label={f.status} />
-                      </td>
-                      <td className="px-3 py-2.5 text-[var(--watch-text-bright)] align-top break-words max-w-[400px]">
-                        {f.goal}
-                      </td>
-                      <td className="px-3 py-2.5 align-top max-w-[200px]">
-                        {f.blocked_summary ? (
-                          <span className="text-[10px] text-[#fbbf24]">⊘ {f.blocked_summary}</span>
-                        ) : f.current_step ? (
-                          <span className="text-[10px] text-[var(--watch-text-muted)]">{f.current_step}</span>
-                        ) : (
-                          <span className="text-[10px] opacity-30">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline gap-2">
+            <SectionLabel>recent flows</SectionLabel>
+            <span className="text-[10px] text-[var(--watch-text-muted)]">multi-step work only when present</span>
           </div>
-        )}
+          <div className="overflow-hidden rounded border border-[var(--watch-panel-border)]">
+            {recentFlows.length === 0 ? (
+              <div className="px-4 py-6 text-xs text-[var(--watch-text-muted)]">No flows recorded yet.</div>
+            ) : (
+              recentFlows.map((flow) => (
+                <div key={flow.flow_id} className="border-b border-[var(--watch-panel-border)] px-4 py-3 last:border-b-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <HealthBadge level={flowLevel(flow.status)} label={flow.status} />
+                    <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">{flow.ts?.slice(0, 16).replace('T', ' ') ?? '—'}</span>
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-[var(--watch-text-bright)]">{flow.goal}</div>
+                  <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
+                    {flow.blocked_summary ? `blocked: ${flow.blocked_summary}` : flow.current_step || 'no current step'}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -871,8 +836,7 @@ export default function WatchPage() {
                 {activeSection === 'status'    && <StatusSection    data={data} health={health} meta={meta} runs={runs} cron={cron} turns={turns} sessionRunning={sessionRunning} />}
                 {activeSection === 'office'    && <OfficeSection    topology={teamTopology} />}
                 {activeSection === 'team'      && <TeamSection      topology={teamTopology} />}
-                {activeSection === 'runs'      && <RunsSection      runs={runs} />}
-                {activeSection === 'flows'     && <FlowsSection     flows={flows} />}
+                {activeSection === 'activity'  && <ActivitySection  runs={runs} flows={flows} />}
                 {activeSection === 'logs'      && <LogsSection      data={data} />}
                 {activeSection === 'processes' && <ProcessesSection data={data} />}
               </>
