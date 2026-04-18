@@ -108,20 +108,6 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
-function hasTaskOwnership(topic: TeamTopic) {
-  if (topic.live.status === 'missing') return false;
-  return topic.live.status === 'running'
-    || topic.live.status === 'recent'
-    || topic.currentTask.source !== 'none'
-    || Boolean(topic.currentTask.snippet);
-}
-
-function hasFreshTaskSignal(topic: TeamTopic, maxAgeMs = 3 * 60 * 1000) {
-  if (topic.currentTask.source === 'none' && !topic.currentTask.snippet) return false;
-  const updatedAt = topic.currentTask.updatedAt ? Date.parse(topic.currentTask.updatedAt) : Number.NaN;
-  if (!Number.isFinite(updatedAt)) return topic.live.status === 'running' || topic.live.status === 'recent';
-  return Date.now() - updatedAt <= maxAgeMs;
-}
 
 function isAssistantTopic(topic: TeamTopic) {
   const display = topicDisplayLabel(topic).toLowerCase();
@@ -142,11 +128,7 @@ function isProjectDeskTopic(topic: TeamTopic) {
 
 function shouldSitAtDesk(topic: TeamTopic) {
   if (isHousekeepingTopic(topic)) return true;
-  if (isAssistantTopic(topic)) return topic.live.status === 'running' || topic.live.status === 'recent';
-  if (isCloneTopic(topic)) return hasFreshTaskSignal(topic);
-  if (isProjectDeskTopic(topic)) return hasTaskOwnership(topic) || hasFreshTaskSignal(topic);
-  if (isCoderTopic(topic) || isGeneralTopic(topic)) return hasTaskOwnership(topic) || hasFreshTaskSignal(topic);
-  return false;
+  return topic.live.status === 'running' || topic.live.status === 'recent';
 }
 
 function staysAtDesk(topic: TeamTopic) {
@@ -1010,7 +992,6 @@ function WorkerAvatar({
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
-  const taskOwned = hasTaskOwnership(topic);
   const housekeeping = isHousekeepingTopic(topic);
   const showHousekeepingAlert = housekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
   const disciplineMode = housekeeping && Boolean(disciplineTargetPosition);
@@ -1026,7 +1007,7 @@ function WorkerAvatar({
     ? 'victim'
     : disciplineMode
       ? 'discipline'
-      : (seatedAtDesk || taskOwned)
+      : seatedAtDesk
         ? 'desk-watch'
         : 'standby';
   const showHockeyStick = housekeeping && mode === 'discipline';
@@ -2031,7 +2012,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (staysAtDesk(topic) || hasTaskOwnership(topic)) {
+  if (staysAtDesk(topic)) {
     return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
   }
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
@@ -2107,12 +2088,10 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                     // compute victim's actual rendered position based on their mode
                     const v = victim.topic;
                     const vSeatedAtDesk = shouldSitAtDesk(v);
-                    const vAssigned = hasAssignedTask(v);
                     const vOffline = v.live.status === 'missing';
                     let pos: [number, number, number];
-                    if (vSeatedAtDesk || hasTaskOwnership(v)) pos = victim.deskSeatPosition;
+                    if (vSeatedAtDesk) pos = victim.deskSeatPosition;
                     else if (vOffline) pos = victim.deskStandPosition;
-                    else if (vAssigned) pos = victim.deskSeatPosition;
                     else pos = victim.standbyPosition;
                     return pos;
                   })()
@@ -2588,7 +2567,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const recentCount = topics.filter((topic) => topic.live.status === 'recent').length;
   const fallbackDebugSnapshots = useMemo(() => (
     deskLayouts.map((desk) => {
-      const atDesk = staysAtDesk(desk.topic) || hasTaskOwnership(desk.topic);
+      const atDesk = staysAtDesk(desk.topic);
       const target = atDesk ? desk.deskSeatPosition : desk.standbyPosition;
       return {
         topicId: desk.topic.topicId,
