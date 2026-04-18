@@ -125,6 +125,7 @@ export default function DocsPage() {
               <div>Signed `watch_access` browser session cookie, 7-day expiry.</div>
               <div>Server-side login rate limiting.</div>
               <div>Optional `WATCH_API_KEY` bearer auth for automation.</div>
+              <div>`WATCH_DEMO_MODE=1` gives you a read-only showcase without live OpenClaw state.</div>
             </div>
           </article>
 
@@ -133,8 +134,9 @@ export default function DocsPage() {
               operations
             </div>
             <div className="mt-3 flex flex-col gap-1 text-xs leading-6 text-[var(--watch-text)]">
-              <div>Web on `127.0.0.1:3012`, Caddy proxy.</div>
-              <div>PM2: watcher-web + watcher-telegram.</div>
+              <div>Default local web target is `127.0.0.1:3012`, but self-host paths are env-configurable.</div>
+              <div>OpenClaw root, orchestration file, PM2 home, and binary paths can all be overridden.</div>
+              <div>PM2: watcher-web + watcher-telegram on this host, but process names/log roots are configurable.</div>
               <div>Build required before restart.</div>
               <div>`/api/auth/logout` clears browser access immediately.</div>
             </div>

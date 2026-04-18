@@ -1,6 +1,6 @@
 {
   "name": "clawnux-watcher",
-  "description": "Private monitoring dashboard",
+  "description": "Self-hosted mission control for OpenClaw agent teams",
   "version": "0.1.0",
   "private": true,
   "scripts": {

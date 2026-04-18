@@ -37,6 +37,12 @@ const featureCards = [
     body:
       'Keep the same simple login flow, but back it with signed browser sessions, rate-limited login, and optional bearer auth for automation.',
   },
+  {
+    eyebrow: 'oss',
+    title: 'Portable config and demo mode',
+    body:
+      'Point Watcher at your own OpenClaw root and PM2 setup with env vars, or boot a read-only demo mode when you want a working showcase without live local state.',
+  },
 ];
 
 const routeCards = [
@@ -61,13 +67,15 @@ const shipCards = [
   'Public office preview plus DOM debug mode for reliable state validation when WebGL is flaky.',
   'Recent runs, flows, cron snapshots, service health, and mirror activity in one operator view.',
   'Signed browser sessions, rate-limited login, optional bearer auth for automation, and a logout endpoint.',
+  'Portable path config for OpenClaw and PM2, plus a read-only demo mode for fast OSS onboarding.',
 ];
 
 const stackCards = [
   'Next.js 14, React, and TypeScript for the app shell.',
   'Three.js, react-three-fiber, and drei for the office scene.',
   'OpenClaw session files, runs.sqlite, flow registry, cron logs, and PM2 as the live data sources.',
-  'WATCH_PASSWORD for login, WATCH_SESSION_SECRET for separate session signing, and WATCH_API_KEY for automation if you want it.',
+  'WATCH_OPENCLAW_DIR, WATCH_PM2_HOME, and related env vars let self-hosters point Watcher at non-default layouts.',
+  'WATCH_PASSWORD for login, WATCH_SESSION_SECRET for separate session signing, WATCH_API_KEY for automation, and WATCH_DEMO_MODE for read-only showcases.',
 ];
 
 export default function HomePage() {
@@ -161,7 +169,8 @@ npm run dev`}</pre>
               <p>
                 Set <span className="text-[var(--watch-text-bright)]">WATCH_PASSWORD</span> for dashboard access. Add
                 <span className="text-[var(--watch-text-bright)]"> WATCH_SESSION_SECRET</span> if you want session signing separate from the login password,
-                and <span className="text-[var(--watch-text-bright)]">WATCH_API_KEY</span> if you want a separate bearer token for automation.
+                <span className="text-[var(--watch-text-bright)]"> WATCH_API_KEY</span> if you want a separate bearer token for automation,
+                and <span className="text-[var(--watch-text-bright)]">WATCH_DEMO_MODE=1</span> if you want a working read-only showcase before wiring in live OpenClaw data.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {stackCards.map((item) => (

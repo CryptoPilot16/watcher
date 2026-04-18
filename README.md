@@ -31,6 +31,10 @@ It gives you one place to read the active session, see lane state, inspect recen
 - Public office preview at `/office-preview` with sanitized labels and stripped task text
 - Public debug HUD at `/office-preview?debug=1` for reliable DOM-side verification when WebGL is flaky
 - Optional Telegram mirror loop for Watcher summaries
+- Portable self-host config:
+  - configurable OpenClaw root, orchestration file, PM2 home, and binary paths
+  - no source edits required just to point Watcher at a different box layout
+- Optional demo mode for OSS onboarding when you want to showcase the product without a live OpenClaw install
 - Low-friction auth hardening:
   - signed browser session cookies
   - rate-limited login
@@ -61,7 +65,9 @@ It gives you one place to read the active session, see lane state, inspect recen
 
 ## What the dashboard actually reads
 
-Watcher reads from the live local system:
+Watcher reads from the live local system by default, but the paths are configurable so self-hosters do not need your exact `/root/.openclaw` layout.
+
+Default data sources:
 
 - OpenClaw session files for the active conversation feed
 - OpenClaw `runs.sqlite` for task history
@@ -142,12 +148,36 @@ WATCH_PASSWORD=choose-your-own-password
 Optional env vars:
 
 ```bash
+# auth
 WATCH_API_KEY=
 WATCH_SESSION_SECRET=
+
+# onboarding / showcase
+WATCH_DEMO_MODE=
+
+# non-default self-host paths and binaries
+WATCH_OPENCLAW_DIR=
+WATCH_OPENCLAW_BIN=
+WATCH_PM2_BIN=
+WATCH_PM2_HOME=
+WATCH_ORCHESTRATION_FILE=
+WATCH_UPDATE_RESULT_PATH=
+WATCH_SNAPMOLT_PROCESS=snapmolt
+WATCH_ECHOES_PROCESS=echoes-backend
+
+# telegram mirror
 WATCH_TELEGRAM_BOT_TOKEN=
 WATCH_TELEGRAM_CHAT_ID=
 WATCH_URL=http://127.0.0.1:3012
 WATCH_TELEGRAM_INTERVAL_MS=60000
+```
+
+If you just want a fast local showcase without wiring in OpenClaw yet:
+
+```bash
+WATCH_PASSWORD=demo
+WATCH_DEMO_MODE=1
+npm run dev
 ```
 
 If `fetch-models.sh` cannot fetch the voxel office pack automatically, it prints the fallback or manual download path. Drop the required files into `public/models/voxel/` and rerun the script.
@@ -179,11 +209,13 @@ Behavior:
 - Uses `WATCH_TELEGRAM_CHAT_ID` if set
 - Falls back to the most recent bot chat if chat id is omitted
 - Uses bearer auth against the Watcher API
+- Works cleanly with a separate `WATCH_API_KEY` or falls back to `WATCH_PASSWORD`
 - Tries Telegram draft streaming first, then falls back to editing a normal message when drafts are unavailable
 - `/api/watch-telegram/init` can force a fresh summary message when you want to reset the mirror thread cleanly
 
 ## Notes
 
 - The public debug HUD exists because headless Chromium and WebGL are not always trustworthy for validation on every host. The DOM debug view is the reliable path when you need to confirm avatar mode and progress state.
+- Demo mode is intentionally read-only: it gives OSS users a working product surface without pretending lane relay or live ops control is active.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 - Worker casting is deterministic by lane role so the office view does not reshuffle identities on refresh.

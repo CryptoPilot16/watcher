@@ -3,6 +3,7 @@ import path from 'path';
 import { NextResponse } from 'next/server';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import { WATCH_AGENTS_ROOT, WATCH_DEMO_MODE, WATCH_OPENCLAW_BIN } from '@/lib/runtime-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ function deriveSessionKey(agentId: string, groupId: string, threadId: string) {
 
 function resolveSession(agentId: string, sessionKey: string, threadId: string) {
   if (!agentId) return { sessionId: null, resolvedKey: sessionKey || null, acpBound: false };
-  const sessionsPath = path.join('/root/.openclaw/agents', agentId, 'sessions', 'sessions.json');
+  const sessionsPath = path.join(WATCH_AGENTS_ROOT, agentId, 'sessions', 'sessions.json');
   try {
     const raw = fs.readFileSync(sessionsPath, 'utf8');
     const parsed = JSON.parse(raw) as Record<string, { sessionId?: string; deliveryContext?: { threadId?: number | string } }>;
@@ -53,11 +54,11 @@ function resolveSession(agentId: string, sessionKey: string, threadId: string) {
 }
 
 async function openclaw(args: string[], timeout: number) {
-  return run('openclaw', args, { timeout });
+  return run(WATCH_OPENCLAW_BIN, args, { timeout });
 }
 
 function launchOpenclaw(args: string[]) {
-  const child = spawn('openclaw', args, {
+  const child = spawn(WATCH_OPENCLAW_BIN, args, {
     detached: true,
     stdio: 'ignore',
   });
@@ -66,6 +67,10 @@ function launchOpenclaw(args: string[]) {
 }
 
 export async function POST(request: Request) {
+  if (WATCH_DEMO_MODE) {
+    return NextResponse.json({ ok: false, error: 'Team-office instruct is disabled in demo mode' }, { status: 409 });
+  }
+
   let body: Body;
   try {
     body = (await request.json()) as Body;

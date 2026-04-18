@@ -1,6 +1,19 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { buildDemoWatchSnapshot } from '@/lib/demo-data';
+import {
+  WATCH_DEMO_MODE,
+  WATCH_ECHOES_PROCESS,
+  WATCH_FLOWS_DB,
+  WATCH_OPENCLAW_DIR,
+  WATCH_PM2_BIN,
+  WATCH_RUNS_DB,
+  WATCH_SNAPMOLT_PROCESS,
+  WATCH_UPDATE_RESULT_PATH,
+  pm2LogFile,
+  pm2LogGlob,
+} from '@/lib/runtime-config';
 import { getTeamTopology } from '@/lib/team-topology-server';
 
 export type WatchSnapshot = {
@@ -32,8 +45,6 @@ function parseSafe(raw: string): any {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-const OPENCLAW_DB   = '/root/.openclaw/tasks/runs.sqlite';
-const OPENCLAW_DIR  = '/root/.openclaw';
 const WATCH_STATE_FILE = path.join(process.cwd(), '.state', 'watch-state.json');
 
 type SessionIndexEntry = {
@@ -47,7 +58,7 @@ type SessionIndexEntry = {
 };
 
 function listAgentIds(): string[] {
-  const agentsDir = path.join(OPENCLAW_DIR, 'agents');
+  const agentsDir = path.join(WATCH_OPENCLAW_DIR, 'agents');
   try {
     return fs.readdirSync(agentsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -59,7 +70,7 @@ function listAgentIds(): string[] {
 
 function listSessionCandidates() {
   return listAgentIds().flatMap((agentId) => {
-    const sessionsFile = path.join(OPENCLAW_DIR, 'agents', agentId, 'sessions', 'sessions.json');
+    const sessionsFile = path.join(WATCH_OPENCLAW_DIR, 'agents', agentId, 'sessions', 'sessions.json');
     const parsed = parseSafe(run(`cat ${sessionsFile} 2>/dev/null`)) || {};
 
     return Object.entries(parsed as Record<string, SessionIndexEntry>)
@@ -113,7 +124,7 @@ function findLatestSessionFile(): string | null {
   if (ranked[0]?.sessionFile) return ranked[0].sessionFile;
 
   const fallback = run(
-    `find ${OPENCLAW_DIR}/agents -path '*/sessions/*.jsonl' -not -name '*.reset*' -not -name '*.deleted*' -not -name '*.bak*' -not -name '*.lock*' -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-`,
+    `find ${WATCH_OPENCLAW_DIR}/agents -path '*/sessions/*.jsonl' -not -name '*.reset*' -not -name '*.deleted*' -not -name '*.bak*' -not -name '*.lock*' -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-`,
   );
   if (fallback && !fallback.startsWith('ERROR')) return fallback.trim();
   return null;
@@ -139,6 +150,7 @@ function readWatchState(): { clearedRunFaultAt: number | null; clearedSessionIdl
 }
 
 function writeWatchState(state: { clearedRunFaultAt: number | null; clearedSessionIdleAt: number | null }) {
+  fs.mkdirSync(path.dirname(WATCH_STATE_FILE), { recursive: true });
   fs.writeFileSync(WATCH_STATE_FILE, JSON.stringify(state, null, 2));
 }
 
@@ -165,7 +177,7 @@ function getOpenClawRuns(): string {
     "WHERE task NOT LIKE '%Reply with exactly%'",
     'ORDER BY created_at DESC LIMIT 30',
   ].join(' ');
-  return run(`sqlite3 -json ${OPENCLAW_DB} "${sql}" 2>/dev/null || echo '[]'`);
+  return run(`sqlite3 -json ${WATCH_RUNS_DB} "${sql}" 2>/dev/null || echo '[]'`);
 }
 
 // ── live session ────────────────────────────────────────────────────────────
@@ -239,7 +251,6 @@ function getOpenClawSession(): string {
 
 // ── flows ───────────────────────────────────────────────────────────────────
 function getOpenClawFlows(): string {
-  const FLOWS_DB = `${OPENCLAW_DIR}/flows/registry.sqlite`;
   const sql = [
     'SELECT flow_id, status, sync_mode,',
     "datetime(created_at/1000,'unixepoch') as ts,",
@@ -250,13 +261,13 @@ function getOpenClawFlows(): string {
     'FROM flow_runs',
     'ORDER BY created_at DESC LIMIT 25',
   ].join(' ');
-  return run(`sqlite3 -json ${FLOWS_DB} "${sql}" 2>/dev/null || echo '[]'`);
+  return run(`sqlite3 -json ${WATCH_FLOWS_DB} "${sql}" 2>/dev/null || echo '[]'`);
 }
 
 // ── cron runs ───────────────────────────────────────────────────────────────
 function getOpenClawCron(): string {
   const raw = run(
-    `files=$(ls -1t ${OPENCLAW_DIR}/cron/runs/*.jsonl 2>/dev/null | head -3); ` +
+    `files=$(ls -1t ${WATCH_OPENCLAW_DIR}/cron/runs/*.jsonl 2>/dev/null | head -3); ` +
     `[ -z "$files" ] && echo '[]' && exit 0; ` +
     `for f in $files; do tail -n 10 "$f"; done`
   );
@@ -278,14 +289,14 @@ function getOpenClawCron(): string {
 
 // ── agent meta (version, model, auth, sessions) ─────────────────────────────
 function getOpenClawMeta(): string {
-  const configRaw     = run(`cat ${OPENCLAW_DIR}/openclaw.json 2>/dev/null`);
-  const authStateRaw  = run(`cat ${OPENCLAW_DIR}/agents/main/agent/auth-state.json 2>/dev/null`);
-  const healthRaw     = run(`cat ${OPENCLAW_DIR}/logs/config-health.json 2>/dev/null`);
+  const configRaw     = run(`cat ${WATCH_OPENCLAW_DIR}/openclaw.json 2>/dev/null`);
+  const authStateRaw  = run(`cat ${WATCH_OPENCLAW_DIR}/agents/main/agent/auth-state.json 2>/dev/null`);
+  const healthRaw     = run(`cat ${WATCH_OPENCLAW_DIR}/logs/config-health.json 2>/dev/null`);
 
   const config    = parseSafe(configRaw)    || {};
   const authState = parseSafe(authStateRaw) || {};
   const sessionDataByAgent = listAgentIds().map((agentId) => {
-    const raw = run(`cat ${OPENCLAW_DIR}/agents/${agentId}/sessions/sessions.json 2>/dev/null`);
+    const raw = run(`cat ${WATCH_OPENCLAW_DIR}/agents/${agentId}/sessions/sessions.json 2>/dev/null`);
     const parsed = parseSafe(raw) || {};
     return { agentId, parsed };
   });
@@ -340,6 +351,10 @@ function getOpenClawMeta(): string {
 }
 
 export function getWatchSnapshot(): WatchSnapshot {
+  if (WATCH_DEMO_MODE) {
+    return buildDemoWatchSnapshot() as WatchSnapshot;
+  }
+
   return {
     ok: true,
     now: new Date().toISOString(),
@@ -353,13 +368,13 @@ export function getWatchSnapshot(): WatchSnapshot {
       openclawCron:    getOpenClawCron(),
       teamTopology:    getTeamTopology(),
       watchFaultState: JSON.stringify(readWatchState()),
-      pm2:           run('pm2 list'),
-      pm2Json:       run('pm2 jlist'),
-      updateResult:  run('cat /root/.openclaw/tasks/update-command.result 2>/dev/null || true'),
-      snapmoltOut:   readMergedLog('/root/.pm2/logs/snapmolt-out*.log', 120, 160),
-      snapmoltErr:   readMergedLog('/root/.pm2/logs/snapmolt-error*.log', 80, 120),
-      echoesOut:     run('tail -n 40 /root/.pm2/logs/echoes-backend-out.log'),
-      echoesErr:     run('tail -n 40 /root/.pm2/logs/echoes-backend-error.log'),
+      pm2:           run(`${WATCH_PM2_BIN} list`),
+      pm2Json:       run(`${WATCH_PM2_BIN} jlist`),
+      updateResult:  run(`cat ${WATCH_UPDATE_RESULT_PATH} 2>/dev/null || true`),
+      snapmoltOut:   readMergedLog(pm2LogGlob(WATCH_SNAPMOLT_PROCESS, 'out'), 120, 160),
+      snapmoltErr:   readMergedLog(pm2LogGlob(WATCH_SNAPMOLT_PROCESS, 'error'), 80, 120),
+      echoesOut:     run(`tail -n 40 ${pm2LogFile(WATCH_ECHOES_PROCESS, 'out')}`),
+      echoesErr:     run(`tail -n 40 ${pm2LogFile(WATCH_ECHOES_PROCESS, 'error')}`),
     },
   };
 }

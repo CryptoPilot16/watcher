@@ -1,9 +1,8 @@
 import fs from 'fs';
+import { buildDemoTeamTopology } from '@/lib/demo-data';
+import { WATCH_AGENTS_ROOT, WATCH_DEMO_MODE, WATCH_MAIN_SESSIONS_FILE, WATCH_ORCHESTRATION_FILE } from '@/lib/runtime-config';
 import type { TeamTopology, TeamTaskConfidence, TeamTaskSource, TeamTopic, TeamTopicLiveStatus } from '@/lib/watch-team';
 
-const ORCHESTRATION_FILE = '/root/.openclaw/workspace/state/orchestration.json';
-const AGENTS_ROOT = '/root/.openclaw/agents';
-const MAIN_SESSIONS_FILE = '/root/.openclaw/agents/main/sessions/sessions.json';
 const RECENT_THRESHOLD_MS = 90 * 60 * 1000;
 const RECENT_DELIVERY_MS = 12 * 1000;
 
@@ -456,7 +455,7 @@ function getSessionEntry(
 
 function listAgentIds() {
   try {
-    return fs.readdirSync(AGENTS_ROOT, { withFileTypes: true })
+    return fs.readdirSync(WATCH_AGENTS_ROOT, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {
@@ -467,17 +466,17 @@ function listAgentIds() {
 function loadSessionIndexesByAgent() {
   const byAgent = new Map<string, Record<string, SessionIndexEntry>>();
   for (const agentId of listAgentIds()) {
-    const sessionsPath = `${AGENTS_ROOT}/${agentId}/sessions/sessions.json`;
+    const sessionsPath = `${WATCH_AGENTS_ROOT}/${agentId}/sessions/sessions.json`;
     byAgent.set(agentId, readJsonSafe<Record<string, SessionIndexEntry>>(sessionsPath, {}));
   }
   if (!byAgent.has('main')) {
-    byAgent.set('main', readJsonSafe<Record<string, SessionIndexEntry>>(MAIN_SESSIONS_FILE, {}));
+    byAgent.set('main', readJsonSafe<Record<string, SessionIndexEntry>>(WATCH_MAIN_SESSIONS_FILE, {}));
   }
   return byAgent;
 }
 
 function resolveSessionFile(agentId: string, topicId: string, session: SessionIndexEntry | undefined) {
-  const sessionsDir = `${AGENTS_ROOT}/${agentId}/sessions`;
+  const sessionsDir = `${WATCH_AGENTS_ROOT}/${agentId}/sessions`;
   const explicitPath = session?.sessionFile;
   if (explicitPath && fs.existsSync(explicitPath)) return explicitPath;
 
@@ -509,7 +508,11 @@ function resolveSessionFile(agentId: string, topicId: string, session: SessionIn
 }
 
 export function getTeamTopology(): string {
-  const orchestration = readJsonSafe<any>(ORCHESTRATION_FILE, {});
+  if (WATCH_DEMO_MODE) {
+    return JSON.stringify(buildDemoTeamTopology());
+  }
+
+  const orchestration = readJsonSafe<any>(WATCH_ORCHESTRATION_FILE, {});
   const sessionIndexesByAgent = loadSessionIndexesByAgent();
   const groupId = String(orchestration?.telegramTeam?.groupId || '');
   const lanes = Array.isArray(orchestration?.telegramTeam?.lanes) ? orchestration.telegramTeam.lanes : [];
@@ -576,8 +579,8 @@ export function getTeamTopology(): string {
     generatedAt: new Date().toISOString(),
     groupId,
     source: {
-      orchestrationPath: ORCHESTRATION_FILE,
-      sessionsIndexPath: `${AGENTS_ROOT}/<agent>/sessions/sessions.json`,
+      orchestrationPath: WATCH_ORCHESTRATION_FILE,
+      sessionsIndexPath: `${WATCH_AGENTS_ROOT}/<agent>/sessions/sessions.json`,
     },
     summary,
     topics,
