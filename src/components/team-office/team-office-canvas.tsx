@@ -2000,10 +2000,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   return sorted.map(({ topic, side, row }, index) => {
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
     const deskX = side === 0 ? -4.3 : 4.3;
-    const fixedFiveRowZ = [-5.35, -3.15, -0.95, 1.25, 3.0] as const;
-    const deskZ = totalRows === 5
-      ? fixedFiveRowZ[Math.max(0, Math.min(fixedFiveRowZ.length - 1, row))] + jitter
-      : (row - (totalRows - 1) / 2) * 2.18 - 1.1 + jitter;
+    const deskZ = (row - (totalRows - 1) / 2) * 2.28 - 1.8 + jitter;
 
     const assignedIndex = assignedIndexById.get(topic.topicId);
     const slot = assignedIndex === undefined ? [0, 0, -0.72] as const : frontSlots[assignedIndex % frontSlots.length];
