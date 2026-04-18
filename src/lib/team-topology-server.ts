@@ -5,7 +5,7 @@ const ORCHESTRATION_FILE = '/root/.openclaw/workspace/state/orchestration.json';
 const AGENTS_ROOT = '/root/.openclaw/agents';
 const MAIN_SESSIONS_FILE = '/root/.openclaw/agents/main/sessions/sessions.json';
 const RECENT_THRESHOLD_MS = 90 * 60 * 1000;
-const RECENT_DELIVERY_MS = 15 * 60 * 1000;
+const RECENT_DELIVERY_MS = 12 * 1000;
 
 type SessionIndexEntry = {
   sessionId?: string;

@@ -542,8 +542,12 @@ function buildStripeTexture(): THREE.CanvasTexture {
 function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { current: Map<string, TopicDebugSnapshot> } }) {
   const group = useRef<THREE.Group>(null);
   const fill = useRef<THREE.Mesh>(null);
+  const burstRing = useRef<THREE.Mesh>(null);
+  const burstGlow = useRef<THREE.Mesh>(null);
   const wellMaterial = useRef<THREE.MeshBasicMaterial>(null);
   const fillMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const burstRingMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const burstGlowMaterial = useRef<THREE.MeshBasicMaterial>(null);
   const stripeTexture = useMemo(() => buildStripeTexture(), []);
   const exactProgress = topicProgress(topic);
   const isRunning = topic.live.status === 'running';
@@ -553,6 +557,7 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
   const displayedOpacity = useRef(0);
   const lastStatus = useRef<TeamTopic['live']['status']>(topic.live.status);
   const completionStartTime = useRef<number | null>(null);
+  const completionBurstStart = useRef<number | null>(null);
   const completionFrom = useRef(0);
 
   useEffect(() => () => {
@@ -560,9 +565,10 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
   }, [stripeTexture]);
 
   useFrame(({ clock }, delta) => {
-    if (!group.current || !fill.current || !wellMaterial.current || !fillMaterial.current || hiddenForTopic) {
+    if (!group.current || !fill.current || !wellMaterial.current || !fillMaterial.current || !burstRing.current || !burstGlow.current || !burstRingMaterial.current || !burstGlowMaterial.current || hiddenForTopic) {
       startTime.current = null;
       completionStartTime.current = null;
+      completionBurstStart.current = null;
       return;
     }
 
@@ -572,10 +578,12 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
     if (isRunning && !wasRunning) {
       startTime.current = t;
       completionStartTime.current = null;
+      completionBurstStart.current = null;
       displayedProgress.current = 0;
       displayedOpacity.current = 0;
     } else if (!isRunning && wasRunning) {
       completionStartTime.current = t;
+      completionBurstStart.current = t;
       completionFrom.current = displayedProgress.current;
     }
     lastStatus.current = topic.live.status;
@@ -589,9 +597,9 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
       targetProgress = exactProgress !== null ? exactProgress : (1 - Math.exp(-elapsed / 10));
       targetOpacity = 1;
     } else if (completionStartTime.current !== null) {
-      const completionPhase = Math.min(1, (t - completionStartTime.current) / 0.45);
-      targetProgress = THREE.MathUtils.lerp(completionFrom.current, 1, completionPhase);
-      targetOpacity = completionPhase < 1 ? 1 : 0;
+      const completionPhase = Math.min(1, (t - completionStartTime.current) / 0.85);
+      targetProgress = THREE.MathUtils.lerp(completionFrom.current, 1, Math.min(1, completionPhase * 1.8));
+      targetOpacity = completionPhase < 0.35 ? 1 : Math.max(0, 1 - (completionPhase - 0.35) / 0.65);
       if (completionPhase >= 1) {
         completionStartTime.current = null;
         startTime.current = null;
@@ -605,14 +613,37 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
     displayedProgress.current = THREE.MathUtils.damp(displayedProgress.current, Math.max(0, Math.min(1, targetProgress)), 12, delta);
     displayedOpacity.current = THREE.MathUtils.damp(displayedOpacity.current, targetOpacity, 14, delta);
 
+    const burstPhase = completionBurstStart.current === null ? 1 : Math.min(1, (t - completionBurstStart.current) / 0.9);
+    if (completionBurstStart.current !== null && burstPhase >= 1) completionBurstStart.current = null;
+
+    const burstPulse = completionBurstStart.current === null ? 0 : Math.sin(burstPhase * Math.PI) * (1 - burstPhase) * 0.45;
     const clamped = Math.max(0.001, Math.min(1, displayedProgress.current));
-    fill.current.scale.y = clamped;
+    fill.current.scale.x = 1 + burstPulse * 0.9;
+    fill.current.scale.y = clamped * (1 + burstPulse * 0.35);
+    fill.current.scale.z = 1 + burstPulse * 0.5;
     fill.current.position.y = -0.22 + clamped * 0.22;
-    group.current.visible = displayedOpacity.current > 0.02;
+    group.current.visible = displayedOpacity.current > 0.02 || completionBurstStart.current !== null;
     wellMaterial.current.opacity = displayedOpacity.current * 0.96;
     fillMaterial.current.opacity = displayedOpacity.current;
-    fillMaterial.current.color.setHSL(0.36, 1, 0.52 + Math.sin(t * 5.4) * 0.05);
+    fillMaterial.current.color.setHSL(
+      completionBurstStart.current === null ? 0.36 : 0.14 + (1 - burstPhase) * 0.04,
+      1,
+      completionBurstStart.current === null ? 0.52 + Math.sin(t * 5.4) * 0.05 : 0.62 + Math.sin(t * 10) * 0.08,
+    );
     stripeTexture.offset.y = isRunning ? -(t * 0.75) % 1 : 0;
+
+    burstGlow.current.visible = completionBurstStart.current !== null;
+    burstRing.current.visible = completionBurstStart.current !== null;
+    if (completionBurstStart.current !== null) {
+      const ringScale = 0.7 + burstPhase * 2.2;
+      burstGlow.current.scale.setScalar(0.9 + burstPhase * 1.3);
+      burstRing.current.scale.set(ringScale, ringScale, 1);
+      burstGlowMaterial.current.opacity = (1 - burstPhase) * 0.28;
+      burstRingMaterial.current.opacity = (1 - burstPhase) * 0.95;
+    } else {
+      burstGlowMaterial.current.opacity = 0;
+      burstRingMaterial.current.opacity = 0;
+    }
     mergeTopicDebugSnapshot(debugRef, topic.topicId, {
       label: topicDisplayLabel(topic),
       status: topic.live.status,
@@ -630,6 +661,14 @@ function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { 
       <RoundedBox args={[0.07, 0.46, 0.02]} radius={0.03} smoothness={6}>
         <meshBasicMaterial ref={wellMaterial as never} color="#0a0c0f" transparent opacity={0} />
       </RoundedBox>
+      <mesh ref={burstGlow as never} position={[0, 0, -0.01]} visible={false}>
+        <circleGeometry args={[0.16, 24]} />
+        <meshBasicMaterial ref={burstGlowMaterial as never} color="#9fffd2" transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh ref={burstRing as never} position={[0, 0, 0.01]} visible={false}>
+        <ringGeometry args={[0.16, 0.22, 28]} />
+        <meshBasicMaterial ref={burstRingMaterial as never} color="#ffe66d" transparent opacity={0} toneMapped={false} depthWrite={false} />
+      </mesh>
       {/* fill — deeper than well so it shows on front AND back */}
       <RoundedBox ref={fill as never} args={[0.062, 0.44, 0.05]} radius={0.028} smoothness={6} position={[0, 0, 0]}>
         <meshBasicMaterial ref={fillMaterial as never} color="#4aff6e" map={stripeTexture} toneMapped={false} transparent opacity={0} />
