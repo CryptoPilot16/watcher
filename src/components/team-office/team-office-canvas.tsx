@@ -957,6 +957,7 @@ function WorkerAvatar({
   const style = useMemo(() => styleForTopic(topic), [topic]);
   const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
+  const taskOwned = hasTaskOwnership(topic);
   const housekeeping = isHousekeepingTopic(topic);
   const showHousekeepingAlert = housekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
   const disciplineMode = housekeeping && Boolean(disciplineTargetPosition);
@@ -972,13 +973,9 @@ function WorkerAvatar({
     ? 'victim'
     : disciplineMode
       ? 'discipline'
-      : seatedAtDesk
+      : (seatedAtDesk || taskOwned)
         ? 'desk-watch'
-        : topic.live.status === 'recent'
-          ? 'delivery'
-          : assigned
-            ? 'job-front'
-            : 'standby';
+        : 'standby';
   const showHockeyStick = housekeeping && mode === 'discipline';
   const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
@@ -1974,14 +1971,9 @@ function buildDeskLayouts(topics: TeamTopic[]) {
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
   if (!layout || !topic) return null;
-  if (staysAtDesk(topic)) {
-    const seated = isHousekeepingTopic(topic) || (isAssistantTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent'));
-    const anchor = seated ? layout.deskSeatPosition : layout.deskStandPosition;
-    return [anchor[0], 0.92, anchor[2]] as [number, number, number];
+  if (staysAtDesk(topic) || hasTaskOwnership(topic)) {
+    return [layout.deskSeatPosition[0], 0.92, layout.deskSeatPosition[2]] as [number, number, number];
   }
-  if (topic.live.status === 'running') return layout.focusPoint;
-  if (topic.live.status === 'recent') return [layout.deliveryPosition[0], 0.92, layout.deliveryPosition[2]] as [number, number, number];
-  if (hasAssignedTask(topic)) return [layout.taskTablePosition[0], 0.92, layout.taskTablePosition[2]] as [number, number, number];
   return [layout.standbyPosition[0], 0.92, layout.standbyPosition[2]] as [number, number, number];
 }
 
@@ -2057,10 +2049,9 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                     const vAssigned = hasAssignedTask(v);
                     const vOffline = v.live.status === 'missing';
                     let pos: [number, number, number];
-                    if (vSeatedAtDesk) pos = victim.deskSeatPosition;
+                    if (vSeatedAtDesk || hasTaskOwnership(v)) pos = victim.deskSeatPosition;
                     else if (vOffline) pos = victim.deskStandPosition;
-                    else if (v.live.status === 'recent') pos = victim.deliveryPosition;
-                    else if (v.live.status === 'running' || vAssigned) pos = victim.taskTablePosition;
+                    else if (vAssigned) pos = victim.deskSeatPosition;
                     else pos = victim.standbyPosition;
                     return pos;
                   })()
