@@ -17,6 +17,43 @@ import {
   type OfficeAssetManifestOverride,
 } from './office-asset-pipeline';
 
+type TopicDebugSnapshot = {
+  topicId: string;
+  label: string;
+  status: TeamTopic['live']['status'];
+  mode: string;
+  position?: [number, number, number];
+  target?: [number, number, number];
+  displayedProgress?: number;
+  barOpacity?: number;
+  barVisible?: boolean;
+  updatedAt: number;
+};
+
+function mergeTopicDebugSnapshot(
+  debugRef: { current: Map<string, TopicDebugSnapshot> } | undefined,
+  topicId: string,
+  patch: Partial<TopicDebugSnapshot>,
+) {
+  if (!debugRef) return;
+  const current = debugRef.current.get(topicId);
+  debugRef.current.set(topicId, {
+    topicId,
+    label: current?.label ?? patch.label ?? topicId,
+    status: current?.status ?? patch.status ?? 'idle',
+    mode: current?.mode ?? patch.mode ?? 'unknown',
+    updatedAt: Date.now(),
+    ...current,
+    ...patch,
+    updatedAt: Date.now(),
+  });
+}
+
+function formatDebugVec3(value?: [number, number, number]) {
+  if (!value) return 'n/a';
+  return `${value[0].toFixed(2)}, ${value[1].toFixed(2)}, ${value[2].toFixed(2)}`;
+}
+
 function statusColor(status: TeamTopic['live']['status']) {
   switch (status) {
     case 'running':
@@ -520,7 +557,7 @@ function buildStripeTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function AgentProgressBar({ topic }: { topic: TeamTopic }) {
+function AgentProgressBar({ topic, debugRef }: { topic: TeamTopic; debugRef?: { current: Map<string, TopicDebugSnapshot> } }) {
   const group = useRef<THREE.Group>(null);
   const fill = useRef<THREE.Mesh>(null);
   const wellMaterial = useRef<THREE.MeshBasicMaterial>(null);
@@ -594,6 +631,13 @@ function AgentProgressBar({ topic }: { topic: TeamTopic }) {
     fillMaterial.current.opacity = displayedOpacity.current;
     fillMaterial.current.color.setHSL(0.36, 1, 0.52 + Math.sin(t * 5.4) * 0.05);
     stripeTexture.offset.y = isRunning ? -(t * 0.75) % 1 : 0;
+    mergeTopicDebugSnapshot(debugRef, topic.topicId, {
+      label: topicDisplayLabel(topic),
+      status: topic.live.status,
+      displayedProgress: displayedProgress.current,
+      barOpacity: displayedOpacity.current,
+      barVisible: displayedOpacity.current > 0.02,
+    });
   });
 
   if (hiddenForTopic) return null;
@@ -914,6 +958,7 @@ function WorkerAvatar({
   beingDisciplined,
   disciplineContactRef,
   avatarPositionsRef,
+  debugRef,
   deskFacing,
   reducedMotion,
   seed,
@@ -934,6 +979,7 @@ function WorkerAvatar({
   beingDisciplined?: boolean;
   disciplineContactRef?: { current: boolean };
   avatarPositionsRef?: { current: Map<string, THREE.Vector3> };
+  debugRef?: { current: Map<string, TopicDebugSnapshot> };
   deskFacing: number;
   reducedMotion: boolean;
   seed: number;
@@ -1085,6 +1131,13 @@ function WorkerAvatar({
       if (!p) { p = new THREE.Vector3(); avatarPositionsRef.current.set(topic.topicId, p); }
       p.copy(group.current.position);
     }
+    mergeTopicDebugSnapshot(debugRef, topic.topicId, {
+      label: topicDisplayLabel(topic),
+      status: topic.live.status,
+      mode,
+      position: [group.current.position.x, group.current.position.y, group.current.position.z],
+      target: [moveTarget.current.x, moveTarget.current.y, moveTarget.current.z],
+    });
 
     // Housekeeper signals contact state; victim reads it to trigger hit pulses
     if (mode === 'discipline' && disciplineContactRef) {
@@ -1191,7 +1244,7 @@ function WorkerAvatar({
 
 
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
-      <AgentProgressBar topic={topic} />
+      <AgentProgressBar topic={topic} debugRef={debugRef} />
       <AlertDiamond visible={showHousekeepingAlert} />
       <FloatingNameTag name={hoverLabel} color={statusColor(topic.live.status)} position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
 
@@ -1986,7 +2039,7 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 
 type SceneStyle = 'dungeon' | 'office';
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemo, manifest, sceneStyle = 'dungeon', onHover, onLeave, onSelect }: {
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemo, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
@@ -1994,6 +2047,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   disciplineDemo?: boolean;
   manifest?: OfficeAssetManifestOverride;
   sceneStyle?: SceneStyle;
+  debugRef?: { current: Map<string, TopicDebugSnapshot> };
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
@@ -2066,6 +2120,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
               beingDisciplined={desk.topic.topicId === disciplineVictimId}
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
+              debugRef={debugRef}
               deskFacing={desk.rotationY === 0 ? Math.PI : 0}
               reducedMotion={reducedMotion}
               seed={index + 1}
@@ -2451,7 +2506,7 @@ function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle
   );
 }
 
-export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = false }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride; demo?: boolean }) {
+export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = false, debug = false }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride; demo?: boolean; debug?: boolean }) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -2465,6 +2520,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const [sceneStyle, setSceneStyle] = useState<SceneStyle>('office');
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
+  const [debugSnapshots, setDebugSnapshots] = useState<TopicDebugSnapshot[]>([]);
+  const debugRef = useRef<Map<string, TopicDebugSnapshot>>(new Map());
 
   useEffect(() => {
     const updateViewport = () => {
@@ -2488,6 +2545,19 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!debug) return;
+    debugRef.current = new Map();
+    const tick = () => {
+      setDebugSnapshots(
+        Array.from(debugRef.current.values()).sort((a, b) => a.label.localeCompare(b.label)),
+      );
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [debug]);
 
   const resolvedAssetManifest = useMemo(
     () => resolveOfficeAssetManifest(assetManifest, localAssetManifest),
@@ -2516,6 +2586,31 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
 
   const runningCount = topics.filter((topic) => topic.live.status === 'running').length;
   const recentCount = topics.filter((topic) => topic.live.status === 'recent').length;
+  const fallbackDebugSnapshots = useMemo(() => (
+    deskLayouts.map((desk) => {
+      const atDesk = staysAtDesk(desk.topic) || hasTaskOwnership(desk.topic);
+      const target = atDesk ? desk.deskSeatPosition : desk.standbyPosition;
+      return {
+        topicId: desk.topic.topicId,
+        label: topicDisplayLabel(desk.topic),
+        status: desk.topic.live.status,
+        mode: atDesk ? 'desk-watch' : 'standby',
+        position: target,
+        target,
+        displayedProgress: topicProgress(desk.topic) ?? undefined,
+        barOpacity: desk.topic.live.status === 'running' ? 1 : 0,
+        barVisible: desk.topic.live.status === 'running',
+        updatedAt: Date.now(),
+      } satisfies TopicDebugSnapshot;
+    })
+  ), [deskLayouts]);
+
+  useEffect(() => {
+    if (!debug) return;
+    for (const snapshot of fallbackDebugSnapshots) {
+      debugRef.current.set(snapshot.topicId, snapshot);
+    }
+  }, [debug, fallbackDebugSnapshots]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2564,6 +2659,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
             disciplineDemo={disciplineDemo}
             manifest={resolvedAssetManifest}
             sceneStyle={sceneStyle}
+            debugRef={debug ? debugRef : undefined}
             onHover={setHoveredTopicId}
             onLeave={(topicId) => {
               setHoveredTopicId((current) => (current === topicId ? null : current));
@@ -2622,6 +2718,28 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
         <div className="pointer-events-none absolute bottom-3 left-[132px] z-10 flex flex-wrap gap-2">
           <div className="rounded-md bg-[rgba(10,10,14,0.78)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">drag to orbit</div>
           <div className="rounded-md bg-[rgba(10,10,14,0.78)] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg">F focus · O overview · Esc reset</div>
+        </div>
+      )}
+
+      {debug && (
+        <div className="absolute right-3 top-14 z-20 max-h-[60vh] w-[min(420px,calc(100%-24px))] overflow-auto rounded-lg border border-[rgba(236,213,141,0.22)] bg-[rgba(12,10,7,0.88)] p-3 text-[11px] text-[var(--watch-text-bright)] shadow-xl backdrop-blur-sm">
+          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">debug live avatar state</div>
+          <div className="space-y-2 font-mono">
+            {(debugSnapshots.length > 0 ? debugSnapshots : fallbackDebugSnapshots).map((snapshot) => (
+              <div key={snapshot.topicId} className="rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-2 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{snapshot.label}</span>
+                  <span className="uppercase text-[10px] text-[var(--watch-text-muted)]">{snapshot.status}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-[var(--watch-text-muted)]">mode {snapshot.mode}</div>
+                <div className="mt-1 text-[10px] text-[var(--watch-text-muted)]">pos {formatDebugVec3(snapshot.position)}</div>
+                <div className="text-[10px] text-[var(--watch-text-muted)]">target {formatDebugVec3(snapshot.target)}</div>
+                <div className="text-[10px] text-[var(--watch-text-muted)]">
+                  bar {snapshot.barVisible ? 'visible' : 'hidden'} · progress {typeof snapshot.displayedProgress === 'number' ? `${Math.round(snapshot.displayedProgress * 100)}%` : 'n/a'} · opacity {typeof snapshot.barOpacity === 'number' ? snapshot.barOpacity.toFixed(2) : 'n/a'}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

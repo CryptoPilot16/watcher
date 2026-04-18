@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { TeamOfficeCanvas } from '@/components/team-office/team-office-canvas';
+import { OfficePreviewDebug } from '@/components/team-office/office-preview-debug';
 import { getTeamTopology } from '@/lib/team-topology-server';
 import { parseTeamTopology, sortTeamTopics, type TeamTopic, type TeamTopology } from '@/lib/watch-team';
 
@@ -103,9 +104,10 @@ function sanitizeTopology(topology: TeamTopology): TeamTopology {
 export default function OfficePreviewPage({
   searchParams,
 }: {
-  searchParams?: { embed?: string };
+  searchParams?: { embed?: string; debug?: string };
 }) {
   const embed = searchParams?.embed === '1';
+  const debug = searchParams?.debug === '1';
   const topology = sanitizeTopology(parseTeamTopology(getTeamTopology()));
 
   return (
@@ -119,12 +121,16 @@ export default function OfficePreviewPage({
           </div>
         )}
 
-        <div className={embed ? 'relative h-full' : 'flex-1'}>
-          <TeamOfficeCanvas topics={topology.topics} demo />
+        <div className={embed ? 'relative h-full' : 'flex flex-1 flex-col gap-3'}>
+          <div className="relative flex-1">
+            <TeamOfficeCanvas topics={topology.topics} demo />
 
-          <div className="pointer-events-none absolute left-3 top-3 hidden sm:block rounded-md border border-[rgba(236,213,141,0.28)] bg-[rgba(12,10,7,0.66)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] backdrop-blur-sm">
-            public office preview
+            <div className="pointer-events-none absolute left-3 top-3 hidden sm:block rounded-md border border-[rgba(236,213,141,0.28)] bg-[rgba(12,10,7,0.66)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] backdrop-blur-sm">
+              public office preview
+            </div>
           </div>
+
+          {debug && <OfficePreviewDebug topics={topology.topics} />}
         </div>
       </div>
     </main>
