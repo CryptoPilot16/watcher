@@ -6,19 +6,48 @@ const PUBLIC_FILE = /\.(.*)$/;
 function getRedirectUrl(request: NextRequest, pathname: string, search = '') {
   const url = request.nextUrl.clone();
   const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
-  const hostHeader =
-    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
-    request.headers.get('host')?.split(',')[0]?.trim();
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const host = request.headers.get('host')?.split(',')[0]?.trim();
+  const origin = request.headers.get('origin')?.trim();
+  const referer = request.headers.get('referer')?.trim();
+  const configuredBase = process.env.WATCH_URL?.trim();
+
+  const internalHost = (value?: string | null) => {
+    const lowered = String(value || '').toLowerCase();
+    return !lowered || lowered.startsWith('127.0.0.1') || lowered.startsWith('localhost');
+  };
+
+  const originHost = (() => {
+    try { return origin ? new URL(origin).host : null; } catch { return null; }
+  })();
+  const refererHost = (() => {
+    try { return referer ? new URL(referer).host : null; } catch { return null; }
+  })();
+  const configuredUrl = (() => {
+    try { return configuredBase ? new URL(configuredBase) : null; } catch { return null; }
+  })();
+
+  const hostHeader = [forwardedHost, host, originHost, refererHost]
+    .find((value) => value && !internalHost(value))
+    || (!internalHost(forwardedHost) ? forwardedHost : null)
+    || (!internalHost(host) ? host : null)
+    || (configuredUrl && !internalHost(configuredUrl.host) ? configuredUrl.host : null)
+    || forwardedHost
+    || host;
 
   if (proto) url.protocol = `${proto}:`;
+  else if (configuredUrl?.protocol) url.protocol = configuredUrl.protocol;
 
   if (hostHeader) {
     const [hostname, port] = hostHeader.split(':');
     url.hostname = hostname;
     url.port = port || '';
+  } else if (configuredUrl?.host) {
+    url.hostname = configuredUrl.hostname;
+    url.port = configuredUrl.port;
   }
 
-  if (!hostHeader && proto === 'https') {
+  if (!hostHeader && (proto === 'https' || configuredUrl?.protocol === 'https:')) {
     url.port = '';
   }
 
