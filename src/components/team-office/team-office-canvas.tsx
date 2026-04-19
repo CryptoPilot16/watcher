@@ -1093,7 +1093,6 @@ function WorkerAvatar({
     };
   }, [basePalette, topic.live.status]);
   const style = useMemo(() => styleForTopic(topic), [topic]);
-  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
   const assigned = hasAssignedTask(topic);
   const housekeeping = isHousekeepingTopic(topic);
   const showHousekeepingAlert = housekeeping && topic.live.status === 'recent' && Boolean(topic.recent.lastAssistantText);
@@ -1120,6 +1119,7 @@ function WorkerAvatar({
     ? topicDisplayLabel(topic)
     : rawAgent;
   const contextAlert = contextAlertStrength(topic);
+  const accent = useMemo(() => new THREE.Color(statusColor(topic.live.status)).lerp(new THREE.Color('#ff5a5a'), contextAlert * 0.9), [topic.live.status, contextAlert]);
   const hoverLabel = emphasized ? `AGENT ${resolvedAgentLabel}` : topicDisplayLabel(topic);
   const showFloorHalo = topic.live.status === 'running' || emphasized || selected;
   const haloOpacity = topic.live.status === 'running' ? 0.4 : (emphasized || selected ? 0.16 : 0);
