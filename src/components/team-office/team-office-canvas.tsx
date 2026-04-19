@@ -2317,6 +2317,11 @@ function FallbackOffice({ topics }: { topics: TeamTopic[] }) {
   );
 }
 
+function topicContextLabel(topic: TeamTopic) {
+  const percent = topic.context?.percent;
+  return typeof percent === 'number' ? `${percent}%` : 'n/a';
+}
+
 function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -2427,6 +2432,10 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <span>{actionLabel(topic)}</span>
           <span>{topic.live.freshnessLabel}</span>
         </div>
+        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+          <span>context</span>
+          <span>{topicContextLabel(topic)}</span>
+        </div>
         {isHousekeepingTopic(topic) && (
           <button type="button" onClick={onDisciplineDemo}
             className={`pointer-events-auto mt-3 w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineDemo ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
@@ -2451,7 +2460,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
       </div>
       <div className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
       <div className="mt-1 text-sm leading-6 text-white/90">{topicHeadline(topic)}</div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.14em] text-white/55">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-white/55">
         <div>
           <div>mode</div>
           <div className="mt-1 text-[11px] text-white/85">{actionLabel(topic)}</div>
@@ -2459,6 +2468,10 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         <div>
           <div>freshness</div>
           <div className="mt-1 text-[11px] text-white/85">{topic.live.freshnessLabel}</div>
+        </div>
+        <div>
+          <div>context</div>
+          <div className="mt-1 text-[11px] text-white/85">{topicContextLabel(topic)}</div>
         </div>
       </div>
       {isHousekeepingTopic(topic) && (
