@@ -2618,13 +2618,33 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const debugRef = useRef<Map<string, TopicDebugSnapshot>>(new Map());
 
   useEffect(() => {
+    const hasUsableWebGL = () => {
+      if (typeof window === 'undefined') return false;
+      try {
+        const canvas = document.createElement('canvas');
+        return Boolean(
+          canvas.getContext('webgl2')
+          || canvas.getContext('webgl')
+          || canvas.getContext('experimental-webgl'),
+        );
+      } catch {
+        return false;
+      }
+    };
+
     const updateViewport = () => {
       if (typeof window === 'undefined') return;
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const mobile = window.innerWidth < 640;
+      const landscape = window.innerWidth > window.innerHeight;
+      const userAgent = navigator.userAgent || '';
+      const telegramWebView = /Telegram/i.test(userAgent) || Boolean((window as typeof window & { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp);
+      const useFallback = reduced || !hasUsableWebGL() || (telegramWebView && mobile);
+
       setReducedMotion(reduced);
-      setFallback(reduced);
-      setIsMobile(window.innerWidth < 640);
-      setIsLandscape(window.innerWidth > window.innerHeight);
+      setFallback(useFallback);
+      setIsMobile(mobile);
+      setIsLandscape(landscape);
     };
 
     updateViewport();
