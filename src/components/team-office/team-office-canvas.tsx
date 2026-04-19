@@ -63,7 +63,7 @@ function statusColor(status: TeamTopic['live']['status']) {
     case 'idle':
       return '#9e8967';
     case 'missing':
-      return '#ff6b6b';
+      return '#8f9aa8';
     default:
       return '#d8ba75';
   }

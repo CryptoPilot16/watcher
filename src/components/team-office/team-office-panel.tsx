@@ -25,9 +25,9 @@ function statusTone(status: 'running' | 'recent' | 'idle' | 'missing') {
       };
     case 'missing':
       return {
-        border: 'rgba(248,113,113,0.34)',
-        background: 'rgba(248,113,113,0.1)',
-        color: '#f87171',
+        border: 'rgba(143,154,168,0.34)',
+        background: 'rgba(143,154,168,0.12)',
+        color: '#aab4c2',
       };
   }
 }
