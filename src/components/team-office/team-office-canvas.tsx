@@ -108,6 +108,12 @@ function hasAssignedTask(topic: TeamTopic) {
   return topic.currentTask.source !== 'none' || Boolean(topic.currentTask.snippet);
 }
 
+function contextAlertStrength(topic: TeamTopic) {
+  const percent = topic.context?.percent;
+  if (typeof percent !== 'number') return 0;
+  if (percent <= 80) return 0;
+  return Math.max(0, Math.min(1, (percent - 80) / 20));
+}
 
 function isAssistantTopic(topic: TeamTopic) {
   const display = topicDisplayLabel(topic).toLowerCase();
@@ -768,11 +774,65 @@ function modelPathForTopic(topic: TeamTopic): string {
   return CHARACTER_MODELS[seed % CHARACTER_MODELS.length];
 }
 
-function GLTFAvatar({ modelPath, animationName }: { modelPath: string; animationName: string }) {
+function GLTFAvatar({ modelPath, animationName, contextAlert = 0 }: { modelPath: string; animationName: string; contextAlert?: number }) {
   const gltf = useGLTF(modelPath);
   const cloned = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
   const group = useRef<THREE.Group>(null);
   const { actions, names } = useAnimations(gltf.animations, group);
+
+  useEffect(() => {
+    cloned.traverse((node) => {
+      const mesh = node as THREE.Mesh & { material?: THREE.Material | THREE.Material[] };
+      if (!mesh.material) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const clonedMaterials = materials.map((material) => {
+        const next = material.clone();
+        const standard = next as THREE.MeshStandardMaterial;
+        if (standard.color) standard.userData.baseColor = standard.color.clone();
+        if (standard.emissive) {
+          standard.userData.baseEmissive = standard.emissive.clone();
+          standard.userData.baseEmissiveIntensity = standard.emissiveIntensity;
+        }
+        standard.userData.baseOpacity = typeof standard.opacity === 'number' ? standard.opacity : 1;
+        standard.userData.baseTransparent = Boolean(standard.transparent);
+        standard.userData.baseDepthWrite = 'depthWrite' in standard ? standard.depthWrite : true;
+        return next;
+      });
+      mesh.material = Array.isArray(mesh.material) ? clonedMaterials : clonedMaterials[0];
+    });
+  }, [cloned]);
+
+  useEffect(() => {
+    const alert = Math.max(0, Math.min(1, contextAlert));
+    const red = new THREE.Color('#ff5a5a');
+    cloned.traverse((node) => {
+      const mesh = node as THREE.Mesh & { material?: THREE.Material | THREE.Material[] };
+      if (!mesh.material) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        const standard = material as THREE.MeshStandardMaterial;
+        const baseColor = standard.userData.baseColor as THREE.Color | undefined;
+        const baseEmissive = standard.userData.baseEmissive as THREE.Color | undefined;
+        const baseOpacity = typeof standard.userData.baseOpacity === 'number' ? standard.userData.baseOpacity : 1;
+        const baseTransparent = Boolean(standard.userData.baseTransparent);
+        const baseDepthWrite = typeof standard.userData.baseDepthWrite === 'boolean' ? standard.userData.baseDepthWrite : true;
+
+        if (standard.color && baseColor) {
+          standard.color.copy(baseColor).lerp(red, alert * 0.62);
+        }
+        if (standard.emissive && baseEmissive) {
+          standard.emissive.copy(baseEmissive).lerp(red, alert * 0.4);
+          standard.emissiveIntensity = (typeof standard.userData.baseEmissiveIntensity === 'number' ? standard.userData.baseEmissiveIntensity : 0) + (alert * 0.14);
+        }
+
+        standard.opacity = Math.max(0.5, baseOpacity - (alert * 0.28));
+        standard.transparent = alert > 0.01 ? true : baseTransparent;
+        if ('depthWrite' in standard) standard.depthWrite = alert > 0.01 ? false : baseDepthWrite;
+        standard.needsUpdate = true;
+      }
+    });
+  }, [cloned, contextAlert]);
+
   useEffect(() => {
     const resolved = names.includes(animationName) ? animationName : (names.find((n) => n.toLowerCase() === 'idle') ?? names[0]);
     const action = resolved ? actions[resolved] : null;
@@ -1059,6 +1119,7 @@ function WorkerAvatar({
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
     ? topicDisplayLabel(topic)
     : rawAgent;
+  const contextAlert = contextAlertStrength(topic);
   const hoverLabel = emphasized ? `AGENT ${resolvedAgentLabel}` : topicDisplayLabel(topic);
   const showFloorHalo = topic.live.status === 'running' || emphasized || selected;
   const haloOpacity = topic.live.status === 'running' ? 0.4 : (emphasized || selected ? 0.16 : 0);
@@ -1264,7 +1325,7 @@ function WorkerAvatar({
         <ringGeometry args={[0.13, 0.17, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={showFloorHalo ? haloOpacity : 0} />
       </mesh>
-      <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status)} />
+      <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status)} contextAlert={contextAlert} />
 
 
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />

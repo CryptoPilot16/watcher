@@ -6,6 +6,11 @@ export type TeamTopic = {
   topicId: string;
   sessionKey: string;
   sessionFile: string | null;
+  context?: {
+    usedTokens: number | null;
+    maxTokens: number | null;
+    percent: number | null;
+  };
   configured: {
     label: string;
     role: string;

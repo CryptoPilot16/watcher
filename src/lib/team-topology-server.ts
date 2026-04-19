@@ -12,6 +12,8 @@ type SessionIndexEntry = {
   updatedAt?: number;
   status?: string;
   channel?: string;
+  totalTokens?: number;
+  contextTokens?: number;
   acp?: {
     state?: string;
     lastActivityAt?: number;
@@ -532,11 +534,21 @@ export function getTeamTopology(): string {
     const sessionFile = resolveSessionFile(agentId, topicId, session);
     const parsed = parseTopicSession(sessionFile && fs.existsSync(sessionFile) ? sessionFile : null);
     const live = computeLiveStatus(session);
+    const usedTokens = typeof session?.totalTokens === 'number' ? session.totalTokens : null;
+    const maxTokens = typeof session?.contextTokens === 'number' ? session.contextTokens : null;
+    const contextPercent = usedTokens !== null && maxTokens && maxTokens > 0
+      ? Math.max(0, Math.min(100, Math.round((usedTokens / maxTokens) * 100)))
+      : null;
 
     return {
       topicId,
       sessionKey: resolved.key,
       sessionFile: sessionFile && fs.existsSync(sessionFile) ? sessionFile : null,
+      context: {
+        usedTokens,
+        maxTokens,
+        percent: contextPercent,
+      },
       configured: {
         label: String(lane?.label || `Topic ${topicId}`),
         role: String(lane?.role || 'unknown'),
