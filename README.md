@@ -43,7 +43,7 @@ npm run dev
 
 ## What ships today
 
-- Public landing page at `/`
+- Root route `/` redirects straight to the password-gated dashboard flow at `/watch`
 - Password-gated dashboard at `/watch`
 - Five dashboard tabs:
   - **status**: mission banner, live session feed, auth health, session freshness, recent runs, cron state, stale-fault clearing
@@ -56,6 +56,12 @@ npm run dev
   - recent lanes linger briefly after delivery
   - idle lanes park in standby spots
   - missing lanes remain visible as offline
+- Context awareness in the office view:
+  - lane context percentage is surfaced in the avatar info card
+  - high-context lanes tint red above 80 percent
+  - offline or missing lanes use a distinct muted color so they do not look like context danger
+- Mobile-safe office behavior:
+  - Telegram/mobile or weak WebGL environments can fall back to a simplified office view instead of rendering a broken blank canvas
 - Lane progress parsing from plans and inline progress text, surfaced as progress bars in the office scene
 - Web relay from the office UI into the exact bound lane session, including Telegram topic sessions and ACP-bound Telegram sessions
 - Public office preview at `/office-preview` with sanitized labels and stripped task text
@@ -76,7 +82,7 @@ npm run dev
 
 ### App routes
 
-- `/` — public landing page
+- `/` — redirects to `/watch`
 - `/login` — password gate for the dashboard
 - `/watch` — authenticated operations dashboard
 - `/docs` — authenticated in-app reference
@@ -123,6 +129,8 @@ The Team Office is the main differentiator in this repo.
 - Session resolution supports standard Telegram topic keys and ACP Telegram-bound sessions
 - Public preview mode strips private task text and exposes only generic role and activity information
 - Scene styles can switch between the voxel office and the dungeon layout
+- Context percentage is carried into topology data so lane warnings can show both visual alerts and exact percent text
+- High-context alerts tint avatars and halos red without relying on transparency hacks that break model rendering
 
 ## Security model
 
@@ -229,3 +237,4 @@ Behavior:
 - Demo mode is intentionally read-only: it gives OSS users a working product surface without pretending lane relay or live ops control is active.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 - Worker casting is deterministic by lane role so the office view does not reshuffle identities on refresh.
+- The main live app is the Next.js Watcher surface. Public marketing or project pages can sit separately in front of it, but the authenticated ops experience lives under `/watch`.
