@@ -825,9 +825,9 @@ function GLTFAvatar({ modelPath, animationName, contextAlert = 0 }: { modelPath:
           standard.emissiveIntensity = (typeof standard.userData.baseEmissiveIntensity === 'number' ? standard.userData.baseEmissiveIntensity : 0) + (alert * 0.14);
         }
 
-        standard.opacity = Math.max(0.5, baseOpacity - (alert * 0.28));
-        standard.transparent = alert > 0.01 ? true : baseTransparent;
-        if ('depthWrite' in standard) standard.depthWrite = alert > 0.01 ? false : baseDepthWrite;
+        standard.opacity = baseOpacity;
+        standard.transparent = baseTransparent;
+        if ('depthWrite' in standard) standard.depthWrite = baseDepthWrite;
         standard.needsUpdate = true;
       }
     });
