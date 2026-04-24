@@ -2624,6 +2624,14 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
   const [disciplineDemo, setDisciplineDemo] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const disciplineParam = new URL(window.location.href).searchParams.get('discipline');
+    if (!disciplineParam) return;
+    const normalized = disciplineParam.trim().toLowerCase();
+    setDisciplineDemo(!['0', 'false', 'off', 'no'].includes(normalized));
+  }, []);
   const [sceneStyle, setSceneStyle] = useState<SceneStyle>('office');
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
