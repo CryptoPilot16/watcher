@@ -1083,7 +1083,7 @@ function animationForMode(mode: string, status: string, disciplineVariant: Exclu
   if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : disciplineVariant === 'finisher' ? '2H_Melee_Attack_Spin' : 'Unarmed_Melee_Attack_Punch_A';
   if (mode === 'delivery') return 'Walking_A';
   if (mode === 'job-front') return 'Walking_A';
-  if (mode === 'desk-watch') return 'Sit_Chair_Pose';
+  if (mode === 'desk-watch') return 'Sit_Chair_Idle';
   if (mode === 'desk-stand') return 'Idle';
   if (status === 'running') return 'Interact';
   return 'Idle';
