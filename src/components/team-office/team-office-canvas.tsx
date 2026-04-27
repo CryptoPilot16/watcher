@@ -114,6 +114,65 @@ function contextAlertStrength(topic: TeamTopic) {
   return Math.max(0, Math.min(1, (percent - 80) / 20));
 }
 
+type DisciplineAttackMode = 'punch' | 'finisher' | 'kick';
+
+function disciplineSeverityScore(topic: TeamTopic) {
+  if (isHousekeepingTopic(topic) || topic.live.status === 'running') return 0;
+
+  let score = 0;
+  const idleMs = topic.live.idleMs ?? 0;
+  const contextPercent = typeof topic.context?.percent === 'number' ? topic.context.percent : 0;
+  const missingReport = !topic.recent.lastAssistantText;
+  const lowProgress = typeof topic.currentTask.progress === 'number' && topic.currentTask.progress < 0.35;
+
+  if (topic.live.status === 'missing') score += 6;
+  else if (topic.live.status === 'idle') score += 3;
+  else if (topic.live.status === 'recent') score += 1;
+
+  if (idleMs >= 3 * 60 * 60 * 1000) score += 4;
+  else if (idleMs >= 90 * 60 * 1000) score += 3;
+  else if (idleMs >= 30 * 60 * 1000) score += 2;
+  else if (idleMs >= 10 * 60 * 1000) score += 1;
+
+  if (contextPercent >= 92) score += 2;
+  else if (contextPercent >= 80) score += 1;
+
+  if (missingReport) score += 2;
+  if (lowProgress && topic.live.status !== 'recent') score += 1;
+  if (topic.recent.lastToolName && missingReport) score += 1;
+
+  return score;
+}
+
+function disciplineAttackForScore(score: number): DisciplineAttackMode | null {
+  if (score >= 8) return 'finisher';
+  if (score >= 5) return 'kick';
+  if (score >= 2) return 'punch';
+  return null;
+}
+
+function pickAutoDisciplineTarget(topics: TeamTopic[]) {
+  const ranked = topics
+    .filter((topic) => !isHousekeepingTopic(topic))
+    .map((topic) => {
+      const score = disciplineSeverityScore(topic);
+      return {
+        topic,
+        score,
+        mode: disciplineAttackForScore(score),
+      };
+    })
+    .filter((entry) => Boolean(entry.mode))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.topic.live.idleMs ?? 0) - (a.topic.live.idleMs ?? 0);
+    });
+
+  const winner = ranked[0];
+  if (!winner || !winner.mode) return null;
+  return { topicId: winner.topic.topicId, mode: winner.mode };
+}
+
 function isAssistantTopic(topic: TeamTopic) {
   const display = topicDisplayLabel(topic).toLowerCase();
   const configured = topic.configured.label.toLowerCase();
@@ -2167,7 +2226,7 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 }
 
 type SceneStyle = 'dungeon' | 'office';
-type DisciplineDemoMode = 'off' | 'punch' | 'finisher' | 'kick';
+type DisciplineDemoMode = 'off' | DisciplineAttackMode;
 
 function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
@@ -2185,13 +2244,18 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
   const disciplineContactRef = useRef(false);
   const avatarPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
-  const disciplineDemo = disciplineDemoMode && disciplineDemoMode !== 'off';
+  const manualDisciplineMode = disciplineDemoMode && disciplineDemoMode !== 'off' ? disciplineDemoMode : null;
+  const autoDiscipline = useMemo(() => (manualDisciplineMode ? null : pickAutoDisciplineTarget(topics)), [manualDisciplineMode, topics]);
+  const activeDisciplineMode = manualDisciplineMode ?? autoDiscipline?.mode ?? null;
 
   const disciplineVictimId = useMemo(() => {
-    if (!disciplineDemo) return null;
-    const victim = deskLayouts.find((c) => !isHousekeepingTopic(c.topic) && c.topic.live.status !== 'missing');
-    return victim?.topic.topicId || null;
-  }, [deskLayouts, disciplineDemo]);
+    if (!activeDisciplineMode) return null;
+    if (manualDisciplineMode) {
+      const victim = deskLayouts.find((c) => !isHousekeepingTopic(c.topic) && c.topic.live.status !== 'missing');
+      return victim?.topic.topicId || null;
+    }
+    return autoDiscipline?.topicId || null;
+  }, [deskLayouts, activeDisciplineMode, manualDisciplineMode, autoDiscipline]);
 
   return (
     <>
@@ -2231,12 +2295,11 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
               deskSeatPosition={desk.deskSeatPosition}
               deskStandPosition={desk.deskStandPosition}
               deliveryPosition={desk.deliveryPosition}
-              disciplineVariant={disciplineDemoMode === 'off' ? undefined : disciplineDemoMode}
-              disciplineTargetPosition={isHousekeepingTopic(desk.topic) && disciplineDemo
+              disciplineVariant={activeDisciplineMode ?? undefined}
+              disciplineTargetPosition={isHousekeepingTopic(desk.topic) && activeDisciplineMode && disciplineVictimId
                 ? (() => {
-                    const victim = deskLayouts.find((c) => c.topic.topicId !== desk.topic.topicId && !isHousekeepingTopic(c.topic) && c.topic.live.status !== 'missing');
+                    const victim = deskLayouts.find((c) => c.topic.topicId === disciplineVictimId && c.topic.topicId !== desk.topic.topicId);
                     if (!victim) return null;
-                    // compute victim's actual rendered position based on their mode
                     const v = victim.topic;
                     const vSeatedAtDesk = shouldSitAtDesk(v);
                     const vOffline = v.live.status === 'missing';
@@ -2247,7 +2310,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                     return pos;
                   })()
                 : null}
-              beingDisciplined={desk.topic.topicId === disciplineVictimId}
+              beingDisciplined={Boolean(activeDisciplineMode) && desk.topic.topicId === disciplineVictimId}
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
               debugRef={debugRef}
