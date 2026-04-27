@@ -1021,7 +1021,7 @@ function GLTFWalls() {
 
 function animationForMode(mode: string, status: string, disciplineVariant: Exclude<DisciplineDemoMode, 'off'> = 'punch'): string {
   if (mode === 'victim') return 'Hit_A';
-  if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : 'Unarmed_Melee_Attack_Punch_A';
+  if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : disciplineVariant === 'belt' ? '1H_Melee_Attack_Slice_Horizontal' : 'Unarmed_Melee_Attack_Punch_A';
   if (mode === 'delivery') return 'Walking_A';
   if (mode === 'job-front') return 'Walking_A';
   if (mode === 'desk-watch') return 'Sit_Chair_Pose';
@@ -1076,6 +1076,7 @@ function WorkerAvatar({
   onSelect: () => void;
 }) {
   const group = useRef<THREE.Group>(null);
+  const beltRef = useRef<THREE.Mesh>(null);
   const leftArm = useRef<THREE.Group>(null);
   const rightArm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
@@ -1114,6 +1115,8 @@ function WorkerAvatar({
         ? 'desk-watch'
         : 'standby';
   const kickDiscipline = disciplineVariant === 'kick';
+  const beltDiscipline = disciplineVariant === 'belt';
+  const showBelt = housekeeping && mode === 'discipline' && beltDiscipline;
   const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
@@ -1343,6 +1346,20 @@ function WorkerAvatar({
       const emissive = topic.live.status === 'running' ? 0.14 : assigned ? 0.05 : 0.02;
       (chest.current.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
     }
+
+    if (beltRef.current) {
+      const belt = beltRef.current;
+      if (!showBelt) {
+        belt.visible = false;
+      } else {
+        belt.visible = true;
+        const distToTarget = disciplineAnchor ? Math.hypot(group.current.position.x - disciplineAnchor[0], group.current.position.z - disciplineAnchor[2]) : 999;
+        const arrived = distToTarget < 1.2;
+        const swing = arrived && !reducedMotion ? Math.max(0, Math.sin(t * 5.5)) : 0;
+        belt.position.set(0.34, 0.98, 0.12);
+        belt.rotation.set(0.18 + swing * 0.55, 0.22, -0.45 - swing * 1.05);
+      }
+    }
   });
 
   return (
@@ -1353,6 +1370,12 @@ function WorkerAvatar({
       </mesh>
       <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status, disciplineVariant)} contextAlert={contextAlert} />
 
+      {showBelt && (
+        <mesh ref={beltRef} castShadow>
+          <boxGeometry args={[0.05, 0.05, 0.72]} />
+          <meshStandardMaterial color="#6b4423" roughness={0.9} metalness={0.05} />
+        </mesh>
+      )}
 
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
       <AgentProgressBar topic={topic} debugRef={debugRef} />
@@ -2152,7 +2175,7 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 }
 
 type SceneStyle = 'dungeon' | 'office';
-type DisciplineDemoMode = 'off' | 'punch' | 'kick';
+type DisciplineDemoMode = 'off' | 'punch' | 'belt' | 'kick';
 
 function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
@@ -2434,6 +2457,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   if (!topic) return null;
   const color = statusColor(topic.live.status);
   const disciplinePunch = disciplineDemoMode === 'punch';
+  const disciplineBelt = disciplineDemoMode === 'belt';
   const disciplineKick = disciplineDemoMode === 'kick';
 
   if (isMobile) {
@@ -2479,6 +2503,10 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
               {disciplinePunch ? 'stop demo' : 'demo discipline'}
             </button>
+            <button type="button" onClick={() => onDisciplineDemo('belt')}
+              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineBelt ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(248,165,36,0.4)] bg-[rgba(248,165,36,0.1)] text-[#f8a524] hover:bg-[rgba(248,165,36,0.18)]'}`}>
+              {disciplineBelt ? 'stop belt whip' : 'demo belt whip'}
+            </button>
             <button type="button" onClick={() => onDisciplineDemo('kick')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
               {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
@@ -2522,6 +2550,10 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <button type="button" onClick={() => onDisciplineDemo('punch')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
             {disciplinePunch ? 'stop demo' : 'demo discipline'}
+          </button>
+          <button type="button" onClick={() => onDisciplineDemo('belt')}
+            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineBelt ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(248,165,36,0.4)] bg-[rgba(248,165,36,0.1)] text-[#f8a524] hover:bg-[rgba(248,165,36,0.18)]'}`}>
+            {disciplineBelt ? 'stop belt whip' : 'demo belt whip'}
           </button>
           <button type="button" onClick={() => onDisciplineDemo('kick')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
@@ -2679,7 +2711,11 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     const disciplineParam = new URL(window.location.href).searchParams.get('discipline');
     if (!disciplineParam) return;
     const normalized = disciplineParam.trim().toLowerCase();
-    if (['2', 'kick', 'flying-kick'].includes(normalized)) {
+    if (['2', 'belt', 'whip', 'belt-whip'].includes(normalized)) {
+      setDisciplineDemoMode('belt');
+      return;
+    }
+    if (['3', 'kick', 'flying-kick'].includes(normalized)) {
       setDisciplineDemoMode('kick');
       return;
     }
