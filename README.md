@@ -57,6 +57,8 @@ npm run dev
   - recent lanes linger briefly after delivery
   - idle lanes park in standby spots
   - missing lanes remain visible as offline
+  - House Keeping can visibly discipline bad lanes with punch, flying kick, or finisher reactions
+  - discipline selection can auto-escalate from light to severe based on lane staleness, missing reports, low progress, and context pressure
 - Context awareness in the office view:
   - lane context percentage is surfaced in the avatar info card
   - high-context lanes tint red above 80 percent
@@ -133,6 +135,8 @@ The Team Office is the main differentiator in this repo.
 - When multiple historical sessions match one topic, Watcher resolves the newest matching session so stale bindings do not shadow the live lane
 - Public preview mode strips private task text and exposes only generic role and activity information
 - Scene styles can switch between the voxel office and the dungeon layout
+- House Keeping discipline controls are available in the office UI, with automatic severity-based attack selection when manual override is not active
+- Punch and flying kick use lighter victim hit-react shakes, while the finisher carries the larger knockback animation
 - Context percentage is carried into topology data so lane warnings can show both visual alerts and exact percent text
 - High-context alerts tint avatars and halos red without relying on transparency hacks that break model rendering
 
