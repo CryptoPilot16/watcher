@@ -122,6 +122,13 @@ type DisciplineFeedback = {
   instruction: string;
 };
 
+function looksLikeCompletionReport(text: string | null | undefined) {
+  const normalized = String(text || '').trim();
+  if (!normalized) return false;
+  return /^(done\b|fixed\b|completed\b|shipped\b|pushed\b|resolved\b)/i.test(normalized)
+    || /\bDONE\b/i.test(normalized);
+}
+
 function hasFrozenTaskEvidence(topic: TeamTopic) {
   const source = topic.currentTask.source;
   const progress = topic.currentTask.progress;
@@ -132,7 +139,9 @@ function hasFrozenTaskEvidence(topic: TeamTopic) {
   const explicitTrackedTask = source === 'plan' || source === 'yield';
   const delegatedTask = source === 'tool' && hasSnippet;
   const unansweredUserTask = source === 'user' && hasSnippet && missingReport;
+  const completionReported = looksLikeCompletionReport(topic.recent.lastAssistantText);
 
+  if (completionReported) return false;
   if (!hasSnippet && !explicitTrackedTask) return false;
   if (typeof progress === 'number' && progress >= 0.995) return false;
   if (explicitTrackedTask) return true;
