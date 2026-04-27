@@ -122,8 +122,23 @@ type DisciplineFeedback = {
   instruction: string;
 };
 
+function hasFrozenTaskEvidence(topic: TeamTopic) {
+  const source = topic.currentTask.source;
+  const progress = topic.currentTask.progress;
+  const hasSnippet = Boolean(topic.currentTask.snippet);
+  const hasToolTrail = Boolean(topic.recent.lastToolName);
+  const explicitTrackedTask = source === 'plan' || source === 'yield';
+
+  if (!hasSnippet && !explicitTrackedTask) return false;
+  if (typeof progress === 'number' && progress >= 0.995) return false;
+  if (explicitTrackedTask) return true;
+  if ((source === 'tool' || source === 'user' || source === 'assistant') && hasToolTrail) return true;
+  return false;
+}
+
 function disciplineSeverityScore(topic: TeamTopic) {
   if (isHousekeepingTopic(topic) || topic.live.status === 'running') return 0;
+  if (!hasFrozenTaskEvidence(topic)) return 0;
 
   let score = 0;
   const idleMs = topic.live.idleMs ?? 0;
