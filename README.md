@@ -127,6 +127,7 @@ The Team Office is the main differentiator in this repo.
 - The floor view supports desk selection and lane inspection
 - The office panel can send instructions directly into the bound lane session instead of broadcasting to a generic target
 - Session resolution supports standard Telegram topic keys and ACP Telegram-bound sessions
+- When multiple historical sessions match one topic, Watcher resolves the newest matching session so stale bindings do not shadow the live lane
 - Public preview mode strips private task text and exposes only generic role and activity information
 - Scene styles can switch between the voxel office and the dungeon layout
 - Context percentage is carried into topology data so lane warnings can show both visual alerts and exact percent text

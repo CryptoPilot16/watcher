@@ -422,13 +422,26 @@ function computeLiveStatus(session: SessionIndexEntry | undefined): TeamTopic['l
   };
 }
 
+function sessionUpdatedAt(session: SessionIndexEntry | undefined) {
+  return typeof session?.updatedAt === 'number'
+    ? session.updatedAt
+    : typeof session?.acp?.lastActivityAt === 'number'
+      ? session.acp.lastActivityAt
+      : 0;
+}
+
 function latestSessionEntry(sessionsIndex: Record<string, SessionIndexEntry>) {
   return Object.entries(sessionsIndex)
-    .sort(([, a], [, b]) => {
-      const aTs = typeof a?.updatedAt === 'number' ? a.updatedAt : typeof a?.acp?.lastActivityAt === 'number' ? a.acp.lastActivityAt : 0;
-      const bTs = typeof b?.updatedAt === 'number' ? b.updatedAt : typeof b?.acp?.lastActivityAt === 'number' ? b.acp.lastActivityAt : 0;
-      return bTs - aTs;
-    })[0];
+    .sort(([, a], [, b]) => sessionUpdatedAt(b) - sessionUpdatedAt(a))[0];
+}
+
+function newestMatchingSessionEntry(
+  sessionsIndex: Record<string, SessionIndexEntry>,
+  topicId: string,
+) {
+  return Object.entries(sessionsIndex)
+    .filter(([key, value]) => key.includes(`topic:${topicId}`) || value?.deliveryContext?.threadId === Number(topicId))
+    .sort(([, a], [, b]) => sessionUpdatedAt(b) - sessionUpdatedAt(a))[0];
 }
 
 function getSessionEntry(
@@ -441,10 +454,7 @@ function getSessionEntry(
   const directKey = `agent:${agentId}:telegram:group:${groupId}:topic:${topicId}`;
   if (sessionsIndex[directKey]) return { key: directKey, session: sessionsIndex[directKey] };
 
-  const fallback = Object.entries(sessionsIndex).find(([key, value]) => {
-    return key.includes(`topic:${topicId}`) || value?.deliveryContext?.threadId === Number(topicId);
-  });
-
+  const fallback = newestMatchingSessionEntry(sessionsIndex, topicId);
   if (fallback) return { key: fallback[0], session: fallback[1] };
 
   if (agentLaneCount === 1) {
