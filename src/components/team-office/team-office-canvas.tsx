@@ -42,7 +42,6 @@ function mergeTopicDebugSnapshot(
     label: current?.label ?? patch.label ?? topicId,
     status: current?.status ?? patch.status ?? 'idle',
     mode: current?.mode ?? patch.mode ?? 'unknown',
-    updatedAt: Date.now(),
     ...current,
     ...patch,
     updatedAt: Date.now(),
@@ -1020,9 +1019,9 @@ function GLTFWalls() {
   return <group>{walls.map((w, i) => <GLBTile key={i} url={w.url} position={w.pos} rotationY={w.ry} />)}</group>;
 }
 
-function animationForMode(mode: string, status: string): string {
+function animationForMode(mode: string, status: string, disciplineVariant: Exclude<DisciplineDemoMode, 'off'> = 'punch'): string {
   if (mode === 'victim') return 'Hit_A';
-  if (mode === 'discipline') return 'Unarmed_Melee_Attack_Punch_A';
+  if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : 'Unarmed_Melee_Attack_Punch_A';
   if (mode === 'delivery') return 'Walking_A';
   if (mode === 'job-front') return 'Walking_A';
   if (mode === 'desk-watch') return 'Sit_Chair_Pose';
@@ -1040,6 +1039,7 @@ function WorkerAvatar({
   deskStandPosition,
   deliveryPosition,
   disciplineTargetPosition,
+  disciplineVariant,
   beingDisciplined,
   disciplineContactRef,
   avatarPositionsRef,
@@ -1061,6 +1061,7 @@ function WorkerAvatar({
   deskStandPosition: [number, number, number];
   deliveryPosition: [number, number, number];
   disciplineTargetPosition: [number, number, number] | null;
+  disciplineVariant?: Exclude<DisciplineDemoMode, 'off'>;
   beingDisciplined?: boolean;
   disciplineContactRef?: { current: boolean };
   avatarPositionsRef?: { current: Map<string, THREE.Vector3> };
@@ -1105,14 +1106,13 @@ function WorkerAvatar({
     if (!beingDisciplined) { setHitPulse(false); lastHitRef.current = 0; contactStartRef.current = 0; }
   }, [beingDisciplined]);
 
-  const mode = hitPulse
+  const mode: string = hitPulse
     ? 'victim'
     : disciplineMode
       ? 'discipline'
       : seatedAtDesk
         ? 'desk-watch'
         : 'standby';
-  const showHockeyStick = housekeeping && mode === 'discipline';
   const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
@@ -1325,7 +1325,7 @@ function WorkerAvatar({
         <ringGeometry args={[0.13, 0.17, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={showFloorHalo ? haloOpacity : 0} />
       </mesh>
-      <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status)} contextAlert={contextAlert} />
+      <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status, disciplineVariant)} contextAlert={contextAlert} />
 
 
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
@@ -2126,13 +2126,14 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 }
 
 type SceneStyle = 'dungeon' | 'office';
+type DisciplineDemoMode = 'off' | 'punch' | 'kick';
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemo, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
-  disciplineDemo?: boolean;
+  disciplineDemoMode?: DisciplineDemoMode;
   manifest?: OfficeAssetManifestOverride;
   sceneStyle?: SceneStyle;
   debugRef?: { current: Map<string, TopicDebugSnapshot> };
@@ -2143,6 +2144,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
   const disciplineContactRef = useRef(false);
   const avatarPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
+  const disciplineDemo = disciplineDemoMode && disciplineDemoMode !== 'off';
 
   const disciplineVictimId = useMemo(() => {
     if (!disciplineDemo) return null;
@@ -2188,6 +2190,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
               deskSeatPosition={desk.deskSeatPosition}
               deskStandPosition={desk.deskStandPosition}
               deliveryPosition={desk.deliveryPosition}
+              disciplineVariant={disciplineDemoMode === 'off' ? undefined : disciplineDemoMode}
               disciplineTargetPosition={isHousekeepingTopic(desk.topic) && disciplineDemo
                 ? (() => {
                     const victim = deskLayouts.find((c) => c.topic.topicId !== desk.topic.topicId && !isHousekeepingTopic(c.topic) && c.topic.live.status !== 'missing');
@@ -2401,9 +2404,11 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
   );
 }
 
-function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplineDemo, onDisciplineDemo }: { topic: TeamTopic | null; groupId: string; isMobile: boolean; expanded: boolean; onToggle: () => void; disciplineDemo: boolean; onDisciplineDemo: () => void }) {
+function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplineDemoMode, onDisciplineDemo }: { topic: TeamTopic | null; groupId: string; isMobile: boolean; expanded: boolean; onToggle: () => void; disciplineDemoMode: DisciplineDemoMode; onDisciplineDemo: (mode: Exclude<DisciplineDemoMode, 'off'>) => void }) {
   if (!topic) return null;
   const color = statusColor(topic.live.status);
+  const disciplinePunch = disciplineDemoMode === 'punch';
+  const disciplineKick = disciplineDemoMode === 'kick';
 
   if (isMobile) {
     if (!expanded) {
@@ -2443,10 +2448,16 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <span>{topicContextLabel(topic)}</span>
         </div>
         {isHousekeepingTopic(topic) && (
-          <button type="button" onClick={onDisciplineDemo}
-            className={`pointer-events-auto mt-3 w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineDemo ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
-            {disciplineDemo ? 'stop demo' : 'demo discipline'}
-          </button>
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <button type="button" onClick={() => onDisciplineDemo('punch')}
+              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
+              {disciplinePunch ? 'stop demo' : 'demo discipline'}
+            </button>
+            <button type="button" onClick={() => onDisciplineDemo('kick')}
+              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
+              {disciplineKick ? 'stop demo 2' : 'demo discipline 2'}
+            </button>
+          </div>
         )}
         <InstructInput topic={topic} groupId={groupId} />
       </div>
@@ -2481,10 +2492,16 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         </div>
       </div>
       {isHousekeepingTopic(topic) && (
-        <button type="button" onClick={onDisciplineDemo}
-          className={`pointer-events-auto mt-3 w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineDemo ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
-          {disciplineDemo ? 'stop demo' : 'demo discipline'}
-        </button>
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <button type="button" onClick={() => onDisciplineDemo('punch')}
+            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
+            {disciplinePunch ? 'stop demo' : 'demo discipline'}
+          </button>
+          <button type="button" onClick={() => onDisciplineDemo('kick')}
+            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
+            {disciplineKick ? 'stop demo 2' : 'demo discipline 2'}
+          </button>
+        </div>
       )}
       <InstructInput topic={topic} groupId={groupId} />
     </div>
@@ -2628,7 +2645,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const [hoveredTopicId, setHoveredTopicId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [mobileInfoExpanded, setMobileInfoExpanded] = useState(false);
-  const [disciplineDemo, setDisciplineDemo] = useState(false);
+  const [disciplineDemoMode, setDisciplineDemoMode] = useState<DisciplineDemoMode>('off');
   const [cameraMode, setCameraMode] = useState<CameraMode>('overview');
 
   useEffect(() => {
@@ -2636,7 +2653,11 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     const disciplineParam = new URL(window.location.href).searchParams.get('discipline');
     if (!disciplineParam) return;
     const normalized = disciplineParam.trim().toLowerCase();
-    setDisciplineDemo(!['0', 'false', 'off', 'no'].includes(normalized));
+    if (['2', 'kick', 'flying-kick'].includes(normalized)) {
+      setDisciplineDemoMode('kick');
+      return;
+    }
+    setDisciplineDemoMode(['0', 'false', 'off', 'no'].includes(normalized) ? 'off' : 'punch');
   }, []);
   const [sceneStyle, setSceneStyle] = useState<SceneStyle>('office');
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -2797,7 +2818,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
             reducedMotion={reducedMotion}
             hoveredTopicId={hoveredTopicId}
             selectedTopicId={selectedTopicId}
-            disciplineDemo={disciplineDemo}
+            disciplineDemoMode={disciplineDemoMode}
             manifest={resolvedAssetManifest}
             sceneStyle={sceneStyle}
             debugRef={debug ? debugRef : undefined}
@@ -2852,8 +2873,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
         isMobile={isMobile}
         expanded={mobileInfoExpanded}
         onToggle={() => setMobileInfoExpanded((value) => !value)}
-        disciplineDemo={disciplineDemo}
-        onDisciplineDemo={() => setDisciplineDemo((v) => !v)}
+        disciplineDemoMode={disciplineDemoMode}
+        onDisciplineDemo={(mode) => setDisciplineDemoMode((current) => (current === mode ? 'off' : mode))}
       />
 
       {!isMobile && (
