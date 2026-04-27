@@ -1355,9 +1355,10 @@ function WorkerAvatar({
         belt.visible = true;
         const distToTarget = disciplineAnchor ? Math.hypot(group.current.position.x - disciplineAnchor[0], group.current.position.z - disciplineAnchor[2]) : 999;
         const arrived = distToTarget < 1.2;
-        const swing = arrived && !reducedMotion ? Math.max(0, Math.sin(t * 6.1)) : 0;
-        belt.position.set(0.18 + swing * 0.04, 0.83 + swing * 0.03, 0.26 + swing * 0.08);
-        belt.rotation.set(-1.05 + swing * 0.42, 0.38, 1.18 - swing * 1.35);
+        const swingRaw = arrived && !reducedMotion ? Math.sin(t * 6.1) : -1;
+        const sweep = arrived ? (swingRaw + 1) * 0.5 : 0;
+        belt.position.set(0.08 + sweep * 0.16, 0.8 + sweep * 0.08, -0.22 + sweep * 0.58);
+        belt.rotation.set(-1.2 + sweep * 0.5, -0.55 + sweep * 1.05, 2.15 - sweep * 3.05);
       }
     }
   });
