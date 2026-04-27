@@ -100,7 +100,34 @@ function listSessionCandidates() {
   });
 }
 
+function findLatestTeamTopicSessionFile(): string | null {
+  const topology = parseSafe(getTeamTopology());
+  const topics = Array.isArray(topology?.topics) ? topology.topics : [];
+
+  const dispatcherTopic = topics.find(
+    (topic: any) =>
+      topic?.configured?.role === 'dispatcher' &&
+      typeof topic?.sessionFile === 'string' &&
+      fs.existsSync(topic.sessionFile),
+  );
+  if (dispatcherTopic?.sessionFile) return dispatcherTopic.sessionFile;
+
+  const rankedTopics = topics
+    .filter((topic: any) => typeof topic?.sessionFile === 'string' && fs.existsSync(topic.sessionFile))
+    .sort((a: any, b: any) => {
+      const aRunning = a?.live?.status === 'running' ? 1 : 0;
+      const bRunning = b?.live?.status === 'running' ? 1 : 0;
+      if (aRunning !== bRunning) return bRunning - aRunning;
+      return (Number(b?.live?.updatedAt) || 0) - (Number(a?.live?.updatedAt) || 0);
+    });
+
+  return rankedTopics[0]?.sessionFile || null;
+}
+
 function findLatestSessionFile(): string | null {
+  const latestTeamTopicSession = findLatestTeamTopicSessionFile();
+  if (latestTeamTopicSession) return latestTeamTopicSession;
+
   const ranked = listSessionCandidates()
     .filter((candidate) => candidate.sessionFile)
     .sort((a, b) => {

@@ -2305,13 +2305,19 @@ function FallbackOffice({ topics }: { topics: TeamTopic[] }) {
       <div className="absolute inset-6 rounded-xl bg-[#f3ead7]" />
       <div className="absolute left-1/2 top-20 h-28 w-28 -translate-x-1/2 rounded-full bg-[#d9ad84] opacity-90" />
       <div className="absolute right-12 top-28 h-16 w-20 rounded bg-[#6f8dbc]" />
-      <div className="absolute inset-x-8 bottom-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {topics.slice(0, 8).map((topic) => (
-          <div key={topic.topicId} className="rounded-lg border border-black/10 bg-[rgba(12,12,16,0.84)] px-3 py-2 text-white shadow-lg">
-            <div className="truncate text-[10px] uppercase tracking-[0.16em] text-white/65">{topicDisplayLabel(topic)}</div>
-            <div className="mt-1 text-[11px]" style={{ color: statusColor(topic.live.status) }}>{actionLabel(topic)}</div>
-          </div>
-        ))}
+      <div className="absolute inset-x-5 top-5 flex items-center justify-between gap-3 rounded-lg border border-black/10 bg-[rgba(12,12,16,0.72)] px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-white/70 shadow-lg sm:inset-x-8">
+        <span>simplified office view</span>
+        <span>{topics.length} lanes</span>
+      </div>
+      <div className="absolute inset-x-5 bottom-5 top-20 overflow-y-auto sm:inset-x-8 sm:bottom-8 sm:top-24">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {topics.map((topic) => (
+            <div key={topic.topicId} className="rounded-lg border border-black/10 bg-[rgba(12,12,16,0.84)] px-3 py-2 text-white shadow-lg">
+              <div className="truncate text-[10px] uppercase tracking-[0.16em] text-white/65">{topicDisplayLabel(topic)}</div>
+              <div className="mt-1 text-[11px]" style={{ color: statusColor(topic.live.status) }}>{actionLabel(topic)}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
