@@ -2481,7 +2481,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             </button>
             <button type="button" onClick={() => onDisciplineDemo('kick')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
-              {disciplineKick ? 'stop demo 2' : 'demo discipline 2'}
+              {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
             </button>
           </div>
         )}
@@ -2525,7 +2525,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </button>
           <button type="button" onClick={() => onDisciplineDemo('kick')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
-            {disciplineKick ? 'stop demo 2' : 'demo discipline 2'}
+            {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
           </button>
         </div>
       )}
