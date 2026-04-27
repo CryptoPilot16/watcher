@@ -179,12 +179,16 @@ function disciplineFeedbackForTopic(topic: TeamTopic): DisciplineFeedback {
   const housekeepingText = reasons.length > 1
     ? `Sort it out: ${reasons[0]}; ${reasons[1]}.`
     : `Sort it out: ${reasons[0] || 'lane standards slipped'}.`;
+  const lastKnownTask = topic.currentTask.snippet || topic.recent.lastUserText || topic.recent.lastAssistantText || null;
+  const taskClause = lastKnownTask
+    ? ` Resume your last assignment: ${lastKnownTask}.`
+    : ' Resume the last real task from your lane history before doing anything new.';
   const victimText = topic.live.status === 'missing'
-    ? 'Got it. Rebinding, fixing the miss, and reporting now.'
+    ? 'Got it. Rebinding, resuming the task, and reporting now.'
     : !topic.recent.lastAssistantText
-      ? 'Understood. I will report clearly and fix it now.'
-      : 'Copy. Tightening up and reporting back.';
-  const instruction = `House Keeping feedback for ${topicDisplayLabel(topic)}: ${issueLabel}. Acknowledge the miss plainly, correct it now, and report back with a concrete status update. No excuses.`;
+      ? 'Understood. Resuming the task and reporting clearly now.'
+      : 'Copy. Resuming the task and reporting back.';
+  const instruction = `House Keeping feedback for ${topicDisplayLabel(topic)}: ${issueLabel}.${taskClause} If a restart happened, continue the same work instead of waking up idle. Acknowledge the miss plainly, correct it now, and report back with a concrete status update. No excuses.`;
   return {
     issueLabel,
     housekeepingText,
