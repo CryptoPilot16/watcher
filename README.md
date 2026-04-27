@@ -3,7 +3,7 @@
 Self-hosted mission control for live OpenClaw agent teams.
 
 Landing page: https://cryptopilot.dev/watcher
-Live app example: https://watch.clawnux.com
+Live app example: intentionally private / self-hosted
 
 ![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-17.png)
 
