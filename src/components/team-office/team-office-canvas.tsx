@@ -115,6 +115,12 @@ function contextAlertStrength(topic: TeamTopic) {
 }
 
 type DisciplineAttackMode = 'punch' | 'finisher' | 'kick';
+type DisciplineFeedback = {
+  issueLabel: string;
+  housekeepingText: string;
+  victimText: string;
+  instruction: string;
+};
 
 function disciplineSeverityScore(topic: TeamTopic) {
   if (isHousekeepingTopic(topic) || topic.live.status === 'running') return 0;
@@ -149,6 +155,42 @@ function disciplineAttackForScore(score: number): DisciplineAttackMode | null {
   if (score >= 5) return 'kick';
   if (score >= 2) return 'punch';
   return null;
+}
+
+function disciplineReasons(topic: TeamTopic) {
+  const reasons: string[] = [];
+  const idleMs = topic.live.idleMs ?? 0;
+  const contextPercent = typeof topic.context?.percent === 'number' ? topic.context.percent : 0;
+
+  if (topic.live.status === 'missing') reasons.push('you vanished from your lane');
+  else if (idleMs >= 3 * 60 * 60 * 1000) reasons.push(`you have been idle for ${Math.max(1, Math.round(idleMs / (60 * 60 * 1000)))}h`);
+  else if (idleMs >= 30 * 60 * 1000) reasons.push(`you have been quiet for ${Math.max(1, Math.round(idleMs / (60 * 1000)))}m`);
+
+  if (!topic.recent.lastAssistantText) reasons.push('you did not report back');
+  if (typeof topic.currentTask.progress === 'number' && topic.currentTask.progress < 0.35) reasons.push('your visible progress looks weak');
+  if (contextPercent >= 80) reasons.push(`your context is bloated at ${contextPercent}%`);
+
+  return reasons.slice(0, 3);
+}
+
+function disciplineFeedbackForTopic(topic: TeamTopic): DisciplineFeedback {
+  const reasons = disciplineReasons(topic);
+  const issueLabel = reasons.length > 0 ? reasons.join(' · ') : 'lane standards slipped';
+  const housekeepingText = reasons.length > 1
+    ? `Sort it out: ${reasons[0]}; ${reasons[1]}.`
+    : `Sort it out: ${reasons[0] || 'lane standards slipped'}.`;
+  const victimText = topic.live.status === 'missing'
+    ? 'Got it. Rebinding, fixing the miss, and reporting now.'
+    : !topic.recent.lastAssistantText
+      ? 'Understood. I will report clearly and fix it now.'
+      : 'Copy. Tightening up and reporting back.';
+  const instruction = `House Keeping feedback for ${topicDisplayLabel(topic)}: ${issueLabel}. Acknowledge the miss plainly, correct it now, and report back with a concrete status update. No excuses.`;
+  return {
+    issueLabel,
+    housekeepingText,
+    victimText,
+    instruction,
+  };
 }
 
 function pickAutoDisciplineTarget(topics: TeamTopic[]) {
@@ -451,6 +493,86 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
 
   return (
     <sprite position={position} scale={[1.24, 0.3, 1]} renderOrder={20}>
+      <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
+    </sprite>
+  );
+}
+
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth || !current) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 4);
+}
+
+function buildSpeechBubbleTexture(text: string, accent: string) {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 420;
+  canvas.height = 170;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '600 20px Inter, system-ui, sans-serif';
+  const lines = wrapCanvasText(ctx, text, 340);
+
+  const x = 18;
+  const y = 12;
+  const w = canvas.width - 36;
+  const h = Math.max(88, 28 + lines.length * 28);
+  const radius = 18;
+
+  ctx.fillStyle = 'rgba(10, 10, 14, 0.88)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + 220, y + h);
+  ctx.lineTo(x + 198, y + h + 18);
+  ctx.lineTo(x + 180, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.fillRect(x + 16, y + 14, 8, h - 28);
+
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#f8f6ef';
+  lines.forEach((line, index) => {
+    ctx.fillText(line, x + 36, y + 16 + index * 28);
+  });
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function FloatingSpeechBubble({ text, color, position, visible = true }: { text: string; color: string; position: [number, number, number]; visible?: boolean }) {
+  const texture = useMemo(() => buildSpeechBubbleTexture(text, color), [text, color]);
+  if (!texture || !visible || !text.trim()) return null;
+
+  return (
+    <sprite position={position} scale={[2.38, 0.98, 1]} renderOrder={21}>
       <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
     </sprite>
   );
@@ -1102,6 +1224,8 @@ function WorkerAvatar({
   disciplineVariant,
   beingDisciplined,
   forceStandby,
+  speechText,
+  speechColor,
   onDisciplineStrike,
   disciplineContactRef,
   avatarPositionsRef,
@@ -1127,6 +1251,8 @@ function WorkerAvatar({
   disciplineVariant?: Exclude<DisciplineDemoMode, 'off'>;
   beingDisciplined?: boolean;
   forceStandby?: boolean;
+  speechText?: string | null;
+  speechColor?: string;
   onDisciplineStrike?: () => void;
   disciplineContactRef?: { current: boolean };
   avatarPositionsRef?: { current: Map<string, THREE.Vector3> };
@@ -1447,6 +1573,7 @@ function WorkerAvatar({
       <AgentProgressBar topic={topic} debugRef={debugRef} />
       <AlertDiamond visible={showHousekeepingAlert} />
       <FloatingNameTag name={hoverLabel} color={statusColor(topic.live.status)} position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
+      {speechText ? <FloatingSpeechBubble text={speechText} color={speechColor || '#f7c763'} position={[0.05, 2.5, 0.02]} visible /> : null}
 
       <mesh
         position={[0, 0.55, 0]}
@@ -2243,8 +2370,10 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 type SceneStyle = 'dungeon' | 'office';
 type DisciplineDemoMode = 'off' | DisciplineAttackMode;
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect, onDisciplineSettled }: {
+function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect, onDisciplineSettled }: {
   topics: TeamTopic[];
+  groupId?: string;
+  demo?: boolean;
   reducedMotion: boolean;
   hoveredTopicId: string | null;
   selectedTopicId: string | null;
@@ -2264,6 +2393,8 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   const autoDiscipline = useMemo(() => (manualDisciplineMode ? null : pickAutoDisciplineTarget(topics)), [manualDisciplineMode, topics]);
   const activeDisciplineMode = manualDisciplineMode ?? autoDiscipline?.mode ?? null;
   const [disciplineStrikeCount, setDisciplineStrikeCount] = useState(0);
+  const [disciplineFeedback, setDisciplineFeedback] = useState<(DisciplineFeedback & { victimId: string; key: string }) | null>(null);
+  const feedbackSentRef = useRef<string | null>(null);
 
   const disciplineVictimId = useMemo(() => {
     if (!activeDisciplineMode) return null;
@@ -2288,6 +2419,38 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   }, [activeDisciplineMode, disciplineVictimId]);
 
   const disciplineComplete = disciplineStrikeCount >= 3;
+
+  useEffect(() => {
+    if (!activeDisciplineMode || !disciplineVictimId) {
+      setDisciplineFeedback(null);
+      return;
+    }
+    const victim = topics.find((topic) => topic.topicId === disciplineVictimId);
+    if (!victim) return;
+    const feedback = disciplineFeedbackForTopic(victim);
+    const feedbackKey = `${disciplineVictimId}:${activeDisciplineMode}:${victim.live.updatedAt ?? 'na'}:${victim.currentTask.updatedAt ?? 'na'}`;
+    setDisciplineFeedback({ ...feedback, victimId: disciplineVictimId, key: feedbackKey });
+
+    if (demo || manualDisciplineMode || feedbackSentRef.current === feedbackKey || !victim.configured.agent || !victim.sessionKey) return;
+    feedbackSentRef.current = feedbackKey;
+    void fetch('/api/team-office/instruct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: victim.configured.agent,
+        sessionKey: victim.sessionKey,
+        groupId,
+        threadId: victim.telegram.threadId,
+        message: feedback.instruction,
+      }),
+    }).catch(() => undefined);
+  }, [activeDisciplineMode, disciplineVictimId, topics, demo, manualDisciplineMode, groupId]);
+
+  useEffect(() => {
+    if (!disciplineFeedback || !disciplineComplete || typeof window === 'undefined') return;
+    const timer = window.setTimeout(() => setDisciplineFeedback(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [disciplineFeedback, disciplineComplete]);
 
   useEffect(() => {
     if (!disciplineComplete || !manualDisciplineMode) return;
@@ -2348,6 +2511,8 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                   })()
                 : null}
               beingDisciplined={Boolean(activeDisciplineMode) && desk.topic.topicId === disciplineVictimId && !disciplineComplete}
+              speechText={disciplineFeedback && disciplineFeedback.victimId === desk.topic.topicId ? disciplineFeedback.victimText : isHousekeepingTopic(desk.topic) && disciplineFeedback ? disciplineFeedback.housekeepingText : null}
+              speechColor={isHousekeepingTopic(desk.topic) ? '#f87171' : '#7dd3fc'}
               onDisciplineStrike={desk.topic.topicId === disciplineVictimId ? () => setDisciplineStrikeCount((count) => count + 1) : undefined}
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
@@ -2970,6 +3135,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
         <Suspense fallback={null}>
           <OfficeRoom
             topics={topics}
+            groupId={groupId}
+            demo={demo}
             reducedMotion={reducedMotion}
             hoveredTopicId={hoveredTopicId}
             selectedTopicId={selectedTopicId}
