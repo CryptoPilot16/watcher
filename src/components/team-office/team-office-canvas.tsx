@@ -1370,21 +1370,29 @@ function WorkerAvatar({
         rightLeg.current.rotation.x = 0;
       } else if (mode === 'desk-watch') {
         if (beingDisciplined && !reducedMotion) {
-          const flinch = Math.sin(t * 5.5);
+          const hitWindowActive = finisherDiscipline ? true : hitPulse;
+          const flinch = hitWindowActive ? Math.sin(t * (finisherDiscipline ? 5.5 : kickDiscipline ? 10.5 : 12.5)) : 0;
           const impact = Math.max(0, flinch);
-          const recoil = finisherDiscipline ? impact * 2.0 : kickDiscipline ? impact * 1.4 : impact;
-          leftArm.current.rotation.x = -1.8 + recoil * 0.62;
-          rightArm.current.rotation.x = -1.9 + recoil * 0.74;
+          const recoil = finisherDiscipline ? impact * 2.0 : kickDiscipline ? impact * 0.75 : impact * 0.42;
+          leftArm.current.rotation.x = -1.8 + recoil * (finisherDiscipline ? 0.62 : kickDiscipline ? 0.22 : 0.12);
+          rightArm.current.rotation.x = -1.9 + recoil * (finisherDiscipline ? 0.74 : kickDiscipline ? 0.28 : 0.16);
           leftLeg.current.rotation.x = 1.18;
           rightLeg.current.rotation.x = 1.18;
           if (group.current) {
-            group.current.rotation.x = finisherDiscipline ? -recoil * 0.18 : 0;
-            group.current.rotation.z = recoil * (finisherDiscipline ? 0.34 : kickDiscipline ? 0.22 : 0.12);
-            group.current.position.y += recoil * (finisherDiscipline ? 0.08 : kickDiscipline ? 0.05 : 0.015);
-            if (finisherDiscipline || kickDiscipline) {
-              const knockback = recoil * (finisherDiscipline ? 0.28 : 0.16);
+            if (finisherDiscipline) {
+              group.current.rotation.x = -recoil * 0.18;
+              group.current.rotation.z = recoil * 0.34;
+              group.current.position.y += recoil * 0.08;
+              const knockback = recoil * 0.28;
               group.current.position.x -= Math.sin(deskFacing) * knockback;
               group.current.position.z -= Math.cos(deskFacing) * knockback;
+            } else {
+              const shakeX = Math.sin(t * (kickDiscipline ? 22 : 26)) * recoil * (kickDiscipline ? 0.035 : 0.02);
+              const shakeZ = Math.cos(t * (kickDiscipline ? 18 : 22)) * recoil * (kickDiscipline ? 0.028 : 0.014);
+              group.current.rotation.x = 0;
+              group.current.rotation.z = shakeX * (kickDiscipline ? 2.6 : 2.1);
+              group.current.position.x += shakeX;
+              group.current.position.z += shakeZ;
             }
           }
         } else if (dist > 0.15 && !reducedMotion) {
