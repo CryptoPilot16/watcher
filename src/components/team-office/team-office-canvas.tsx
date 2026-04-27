@@ -2243,7 +2243,7 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 type SceneStyle = 'dungeon' | 'office';
 type DisciplineDemoMode = 'off' | DisciplineAttackMode;
 
-function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect }: {
+function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect, onDisciplineSettled }: {
   topics: TeamTopic[];
   reducedMotion: boolean;
   hoveredTopicId: string | null;
@@ -2255,6 +2255,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
+  onDisciplineSettled?: () => void;
 }) {
   const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
   const disciplineContactRef = useRef(false);
@@ -2277,7 +2278,21 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
     setDisciplineStrikeCount(0);
   }, [activeDisciplineMode, disciplineVictimId]);
 
+  useEffect(() => {
+    if (!activeDisciplineMode || !disciplineVictimId || typeof window === 'undefined') return;
+    const timeoutMs = activeDisciplineMode === 'finisher' ? 9000 : activeDisciplineMode === 'kick' ? 8000 : 7000;
+    const timer = window.setTimeout(() => {
+      setDisciplineStrikeCount((count) => (count >= 3 ? count : 3));
+    }, timeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [activeDisciplineMode, disciplineVictimId]);
+
   const disciplineComplete = disciplineStrikeCount >= 3;
+
+  useEffect(() => {
+    if (!disciplineComplete || !manualDisciplineMode) return;
+    onDisciplineSettled?.();
+  }, [disciplineComplete, manualDisciplineMode, onDisciplineSettled]);
 
   return (
     <>
@@ -2971,6 +2986,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
               setCameraMode('focus');
               if (isMobile) setMobileInfoExpanded(true);
             }}
+            onDisciplineSettled={() => setDisciplineDemoMode('off')}
           />
         </Suspense>
 
