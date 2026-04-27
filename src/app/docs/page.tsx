@@ -9,7 +9,7 @@ const dashboardSections = [
   {
     title: 'Live session feed',
     body:
-      'Reads the active session JSONL directly from the OpenClaw sessions directory. Shows real-time conversation turns — user messages, agent replies, and tool calls — newest first. Updates on every dashboard poll. This is the only source that captures live Telegram conversations; runs.sqlite only records discrete task completions.',
+      'Reads the active session JSONL directly from the OpenClaw sessions directory. Shows real-time conversation turns — user messages, agent replies, and tool calls — newest first. Updates on every dashboard poll. This is the only source that captures live Telegram conversations; runs.sqlite only records discrete task completions. When a dispatcher lane exists, Watcher prefers that session first so the main status panel stays pinned to the operator lane instead of drifting into another active topic.',
   },
   {
     title: 'Health cards',
@@ -108,6 +108,7 @@ export default function DocsPage() {
               <div>`/login` — password gate</div>
               <div>`/watch` — live ops dashboard</div>
               <div>`/office-preview` — public sanitized office view</div>
+              <div>Mobile/Telegram fallback — simplified office roster when WebGL is weak</div>
               <div>`/docs` — this reference</div>
               <div>`/api/watch` — JSON snapshot</div>
               <div>`/api/team-office/instruct` — lane-bound instruction relay</div>
@@ -138,6 +139,7 @@ export default function DocsPage() {
               <div>OpenClaw root, orchestration file, PM2 home, and binary paths can all be overridden.</div>
               <div>PM2: watcher-web + watcher-telegram on this host, but process names/log roots are configurable.</div>
               <div>Build required before restart.</div>
+              <div>Keep `/watch`, `/login`, `/docs`, `/office-preview`, `/api/*`, and `/_next/*` on the same live proxy target if you front the app with Caddy or Nginx.</div>
               <div>`/api/auth/logout` clears browser access immediately.</div>
             </div>
           </article>

@@ -2,7 +2,8 @@
 
 Self-hosted mission control for live OpenClaw agent teams.
 
-Website: https://cryptopilot.dev/watcher
+Landing page: https://cryptopilot.dev/watcher
+Live app example: https://watch.clawnux.com
 
 ![Watcher website screenshot](docs/images/readme-website-screenshot-2026-04-17.png)
 
@@ -62,6 +63,7 @@ npm run dev
   - offline or missing lanes use a distinct muted color so they do not look like context danger
 - Mobile-safe office behavior:
   - Telegram/mobile or weak WebGL environments can fall back to a simplified office view instead of rendering a broken blank canvas
+  - the simplified fallback renders the full lane roster instead of truncating the team view on mobile
 - Lane progress parsing from plans and inline progress text, surfaced as progress bars in the office scene
 - Web relay from the office UI into the exact bound lane session, including Telegram topic sessions and ACP-bound Telegram sessions
 - Public office preview at `/office-preview` with sanitized labels and stripped task text
@@ -115,6 +117,7 @@ Default data sources:
 That split matters:
 
 - the **live session feed** reads directly from the active session JSONL, so it captures real conversation turns
+- when a dispatcher lane exists, the live feed prefers that lane session first so the main operator view does not drift into some other active topic
 - **runs** capture discrete task executions and outcomes
 - the **office** and **team** views combine topology, recent messages, and tool events to infer live state and progress
 
@@ -238,4 +241,5 @@ Behavior:
 - Demo mode is intentionally read-only: it gives OSS users a working product surface without pretending lane relay or live ops control is active.
 - Recent deliveries are intentionally short-lived so workers celebrate completion, then clear the chair quickly.
 - Worker casting is deterministic by lane role so the office view does not reshuffle identities on refresh.
-- The main live app is the Next.js Watcher surface. Public marketing or project pages can sit separately in front of it, but the authenticated ops experience lives under `/watch`.
+- The main live app is the Next.js Watcher surface. Public marketing or project pages can sit separately in front of it, but the authenticated ops experience should live on a hostname or route set that forwards `/watch`, `/login`, `/docs`, `/office-preview`, `/api/*`, and `/_next/*` together.
+- If you put a static landing page in front of a `/watcher` path, make sure you are not accidentally shadowing the live Next app behind stale static files.
