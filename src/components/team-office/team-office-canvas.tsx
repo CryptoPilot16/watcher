@@ -122,6 +122,8 @@ type DisciplineFeedback = {
   instruction: string;
 };
 
+const RECENT_UNFINISHED_TASK_WINDOW_MS = 2 * 60 * 60 * 1000;
+
 function looksLikeCompletionReport(text: string | null | undefined) {
   const normalized = String(text || '').trim();
   if (!normalized) return false;
@@ -140,8 +142,11 @@ function hasFrozenTaskEvidence(topic: TeamTopic) {
   const delegatedTask = source === 'tool' && hasSnippet;
   const unansweredUserTask = source === 'user' && hasSnippet && missingReport;
   const completionReported = looksLikeCompletionReport(topic.recent.lastAssistantText);
+  const taskUpdatedAtMs = topic.currentTask.updatedAt ? Date.parse(topic.currentTask.updatedAt) : Number.NaN;
+  const taskIsRecent = Number.isFinite(taskUpdatedAtMs) && (Date.now() - taskUpdatedAtMs) <= RECENT_UNFINISHED_TASK_WINDOW_MS;
 
   if (completionReported) return false;
+  if (!taskIsRecent) return false;
   if (!hasSnippet && !explicitTrackedTask) return false;
   if (typeof progress === 'number' && progress >= 0.995) return false;
   if (explicitTrackedTask) return true;
