@@ -1278,7 +1278,7 @@ function WorkerAvatar({
             group.current.position.x += Math.sin(facing) * lunge;
             group.current.position.z += Math.cos(facing) * lunge;
             group.current.position.y += lift;
-            group.current.rotation.set(-0.1 * finisherPhase, facing + finisherPhase * 1.45, -0.16 * finisherPhase);
+            group.current.rotation.set(-0.1 * finisherPhase, facing - finisherPhase * 1.45, 0.16 * finisherPhase);
           } else {
             const swing = Math.sin(t * 5.5);
             const slamPhase = Math.max(0, swing);
@@ -2495,13 +2495,13 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
               {disciplinePunch ? 'stop demo' : 'demo discipline'}
             </button>
-            <button type="button" onClick={() => onDisciplineDemo('finisher')}
-              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
-              {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
-            </button>
             <button type="button" onClick={() => onDisciplineDemo('kick')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
               {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
+            </button>
+            <button type="button" onClick={() => onDisciplineDemo('finisher')}
+              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
+              {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
             </button>
           </div>
         )}
@@ -2543,13 +2543,13 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
             {disciplinePunch ? 'stop demo' : 'demo discipline'}
           </button>
-          <button type="button" onClick={() => onDisciplineDemo('finisher')}
-            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
-            {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
-          </button>
           <button type="button" onClick={() => onDisciplineDemo('kick')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
             {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
+          </button>
+            <button type="button" onClick={() => onDisciplineDemo('finisher')}
+            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
+            {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
           </button>
         </div>
       )}
