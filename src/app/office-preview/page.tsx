@@ -90,6 +90,8 @@ function sanitizeTopology(topology: TeamTopology): TeamTopology {
           source: topic.live.status === 'running' ? 'tool' : topic.live.status === 'recent' ? 'yield' : 'none',
           updatedAt: null,
           confidence: 'low',
+          progress: null,
+          progressLabel: null,
         },
         recent: {
           lastUserText: null,
