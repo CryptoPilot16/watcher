@@ -5,11 +5,14 @@ import type { TeamTopology, TeamTaskConfidence, TeamTaskSource, TeamTopic, TeamT
 
 const RECENT_THRESHOLD_MS = 90 * 60 * 1000;
 const RECENT_DELIVERY_MS = 12 * 1000;
+const RECENT_TOUCH_MS = 75 * 1000;
 
 type SessionIndexEntry = {
   sessionId?: string;
   sessionFile?: string;
   updatedAt?: number;
+  lastInteractionAt?: number;
+  sessionStartedAt?: number;
   status?: string;
   channel?: string;
   totalTokens?: number;
@@ -394,7 +397,13 @@ function computeLiveStatus(session: SessionIndexEntry | undefined): TeamTopic['l
     : typeof session.acp?.lastActivityAt === 'number'
       ? session.acp.lastActivityAt
       : null;
+  const recentTouchAt = Math.max(
+    typeof session.lastInteractionAt === 'number' ? session.lastInteractionAt : 0,
+    typeof session.sessionStartedAt === 'number' ? session.sessionStartedAt : 0,
+    updatedAt || 0,
+  ) || null;
   const idleMs = updatedAt ? Math.max(0, Date.now() - updatedAt) : null;
+  const touchMs = recentTouchAt ? Math.max(0, Date.now() - recentTouchAt) : null;
   const acpState = typeof session.acp?.state === 'string' ? session.acp.state.toLowerCase() : null;
   const baseStatus = typeof session.status === 'string' ? session.status.toLowerCase() : null;
   const sessionStatus = acpState || baseStatus;
@@ -402,12 +411,13 @@ function computeLiveStatus(session: SessionIndexEntry | undefined): TeamTopic['l
   const isRecentDelivery = Boolean(
     baseStatus && ['done', 'failed', 'succeeded', 'cancelled'].includes(baseStatus) && idleMs !== null && idleMs <= RECENT_DELIVERY_MS,
   );
+  const isRecentTouch = Boolean(!isRunning && touchMs !== null && touchMs <= RECENT_TOUCH_MS);
 
   let status: TeamTopicLiveStatus = 'idle';
 
   if (isRunning) {
     status = 'running';
-  } else if (isRecentDelivery) {
+  } else if (isRecentDelivery || isRecentTouch) {
     status = 'recent';
   } else if (idleMs !== null && idleMs > RECENT_THRESHOLD_MS && !sessionStatus) {
     status = 'missing';
