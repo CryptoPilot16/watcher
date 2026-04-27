@@ -54,11 +54,12 @@ npm run dev
   - **processes**: readable PM2 service health cards
 - Interactive Team Office with lane-aware placement:
   - running lanes stay at their own desks
-  - recent lanes linger briefly after delivery
+  - recent lanes linger briefly after delivery or after a fresh lane nudge
   - idle lanes park in standby spots
   - missing lanes remain visible as offline
   - House Keeping can visibly discipline bad lanes with punch, flying kick, or finisher reactions
   - discipline selection can auto-escalate from light to severe based on lane staleness, missing reports, low progress, and context pressure
+  - House Keeping discipline now shows feedback bubbles, forces a victim reaction, and can send a real correction back into the attacked lane session
 - Context awareness in the office view:
   - lane context percentage is surfaced in the avatar info card
   - high-context lanes tint red above 80 percent
@@ -136,6 +137,8 @@ The Team Office is the main differentiator in this repo.
 - Public preview mode strips private task text and exposes only generic role and activity information
 - Scene styles can switch between the voxel office and the dungeon layout
 - House Keeping discipline controls are available in the office UI, with automatic severity-based attack selection when manual override is not active
+- Auto-discipline can generate concrete feedback from lane state, display it in the office scene, and inject a corrective instruction into the bound lane session
+- Disciplined lanes now answer visually in-scene and are treated as recently touched for a short window so the office does not keep showing them as dead idle right after a correction
 - Punch and flying kick use lighter victim hit-react shakes, while the finisher carries the larger knockback animation
 - Context percentage is carried into topology data so lane warnings can show both visual alerts and exact percent text
 - High-context alerts tint avatars and halos red without relying on transparency hacks that break model rendering
