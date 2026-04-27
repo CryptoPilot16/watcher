@@ -127,12 +127,17 @@ function hasFrozenTaskEvidence(topic: TeamTopic) {
   const progress = topic.currentTask.progress;
   const hasSnippet = Boolean(topic.currentTask.snippet);
   const hasToolTrail = Boolean(topic.recent.lastToolName);
+  const missingReport = !topic.recent.lastAssistantText;
+  const lowProgress = typeof progress === 'number' && progress < 0.995;
   const explicitTrackedTask = source === 'plan' || source === 'yield';
+  const delegatedTask = source === 'tool' && hasSnippet;
+  const unansweredUserTask = source === 'user' && hasSnippet && missingReport;
 
   if (!hasSnippet && !explicitTrackedTask) return false;
   if (typeof progress === 'number' && progress >= 0.995) return false;
   if (explicitTrackedTask) return true;
-  if ((source === 'tool' || source === 'user' || source === 'assistant') && hasToolTrail) return true;
+  if (delegatedTask && (missingReport || lowProgress)) return true;
+  if (unansweredUserTask) return true;
   return false;
 }
 
