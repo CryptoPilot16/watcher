@@ -2263,7 +2263,6 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
   const autoDiscipline = useMemo(() => (manualDisciplineMode ? null : pickAutoDisciplineTarget(topics)), [manualDisciplineMode, topics]);
   const activeDisciplineMode = manualDisciplineMode ?? autoDiscipline?.mode ?? null;
   const [disciplineStrikeCount, setDisciplineStrikeCount] = useState(0);
-  const [claimedSeatVictimId, setClaimedSeatVictimId] = useState<string | null>(null);
 
   const disciplineVictimId = useMemo(() => {
     if (!activeDisciplineMode) return null;
@@ -2276,19 +2275,9 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
 
   useEffect(() => {
     setDisciplineStrikeCount(0);
-    setClaimedSeatVictimId(null);
   }, [activeDisciplineMode, disciplineVictimId]);
 
-  useEffect(() => {
-    if (disciplineStrikeCount >= 3 && disciplineVictimId) {
-      setClaimedSeatVictimId(disciplineVictimId);
-    }
-  }, [disciplineStrikeCount, disciplineVictimId]);
-
-  const claimedSeatLayout = useMemo(
-    () => (claimedSeatVictimId ? deskLayouts.find((desk) => desk.topic.topicId === claimedSeatVictimId) ?? null : null),
-    [claimedSeatVictimId, deskLayouts],
-  );
+  const disciplineComplete = disciplineStrikeCount >= 3;
 
   return (
     <>
@@ -2305,8 +2294,6 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
 
       {deskLayouts.map((desk, index) => {
         const emphasized = hoveredTopicId === desk.topic.topicId || selectedTopicId === desk.topic.topicId;
-        const claimingSeat = isHousekeepingTopic(desk.topic) && Boolean(claimedSeatLayout);
-        const victimDispossessed = claimedSeatVictimId === desk.topic.topicId;
 
         return (
           <group key={desk.topic.topicId}>
@@ -2331,12 +2318,12 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
               deskStandPosition={desk.deskStandPosition}
               deliveryPosition={desk.deliveryPosition}
               disciplineVariant={activeDisciplineMode ?? undefined}
-              disciplineTargetPosition={isHousekeepingTopic(desk.topic) && activeDisciplineMode && disciplineVictimId && !claimingSeat
+              disciplineTargetPosition={isHousekeepingTopic(desk.topic) && activeDisciplineMode && disciplineVictimId && !disciplineComplete
                 ? (() => {
                     const victim = deskLayouts.find((c) => c.topic.topicId === disciplineVictimId && c.topic.topicId !== desk.topic.topicId);
                     if (!victim) return null;
                     const v = victim.topic;
-                    const vSeatedAtDesk = shouldSitAtDesk(v) && claimedSeatVictimId !== v.topicId;
+                    const vSeatedAtDesk = shouldSitAtDesk(v);
                     const vOffline = v.live.status === 'missing';
                     let pos: [number, number, number];
                     if (vSeatedAtDesk) pos = victim.deskSeatPosition;
@@ -2345,9 +2332,7 @@ function OfficeRoom({ topics, reducedMotion, hoveredTopicId, selectedTopicId, di
                     return pos;
                   })()
                 : null}
-              seatOverridePosition={claimingSeat && claimedSeatLayout ? claimedSeatLayout.deskSeatPosition : null}
-              beingDisciplined={Boolean(activeDisciplineMode) && desk.topic.topicId === disciplineVictimId && !claimingSeat}
-              forceStandby={victimDispossessed}
+              beingDisciplined={Boolean(activeDisciplineMode) && desk.topic.topicId === disciplineVictimId && !disciplineComplete}
               onDisciplineStrike={desk.topic.topicId === disciplineVictimId ? () => setDisciplineStrikeCount((count) => count + 1) : undefined}
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
