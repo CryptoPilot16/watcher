@@ -1113,6 +1113,7 @@ function WorkerAvatar({
       : seatedAtDesk
         ? 'desk-watch'
         : 'standby';
+  const kickDiscipline = disciplineVariant === 'kick';
   const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
@@ -1234,11 +1235,13 @@ function WorkerAvatar({
       if (disciplineContactRef?.current) {
         if (contactStartRef.current === 0) contactStartRef.current = tNow;
         const elapsedSinceContact = tNow - contactStartRef.current;
-        // Wait for housekeeper's first strike to actually land (punch animation startup)
-        if (elapsedSinceContact > 1.1 && tNow - lastHitRef.current > 1.4) {
+        const strikeStartup = kickDiscipline ? 0.85 : 1.1;
+        const strikeCooldown = kickDiscipline ? 1.65 : 1.4;
+        const pulseDurationMs = kickDiscipline ? 620 : 450;
+        if (elapsedSinceContact > strikeStartup && tNow - lastHitRef.current > strikeCooldown) {
           lastHitRef.current = tNow;
           setHitPulse(true);
-          window.setTimeout(() => setHitPulse(false), 450);
+          window.setTimeout(() => setHitPulse(false), pulseDurationMs);
         }
       } else {
         contactStartRef.current = 0;
@@ -1251,12 +1254,26 @@ function WorkerAvatar({
         const distToTarget = disciplineAnchor ? Math.hypot(group.current.position.x - disciplineAnchor[0], group.current.position.z - disciplineAnchor[2]) : 999;
         const arrived = distToTarget < 1.2;
         if (arrived && !reducedMotion) {
-          const swing = Math.sin(t * 5.5);
-          const slamPhase = Math.max(0, swing);
-          rightArm.current.rotation.x = -2.2 + slamPhase * 1.6;
-          leftArm.current.rotation.x = -0.6 + slamPhase * 0.3;
-          leftLeg.current.rotation.x = 0.05;
-          rightLeg.current.rotation.x = -0.05 + slamPhase * 0.15;
+          if (kickDiscipline) {
+            const kickPhase = Math.max(0, Math.sin(t * 4.8));
+            const lift = kickPhase * 0.18;
+            const lunge = kickPhase * 0.24;
+            rightArm.current.rotation.x = -0.95 + kickPhase * 0.18;
+            leftArm.current.rotation.x = -0.42 - kickPhase * 0.14;
+            leftLeg.current.rotation.x = 0.04 - kickPhase * 0.18;
+            rightLeg.current.rotation.x = -0.28 - kickPhase * 1.55;
+            group.current.position.x += Math.sin(facing) * lunge;
+            group.current.position.z += Math.cos(facing) * lunge;
+            group.current.position.y += lift;
+            group.current.rotation.set(-0.18 * kickPhase, facing, -0.08 * kickPhase);
+          } else {
+            const swing = Math.sin(t * 5.5);
+            const slamPhase = Math.max(0, swing);
+            rightArm.current.rotation.x = -2.2 + slamPhase * 1.6;
+            leftArm.current.rotation.x = -0.6 + slamPhase * 0.3;
+            leftLeg.current.rotation.x = 0.05;
+            rightLeg.current.rotation.x = -0.05 + slamPhase * 0.15;
+          }
         } else {
           const slowStride = Math.sin(t * 2.8) * 0.36;
           leftArm.current.rotation.x = -0.54 + (reducedMotion ? 0 : slowStride * 0.28);
@@ -1283,11 +1300,20 @@ function WorkerAvatar({
         if (beingDisciplined && !reducedMotion) {
           const flinch = Math.sin(t * 5.5);
           const impact = Math.max(0, flinch);
-          leftArm.current.rotation.x = -1.8 + impact * 0.5;
-          rightArm.current.rotation.x = -1.9 + impact * 0.6;
+          const recoil = kickDiscipline ? impact * 1.4 : impact;
+          leftArm.current.rotation.x = -1.8 + recoil * 0.62;
+          rightArm.current.rotation.x = -1.9 + recoil * 0.74;
           leftLeg.current.rotation.x = 1.18;
           rightLeg.current.rotation.x = 1.18;
-          if (group.current) { group.current.rotation.z = impact * 0.12; group.current.position.y += impact * 0.015; }
+          if (group.current) {
+            group.current.rotation.z = recoil * (kickDiscipline ? 0.22 : 0.12);
+            group.current.position.y += recoil * (kickDiscipline ? 0.05 : 0.015);
+            if (kickDiscipline) {
+              const knockback = recoil * 0.16;
+              group.current.position.x -= Math.sin(deskFacing) * knockback;
+              group.current.position.z -= Math.cos(deskFacing) * knockback;
+            }
+          }
         } else if (dist > 0.15 && !reducedMotion) {
           const walkStride = Math.sin(t * 3.2) * 0.35;
           leftArm.current.rotation.x = -0.48 + walkStride * 0.22;
