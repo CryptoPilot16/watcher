@@ -1076,7 +1076,7 @@ function WorkerAvatar({
   onSelect: () => void;
 }) {
   const group = useRef<THREE.Group>(null);
-  const beltRef = useRef<THREE.Mesh>(null);
+  const beltRef = useRef<THREE.Group>(null);
   const leftArm = useRef<THREE.Group>(null);
   const rightArm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
@@ -1355,9 +1355,9 @@ function WorkerAvatar({
         belt.visible = true;
         const distToTarget = disciplineAnchor ? Math.hypot(group.current.position.x - disciplineAnchor[0], group.current.position.z - disciplineAnchor[2]) : 999;
         const arrived = distToTarget < 1.2;
-        const swing = arrived && !reducedMotion ? Math.max(0, Math.sin(t * 5.5)) : 0;
-        belt.position.set(0.34, 0.98, 0.12);
-        belt.rotation.set(0.18 + swing * 0.55, 0.22, -0.45 - swing * 1.05);
+        const swing = arrived && !reducedMotion ? Math.max(0, Math.sin(t * 6.1)) : 0;
+        belt.position.set(0.18 + swing * 0.04, 0.83 + swing * 0.03, 0.26 + swing * 0.08);
+        belt.rotation.set(-1.05 + swing * 0.42, 0.38, 1.18 - swing * 1.35);
       }
     }
   });
@@ -1371,10 +1371,20 @@ function WorkerAvatar({
       <GLTFAvatar modelPath={modelPathForTopic(topic)} animationName={animationForMode(mode, topic.live.status, disciplineVariant)} contextAlert={contextAlert} />
 
       {showBelt && (
-        <mesh ref={beltRef} castShadow>
-          <boxGeometry args={[0.05, 0.05, 0.72]} />
-          <meshStandardMaterial color="#6b4423" roughness={0.9} metalness={0.05} />
-        </mesh>
+        <group ref={beltRef}>
+          <mesh castShadow position={[0, 0, -0.18]}>
+            <boxGeometry args={[0.026, 0.03, 0.56]} />
+            <meshStandardMaterial color="#6b4423" roughness={0.92} metalness={0.04} />
+          </mesh>
+          <mesh castShadow position={[0, 0, 0.14]}>
+            <boxGeometry args={[0.07, 0.045, 0.05]} />
+            <meshStandardMaterial color="#c9973d" roughness={0.35} metalness={0.75} />
+          </mesh>
+          <mesh castShadow position={[0, 0, -0.42]}>
+            <boxGeometry args={[0.018, 0.022, 0.18]} />
+            <meshStandardMaterial color="#8a5a2f" roughness={0.95} metalness={0.02} />
+          </mesh>
+        </group>
       )}
 
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
