@@ -131,40 +131,11 @@ function formatUptime(startedAt?: number) {
   return `${days}d`;
 }
 
-function formatTurnTime(ts?: string) {
-  if (!ts) return '';
-  const ms = Date.parse(ts);
-  if (!Number.isFinite(ms)) return ts.slice(11, 19);
-
-  const date = new Date(ms);
-  const now = new Date();
-  const sameDayUtc =
-    date.getUTCFullYear() === now.getUTCFullYear() &&
-    date.getUTCMonth() === now.getUTCMonth() &&
-    date.getUTCDate() === now.getUTCDate();
-
-  return new Intl.DateTimeFormat('en-GB', sameDayUtc ? {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  } : {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  }).format(ms) + ' UTC';
-}
-
-function formatTurnTimeTitle(ts?: string) {
-  if (!ts) return '';
+function formatBannerTime(ts?: string) {
+  if (!ts) return '…';
   const ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return ts;
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -172,7 +143,46 @@ function formatTurnTimeTitle(ts?: string) {
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-    timeZone: 'UTC',
+    timeZoneName: 'short',
+  }).format(ms);
+}
+
+function formatTurnTime(ts?: string) {
+  if (!ts) return '';
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return ts.slice(11, 19);
+
+  const date = new Date(ms);
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+
+  return new Intl.DateTimeFormat(undefined, sameDay ? {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  } : {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(ms);
+}
+
+function formatTurnTimeTitle(ts?: string) {
+  if (!ts) return '';
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return ts;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
     timeZoneName: 'short',
   }).format(ms);
 }
@@ -272,8 +282,8 @@ function MissionBanner({ health, meta, now, sessionRunning, canClearStaleFaults,
 
       {/* Refresh indicator */}
       <div className="ml-auto flex items-center gap-1.5">
-        <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]">
-          {now ? now.replace('T', ' ').slice(0, 19) + ' UTC' : '…'}
+        <span className="text-[10px] tabular-nums text-[var(--watch-text-muted)]" suppressHydrationWarning>
+          {formatBannerTime(now)}
         </span>
         <span className="text-[10px] text-[var(--watch-text-muted)]">↻ 5s</span>
       </div>
