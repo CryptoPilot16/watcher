@@ -73,6 +73,7 @@ export type SessionTurn = {
   text?: string;
   name?: string;
   detail?: string;
+  source?: string;
 };
 
 export type FaultState = {

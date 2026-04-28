@@ -135,7 +135,19 @@ function formatTurnTime(ts?: string) {
   if (!ts) return '';
   const ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return ts.slice(11, 19);
-  return new Intl.DateTimeFormat(undefined, {
+
+  const date = new Date(ms);
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+
+  return new Intl.DateTimeFormat(undefined, sameDay ? {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  } : {
+    month: 'short',
+    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -281,9 +293,16 @@ function LiveSessionFeed({ turns, sessionRunning }: { turns: SessionTurn[]; sess
   }
 
   const ordered = [...turns].reverse();
+  const source = ordered[0]?.source ?? turns[0]?.source ?? '';
 
   return (
-    <div className="flex flex-col divide-y divide-[var(--watch-panel-border)]">
+    <div className="flex flex-col">
+      {source && (
+        <div className="border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">
+          source: {source}
+        </div>
+      )}
+      <div className="flex flex-col divide-y divide-[var(--watch-panel-border)]">
       {ordered.map((turn, i) => {
         const style = TURN_STYLE[turn.kind] ?? TURN_STYLE.reply;
         const time = formatTurnTime(turn.ts);
@@ -334,8 +353,9 @@ function LiveSessionFeed({ turns, sessionRunning }: { turns: SessionTurn[]; sess
           </div>
         );
       })}
+      </div>
       {sessionRunning && (
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className="flex items-center gap-2 border-t border-[var(--watch-panel-border)] px-3 py-2">
           <span className="inline-block h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#4ade80' }} />
           <span className="text-[10px] text-[var(--watch-text-muted)]">agent is working…</span>
         </div>

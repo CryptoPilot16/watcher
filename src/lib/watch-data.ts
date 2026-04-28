@@ -57,6 +57,18 @@ type SessionIndexEntry = {
   };
 };
 
+type SessionCandidate = {
+  agentId: string;
+  key: string;
+  sessionFile: string | null;
+  updatedAt: number;
+  isTopicSession: boolean;
+  isDirectSession: boolean;
+  isSlashSession: boolean;
+  isMainSession: boolean;
+  isRunning: boolean;
+};
+
 function listAgentIds(): string[] {
   const agentsDir = path.join(WATCH_OPENCLAW_DIR, 'agents');
   try {
@@ -68,7 +80,7 @@ function listAgentIds(): string[] {
   }
 }
 
-function listSessionCandidates() {
+function listSessionCandidates(): SessionCandidate[] {
   return listAgentIds().flatMap((agentId) => {
     const sessionsFile = path.join(WATCH_OPENCLAW_DIR, 'agents', agentId, 'sessions', 'sessions.json');
     const parsed = parseSafe(run(`cat ${sessionsFile} 2>/dev/null`)) || {};
@@ -208,9 +220,24 @@ function getOpenClawRuns(): string {
 }
 
 // ── live session ────────────────────────────────────────────────────────────
+function formatSessionSource(candidate: SessionCandidate | undefined, sessionFile: string): string {
+  if (candidate) {
+    const topicMatch = candidate.key.match(/:topic:(\d+)$/);
+    if (topicMatch) return `${candidate.agentId} · topic ${topicMatch[1]}`;
+    if (candidate.isDirectSession) return `${candidate.agentId} · direct`;
+    if (candidate.isSlashSession) return `${candidate.agentId} · slash`;
+    if (candidate.isMainSession) return `${candidate.agentId} · main`;
+    return candidate.key;
+  }
+  return path.basename(sessionFile);
+}
+
 function getOpenClawSession(): string {
   const sessionFile = findLatestSessionFile();
   if (!sessionFile) return '[]';
+
+  const candidate = listSessionCandidates().find((item) => item.sessionFile === sessionFile);
+  const source = formatSessionSource(candidate, sessionFile);
 
   // tail -n 100 reads complete lines (some lines are 2-6KB each)
   const raw = run(`tail -n 100 "${sessionFile.trim()}" 2>/dev/null`);
@@ -252,7 +279,7 @@ function getOpenClawSession(): string {
         // Skip pure system/probe messages
         if (!text || text.startsWith('Reply with exactly') || text.startsWith('You are running a boot')) continue;
 
-        turns.push({ kind: 'user', ts, text: text.slice(0, 300) });
+        turns.push({ kind: 'user', ts, text: text.slice(0, 300), source });
 
       } else if (role === 'assistant') {
         const parts: any[] = Array.isArray(content) ? content : [];
@@ -261,12 +288,12 @@ function getOpenClawSession(): string {
             const text = String(part.text)
               .replace(/\[\[reply_to_current\]\]\s*/g, '')
               .trim();
-            if (text) turns.push({ kind: 'reply', ts, text: text.slice(0, 300) });
+            if (text) turns.push({ kind: 'reply', ts, text: text.slice(0, 300), source });
           } else if (part.type === 'toolCall') {
             const args = part.arguments ?? {};
             const detail =
               args.command ?? args.path ?? args.query ?? JSON.stringify(args).slice(0, 120);
-            turns.push({ kind: 'tool', ts, name: part.name, detail: String(detail).slice(0, 200) });
+            turns.push({ kind: 'tool', ts, name: part.name, detail: String(detail).slice(0, 200), source });
           }
         }
       }
