@@ -116,22 +116,27 @@ function findLatestTeamTopicSessionFile(): string | null {
   const topology = parseSafe(getTeamTopology());
   const topics = Array.isArray(topology?.topics) ? topology.topics : [];
 
-  const dispatcherTopic = topics.find(
-    (topic: any) =>
-      topic?.configured?.role === 'dispatcher' &&
-      typeof topic?.sessionFile === 'string' &&
-      fs.existsSync(topic.sessionFile),
-  );
-  if (dispatcherTopic?.sessionFile) return dispatcherTopic.sessionFile;
-
   const rankedTopics = topics
     .filter((topic: any) => typeof topic?.sessionFile === 'string' && fs.existsSync(topic.sessionFile))
     .sort((a: any, b: any) => {
       const aRunning = a?.live?.status === 'running' ? 1 : 0;
       const bRunning = b?.live?.status === 'running' ? 1 : 0;
       if (aRunning !== bRunning) return bRunning - aRunning;
+
+      const aRecent = a?.live?.status === 'recent' ? 1 : 0;
+      const bRecent = b?.live?.status === 'recent' ? 1 : 0;
+      if (aRecent !== bRecent) return bRecent - aRecent;
+
       return (Number(b?.live?.updatedAt) || 0) - (Number(a?.live?.updatedAt) || 0);
     });
+
+  if (rankedTopics.length === 0) return null;
+
+  const activeTopic = rankedTopics.find((topic: any) => ['running', 'recent'].includes(String(topic?.live?.status || '')));
+  if (activeTopic?.sessionFile) return activeTopic.sessionFile;
+
+  const dispatcherTopic = rankedTopics.find((topic: any) => topic?.configured?.role === 'dispatcher');
+  if (dispatcherTopic?.sessionFile) return dispatcherTopic.sessionFile;
 
   return rankedTopics[0]?.sessionFile || null;
 }
@@ -221,14 +226,23 @@ function getOpenClawRuns(): string {
 
 // ── live session ────────────────────────────────────────────────────────────
 function formatSessionSource(candidate: SessionCandidate | undefined, sessionFile: string): string {
+  const pathMatch = sessionFile.match(/\/agents\/([^/]+)\/sessions\/.*?(?:topic-(\d+)|topic[:.-](\d+))/);
+  const derivedAgentLabel = pathMatch?.[1] || 'agent';
+  const derivedTopicId = pathMatch?.[2] || pathMatch?.[3] || null;
+
   if (candidate) {
+    const agentLabel = candidate.agentId || derivedAgentLabel;
     const topicMatch = candidate.key.match(/:topic:(\d+)$/);
-    if (topicMatch) return `${candidate.agentId} · topic ${topicMatch[1]}`;
-    if (candidate.isDirectSession) return `${candidate.agentId} · direct`;
-    if (candidate.isSlashSession) return `${candidate.agentId} · slash`;
-    if (candidate.isMainSession) return `${candidate.agentId} · main`;
+    if (topicMatch) return `${agentLabel} · topic ${topicMatch[1]}`;
+    if (derivedTopicId) return `${agentLabel} · topic ${derivedTopicId}`;
+    if (candidate.isDirectSession) return `${agentLabel} · direct`;
+    if (candidate.isSlashSession) return `${agentLabel} · slash`;
+    if (candidate.isMainSession) return `${agentLabel} · main`;
     return candidate.key;
   }
+
+  if (derivedTopicId) return `${derivedAgentLabel} · topic ${derivedTopicId}`;
+
   return path.basename(sessionFile);
 }
 

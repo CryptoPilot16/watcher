@@ -138,13 +138,17 @@ function formatTurnTime(ts?: string) {
 
   const date = new Date(ms);
   const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
+  const sameDayUtc =
+    date.getUTCFullYear() === now.getUTCFullYear() &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate();
 
-  return new Intl.DateTimeFormat(undefined, sameDay ? {
+  return new Intl.DateTimeFormat('en-GB', sameDayUtc ? {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
+    timeZone: 'UTC',
   } : {
     month: 'short',
     day: '2-digit',
@@ -152,14 +156,15 @@ function formatTurnTime(ts?: string) {
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-  }).format(ms);
+    timeZone: 'UTC',
+  }).format(ms) + ' UTC';
 }
 
 function formatTurnTimeTitle(ts?: string) {
   if (!ts) return '';
   const ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return ts;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -167,6 +172,7 @@ function formatTurnTimeTitle(ts?: string) {
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
+    timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(ms);
 }
