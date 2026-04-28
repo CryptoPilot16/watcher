@@ -120,7 +120,8 @@ Default data sources:
 That split matters:
 
 - the **live session feed** reads directly from the active session JSONL, so it captures real conversation turns
-- when a dispatcher lane exists, the live feed prefers that lane session first so the main operator view does not drift into some other active topic
+- the live feed prefers the most active bound topic first (`running`, then `recent`, then newest update); a dispatcher lane is only a fallback when nothing else is live
+- live feed row timestamps and the mission banner clock render in the **browser's local timezone**, while the raw session JSONL stays in ISO UTC
 - **runs** capture discrete task executions and outcomes
 - the **office** and **team** views combine topology, recent messages, and tool events to infer live state and progress
 
@@ -134,6 +135,7 @@ The Team Office is the main differentiator in this repo.
 - The office panel can send instructions directly into the bound lane session instead of broadcasting to a generic target
 - Session resolution supports standard Telegram topic keys and ACP Telegram-bound sessions
 - When multiple historical sessions match one topic, Watcher resolves the newest matching session so stale bindings do not shadow the live lane
+- The status view exposes the live feed source label (for example `coder1 · topic 7`) so operators can confirm exactly which bound lane session is being tailed
 - Public preview mode strips private task text and exposes only generic role and activity information
 - Scene styles can switch between the voxel office and the dungeon layout
 - House Keeping discipline controls are available in the office UI, with automatic severity-based attack selection when manual override is not active
