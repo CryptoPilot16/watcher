@@ -131,6 +131,34 @@ function formatUptime(startedAt?: number) {
   return `${days}d`;
 }
 
+function formatTurnTime(ts?: string) {
+  if (!ts) return '';
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return ts.slice(11, 19);
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(ms);
+}
+
+function formatTurnTimeTitle(ts?: string) {
+  if (!ts) return '';
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return ts;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).format(ms);
+}
+
 function tailMeaningfulLines(content: string | undefined, limit = 2) {
   return (content || '')
     .split('\n')
@@ -258,7 +286,8 @@ function LiveSessionFeed({ turns, sessionRunning }: { turns: SessionTurn[]; sess
     <div className="flex flex-col divide-y divide-[var(--watch-panel-border)]">
       {ordered.map((turn, i) => {
         const style = TURN_STYLE[turn.kind] ?? TURN_STYLE.reply;
-        const time = turn.ts ? turn.ts.slice(11, 19) : '';
+        const time = formatTurnTime(turn.ts);
+        const timeTitle = formatTurnTimeTitle(turn.ts);
         const isLast = i === 0; // first in reversed list = most recent
 
         return (
@@ -294,7 +323,14 @@ function LiveSessionFeed({ turns, sessionRunning }: { turns: SessionTurn[]; sess
               )}
             </div>
             {/* Timestamp */}
-            <span className="shrink-0 tabular-nums text-[10px] text-[var(--watch-text-muted)]">{time}</span>
+            <time
+              dateTime={turn.ts}
+              title={timeTitle}
+              suppressHydrationWarning
+              className="shrink-0 tabular-nums text-[10px] text-[var(--watch-text-muted)]"
+            >
+              {time}
+            </time>
           </div>
         );
       })}
