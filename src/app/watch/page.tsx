@@ -76,6 +76,16 @@ const TeamOfficePanel = dynamic(
   },
 );
 
+function shortModelName(model: unknown): string {
+  const value = typeof model === 'string'
+    ? model
+    : typeof model === 'object' && model && 'primary' in model && typeof (model as { primary?: unknown }).primary === 'string'
+      ? (model as { primary: string }).primary
+      : '?';
+
+  return value.replace('openai-codex/', '').replace('anthropic/', '');
+}
+
 // ── shared primitives ────────────────────────────────────────────────────────
 
 const HEALTH_STYLE: Record<HealthLevel, { color: string; bg: string; border: string }> = {
@@ -216,7 +226,7 @@ function MissionBanner({ health, meta, now, sessionRunning, canClearStaleFaults,
   onClearRunFaults: () => void;
 }) {
   const s = HEALTH_STYLE[health.level];
-  const modelShort = meta.model.replace('openai-codex/', '').replace('anthropic/', '');
+  const modelShort = shortModelName(meta.model);
 
   return (
     <div
@@ -391,7 +401,7 @@ function StatusSection({ data, health, meta, runs, cron, turns, sessionRunning }
   turns: SessionTurn[];
   sessionRunning: boolean;
 }) {
-  const modelShort = meta.model.replace('openai-codex/', '').replace('anthropic/', '');
+  const modelShort = shortModelName(meta.model);
 
   return (
     <div className="flex flex-col gap-5">

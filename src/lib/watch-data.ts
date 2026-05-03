@@ -373,7 +373,9 @@ function getOpenClawMeta(): string {
   // version + model
   const version    = config?.meta?.lastTouchedVersion || '?';
   const agentEntry = (config?.agents?.list || []).find((a: any) => a.default) || (config?.agents?.list || [])[0] || {};
-  const model      = agentEntry?.model || config?.agents?.defaults?.model?.primary || '?';
+  const model      = typeof agentEntry?.model === 'string'
+    ? agentEntry.model
+    : agentEntry?.model?.primary || config?.agents?.defaults?.model?.primary || '?';
   const thinking   = agentEntry?.thinkingDefault || config?.agents?.defaults?.thinkingDefault || '?';
   const heartbeat  = config?.agents?.defaults?.heartbeat?.every || '?';
   const maxFlows   = config?.agents?.defaults?.maxConcurrent?.flows ?? config?.agents?.defaults?.maxConcurrentFlows ?? null;
