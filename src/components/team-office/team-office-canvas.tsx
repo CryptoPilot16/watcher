@@ -114,7 +114,7 @@ function contextAlertStrength(topic: TeamTopic) {
   return Math.max(0, Math.min(1, (percent - 80) / 20));
 }
 
-type DisciplineAttackMode = 'punch' | 'finisher' | 'kick';
+type DisciplineAttackMode = 'punch' | 'kick';
 type DisciplineFeedback = {
   issueLabel: string;
   housekeepingText: string;
@@ -185,10 +185,25 @@ function disciplineSeverityScore(topic: TeamTopic) {
 }
 
 function disciplineAttackForScore(score: number): DisciplineAttackMode | null {
-  if (score >= 8) return 'finisher';
   if (score >= 5) return 'kick';
   if (score >= 2) return 'punch';
   return null;
+}
+
+function cleanLastKnownDisciplineTask(text: string | null | undefined) {
+  let cleaned = String(text || '').trim();
+  if (!cleaned) return cleaned;
+
+  const nestedTask = cleaned.match(/Resume your last assignment:\s*(.+?)(?:\.\s+If a restart happened|$)/i);
+  if (nestedTask?.[1]) cleaned = nestedTask[1].trim();
+
+  cleaned = cleaned
+    .replace(/^\[from web\]\s*/i, '')
+    .replace(/^\[[^\]]+\]\s*/, '')
+    .replace(/^(?:House Keeping feedback for [^:]+:\s*)+/i, '')
+    .trim();
+
+  return cleaned;
 }
 
 function disciplineReasons(topic: TeamTopic) {
@@ -213,7 +228,7 @@ function disciplineFeedbackForTopic(topic: TeamTopic): DisciplineFeedback {
   const housekeepingText = reasons.length > 1
     ? `Sort it out: ${reasons[0]}; ${reasons[1]}.`
     : `Sort it out: ${reasons[0] || 'lane standards slipped'}.`;
-  const lastKnownTask = topic.currentTask.snippet || topic.recent.lastUserText || topic.recent.lastAssistantText || null;
+  const lastKnownTask = cleanLastKnownDisciplineTask(topic.currentTask.snippet || topic.recent.lastUserText || topic.recent.lastAssistantText || null);
   const taskClause = lastKnownTask
     ? ` Resume your last assignment: ${lastKnownTask}.`
     : ' Resume the last real task from your lane history before doing anything new.';
@@ -1240,7 +1255,7 @@ function GLTFWalls() {
 
 function animationForMode(mode: string, status: string, disciplineVariant: Exclude<DisciplineDemoMode, 'off'> = 'punch'): string {
   if (mode === 'victim') return 'Hit_A';
-  if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : disciplineVariant === 'finisher' ? '2H_Melee_Attack_Spin' : 'Unarmed_Melee_Attack_Punch_A';
+  if (mode === 'discipline') return disciplineVariant === 'kick' ? 'Unarmed_Melee_Attack_Kick' : 'Unarmed_Melee_Attack_Punch_A';
   if (mode === 'delivery') return 'Walking_A';
   if (mode === 'job-front') return 'Walking_A';
   if (mode === 'desk-watch') return 'Sit_Chair_Idle';
@@ -1343,7 +1358,6 @@ function WorkerAvatar({
         ? 'desk-watch'
         : 'standby';
   const kickDiscipline = disciplineVariant === 'kick';
-  const finisherDiscipline = disciplineVariant === 'finisher';
   const showActivityDiamond = topic.live.status === 'running' || seatedAtDesk || (emphasized && !showHousekeepingAlert);
   const rawAgent = (topic.configured.agent || '').trim();
   const resolvedAgentLabel = !rawAgent || rawAgent.toLowerCase() === 'main'
@@ -1465,9 +1479,9 @@ function WorkerAvatar({
       if (disciplineContactRef?.current) {
         if (contactStartRef.current === 0) contactStartRef.current = tNow;
         const elapsedSinceContact = tNow - contactStartRef.current;
-        const strikeStartup = kickDiscipline ? 0.85 : finisherDiscipline ? 0.95 : 1.1;
-        const strikeCooldown = kickDiscipline ? 1.65 : finisherDiscipline ? 2.1 : 1.4;
-        const pulseDurationMs = kickDiscipline ? 620 : finisherDiscipline ? 900 : 450;
+        const strikeStartup = kickDiscipline ? 0.85 : 1.1;
+        const strikeCooldown = kickDiscipline ? 1.65 : 1.4;
+        const pulseDurationMs = kickDiscipline ? 620 : 450;
         if (elapsedSinceContact > strikeStartup && tNow - lastHitRef.current > strikeCooldown) {
           lastHitRef.current = tNow;
           setHitPulse(true);
@@ -1497,18 +1511,6 @@ function WorkerAvatar({
             group.current.position.z += Math.cos(facing) * lunge;
             group.current.position.y += lift;
             group.current.rotation.set(-0.18 * kickPhase, facing, -0.08 * kickPhase);
-          } else if (finisherDiscipline) {
-            const finisherPhase = Math.max(0, Math.sin(t * 3.9));
-            const lunge = finisherPhase * 0.34;
-            const lift = finisherPhase * 0.1;
-            rightArm.current.rotation.x = -1.28 + finisherPhase * 0.26;
-            leftArm.current.rotation.x = -1.02 + finisherPhase * 0.22;
-            leftLeg.current.rotation.x = 0.12 - finisherPhase * 0.22;
-            rightLeg.current.rotation.x = -0.16 + finisherPhase * 0.12;
-            group.current.position.x += Math.sin(facing) * lunge;
-            group.current.position.z += Math.cos(facing) * lunge;
-            group.current.position.y += lift;
-            group.current.rotation.set(-0.1 * finisherPhase, facing - finisherPhase * 1.45, 0.16 * finisherPhase);
           } else {
             const swing = Math.sin(t * 5.5);
             const slamPhase = Math.max(0, swing);
@@ -1541,30 +1543,21 @@ function WorkerAvatar({
         rightLeg.current.rotation.x = 0;
       } else if (mode === 'desk-watch') {
         if (beingDisciplined && !reducedMotion) {
-          const hitWindowActive = finisherDiscipline ? true : hitPulse;
-          const flinch = hitWindowActive ? Math.sin(t * (finisherDiscipline ? 5.5 : kickDiscipline ? 10.5 : 12.5)) : 0;
+          const hitWindowActive = hitPulse;
+          const flinch = hitWindowActive ? Math.sin(t * (kickDiscipline ? 10.5 : 12.5)) : 0;
           const impact = Math.max(0, flinch);
-          const recoil = finisherDiscipline ? impact * 2.0 : kickDiscipline ? impact * 0.75 : impact * 0.42;
-          leftArm.current.rotation.x = -1.8 + recoil * (finisherDiscipline ? 0.62 : kickDiscipline ? 0.22 : 0.12);
-          rightArm.current.rotation.x = -1.9 + recoil * (finisherDiscipline ? 0.74 : kickDiscipline ? 0.28 : 0.16);
+          const recoil = kickDiscipline ? impact * 0.75 : impact * 0.42;
+          leftArm.current.rotation.x = -1.8 + recoil * (kickDiscipline ? 0.22 : 0.12);
+          rightArm.current.rotation.x = -1.9 + recoil * (kickDiscipline ? 0.28 : 0.16);
           leftLeg.current.rotation.x = 1.18;
           rightLeg.current.rotation.x = 1.18;
           if (group.current) {
-            if (finisherDiscipline) {
-              group.current.rotation.x = -recoil * 0.18;
-              group.current.rotation.z = recoil * 0.34;
-              group.current.position.y += recoil * 0.08;
-              const knockback = recoil * 0.28;
-              group.current.position.x -= Math.sin(deskFacing) * knockback;
-              group.current.position.z -= Math.cos(deskFacing) * knockback;
-            } else {
-              const shakeX = Math.sin(t * (kickDiscipline ? 22 : 26)) * recoil * (kickDiscipline ? 0.035 : 0.02);
-              const shakeZ = Math.cos(t * (kickDiscipline ? 18 : 22)) * recoil * (kickDiscipline ? 0.028 : 0.014);
-              group.current.rotation.x = 0;
-              group.current.rotation.z = shakeX * (kickDiscipline ? 2.6 : 2.1);
-              group.current.position.x += shakeX;
-              group.current.position.z += shakeZ;
-            }
+            const shakeX = Math.sin(t * (kickDiscipline ? 22 : 26)) * recoil * (kickDiscipline ? 0.035 : 0.02);
+            const shakeZ = Math.cos(t * (kickDiscipline ? 18 : 22)) * recoil * (kickDiscipline ? 0.028 : 0.014);
+            group.current.rotation.x = 0;
+            group.current.rotation.z = shakeX * (kickDiscipline ? 2.6 : 2.1);
+            group.current.position.x += shakeX;
+            group.current.position.z += shakeZ;
           }
         } else if (dist > 0.15 && !reducedMotion) {
           const walkStride = Math.sin(t * 3.2) * 0.35;
@@ -2449,7 +2442,7 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
 
   useEffect(() => {
     if (!activeDisciplineMode || !disciplineVictimId || typeof window === 'undefined') return;
-    const timeoutMs = activeDisciplineMode === 'finisher' ? 9000 : activeDisciplineMode === 'kick' ? 8000 : 7000;
+    const timeoutMs = activeDisciplineMode === 'kick' ? 8000 : 7000;
     const timer = window.setTimeout(() => {
       setDisciplineStrikeCount((count) => (count >= 3 ? count : 3));
     }, timeoutMs);
@@ -2753,7 +2746,6 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   if (!topic) return null;
   const color = statusColor(topic.live.status);
   const disciplinePunch = disciplineDemoMode === 'punch';
-  const disciplineFinisher = disciplineDemoMode === 'finisher';
   const disciplineKick = disciplineDemoMode === 'kick';
 
   if (isMobile) {
@@ -2797,15 +2789,11 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <div className="mt-3 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => onDisciplineDemo('punch')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
-              {disciplinePunch ? 'stop demo' : 'demo discipline'}
+              {disciplinePunch ? 'stop punch' : 'demo high-gravity punch'}
             </button>
             <button type="button" onClick={() => onDisciplineDemo('kick')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
-              {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
-            </button>
-            <button type="button" onClick={() => onDisciplineDemo('finisher')}
-              className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
-              {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
+              {disciplineKick ? 'stop kick' : 'demo low-gravity kick'}
             </button>
           </div>
         )}
@@ -2845,15 +2833,11 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         <div className="mt-3 grid grid-cols-1 gap-2">
           <button type="button" onClick={() => onDisciplineDemo('punch')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
-            {disciplinePunch ? 'stop demo' : 'demo discipline'}
+            {disciplinePunch ? 'stop punch' : 'demo high-gravity punch'}
           </button>
           <button type="button" onClick={() => onDisciplineDemo('kick')}
             className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineKick ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(125,211,252,0.4)] bg-[rgba(125,211,252,0.1)] text-[#7dd3fc] hover:bg-[rgba(125,211,252,0.18)]'}`}>
-            {disciplineKick ? 'stop flying kick' : 'demo flying kick'}
-          </button>
-            <button type="button" onClick={() => onDisciplineDemo('finisher')}
-            className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplineFinisher ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(244,114,182,0.4)] bg-[rgba(244,114,182,0.1)] text-[#f472b6] hover:bg-[rgba(244,114,182,0.18)]'}`}>
-            {disciplineFinisher ? 'stop finisher' : 'demo finisher'}
+            {disciplineKick ? 'stop kick' : 'demo low-gravity kick'}
           </button>
         </div>
       )}
@@ -3007,15 +2991,15 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     const disciplineParam = new URL(window.location.href).searchParams.get('discipline');
     if (!disciplineParam) return;
     const normalized = disciplineParam.trim().toLowerCase();
-    if (['2', 'finisher', 'spin', 'belt', 'whip', 'belt-whip'].includes(normalized)) {
-      setDisciplineDemoMode('finisher');
-      return;
-    }
-    if (['3', 'kick', 'flying-kick'].includes(normalized)) {
+    if (['2', 'kick', 'flying-kick', 'low-gravity', 'low-gravity-kick'].includes(normalized)) {
       setDisciplineDemoMode('kick');
       return;
     }
-    setDisciplineDemoMode(['0', 'false', 'off', 'no'].includes(normalized) ? 'off' : 'punch');
+    if (['0', '3', 'false', 'off', 'no', 'finisher', 'spin', 'belt', 'whip', 'belt-whip'].includes(normalized)) {
+      setDisciplineDemoMode('off');
+      return;
+    }
+    setDisciplineDemoMode('punch');
   }, []);
   const [sceneStyle, setSceneStyle] = useState<SceneStyle>('office');
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
