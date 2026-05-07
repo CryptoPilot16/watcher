@@ -35,7 +35,7 @@ const AXIOM_RESOURCE_LIMITS = process.env.WATCH_AXIOM_RESOURCE_LIMITS !== '0';
 
 // Per-session rate limit + daily cost cap — refuses calls when exceeded.
 const AXIOM_MAX_CALLS_PER_HOUR = Number(process.env.WATCH_AXIOM_MAX_CALLS_PER_HOUR || 60);
-const AXIOM_MAX_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 25);
+const AXIOM_MAX_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 5);
 
 // Lightweight disk-fill protection — refuses to spawn if /opt/axiom is over the cap.
 // True kernel quotas require fstab usrquota/grpquota + remount, which is invasive on
@@ -125,17 +125,23 @@ function buildSystemdRunPrefix(): string[] | null {
 
 type RateState = {
   callTimestamps: number[];
+};
+
+type GlobalCostState = {
   todayCostUsd: number;
   costDayKey: string;
 };
+
+const AXIOM_GLOBAL_COST_FILE = 'axiom-global.cost.json';
 
 function loadRateState(sessionKey: string): RateState {
   try {
     const file = path.join(AXIOM_MAILBOX_DIR, `${safeAxiomKey(sessionKey)}.rate.json`);
     const raw = fs.readFileSync(file, 'utf8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return { callTimestamps: Array.isArray(parsed.callTimestamps) ? parsed.callTimestamps : [] };
   } catch {
-    return { callTimestamps: [], todayCostUsd: 0, costDayKey: '' };
+    return { callTimestamps: [] };
   }
 }
 
@@ -143,6 +149,24 @@ function saveRateState(sessionKey: string, state: RateState) {
   try {
     fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
     const file = path.join(AXIOM_MAILBOX_DIR, `${safeAxiomKey(sessionKey)}.rate.json`);
+    fs.writeFileSync(file, JSON.stringify(state));
+  } catch {}
+}
+
+function loadGlobalCost(): GlobalCostState {
+  try {
+    const file = path.join(AXIOM_MAILBOX_DIR, AXIOM_GLOBAL_COST_FILE);
+    const raw = fs.readFileSync(file, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return { todayCostUsd: 0, costDayKey: '' };
+  }
+}
+
+function saveGlobalCost(state: GlobalCostState) {
+  try {
+    fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
+    const file = path.join(AXIOM_MAILBOX_DIR, AXIOM_GLOBAL_COST_FILE);
     fs.writeFileSync(file, JSON.stringify(state));
   } catch {}
 }
@@ -156,9 +180,10 @@ function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason:
     return { ok: false, reason: `rate limit: ${recent.length}/${AXIOM_MAX_CALLS_PER_HOUR} calls in last hour` };
   }
   const today = new Date().toISOString().slice(0, 10);
-  const dailyCost = state.costDayKey === today ? state.todayCostUsd : 0;
+  const global = loadGlobalCost();
+  const dailyCost = global.costDayKey === today ? global.todayCostUsd : 0;
   if (dailyCost >= AXIOM_MAX_DAILY_USD) {
-    return { ok: false, reason: `cost cap: $${dailyCost.toFixed(2)}/${AXIOM_MAX_DAILY_USD} spent today` };
+    return { ok: false, reason: `cost cap: $${dailyCost.toFixed(2)}/${AXIOM_MAX_DAILY_USD} spent today across all agents` };
   }
   state.callTimestamps = recent;
   state.callTimestamps.push(now);
@@ -166,16 +191,16 @@ function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason:
   return { ok: true };
 }
 
-function recordCallCost(sessionKey: string, costUsd: number | undefined) {
+function recordCallCost(_sessionKey: string, costUsd: number | undefined) {
   if (typeof costUsd !== 'number' || costUsd <= 0) return;
-  const state = loadRateState(sessionKey);
   const today = new Date().toISOString().slice(0, 10);
-  if (state.costDayKey !== today) {
-    state.costDayKey = today;
-    state.todayCostUsd = 0;
+  const global = loadGlobalCost();
+  if (global.costDayKey !== today) {
+    global.costDayKey = today;
+    global.todayCostUsd = 0;
   }
-  state.todayCostUsd += costUsd;
-  saveRateState(sessionKey, state);
+  global.todayCostUsd += costUsd;
+  saveGlobalCost(global);
 }
 
 // Departments override via NEXT_PUBLIC_AXIOM_DEPARTMENTS (comma-separated, exactly 10 names).
