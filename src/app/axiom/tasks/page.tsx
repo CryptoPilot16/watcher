@@ -14,6 +14,7 @@ type TaskEntry = {
   team: number | null;
   coderIndex: number | null;
   label: string;
+  archived?: boolean;
 };
 
 type TasksResponse = {
@@ -23,6 +24,8 @@ type TasksResponse = {
   entries: TaskEntry[];
   mailboxDir?: string;
   retentionDays?: number;
+  archiveDays?: number;
+  counts?: { live: number; archived: number; total: number };
 };
 
 function fmtTime(ts: string) {
@@ -45,11 +48,12 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'ceo' | 'manager' | 'coder'>('all');
+  const [view, setView] = useState<'live' | 'archived' | 'all'>('live');
   const [clearing, setClearing] = useState(false);
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch('/api/axiom/tasks', { cache: 'no-store' });
+      const res = await fetch(`/api/axiom/tasks?include=${view}`, { cache: 'no-store' });
       const json = (await res.json()) as TasksResponse;
       setData(json);
       setError(null);
@@ -58,13 +62,13 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/axiom/tasks', { cache: 'no-store' });
+        const res = await fetch(`/api/axiom/tasks?include=${view}`, { cache: 'no-store' });
         const json = (await res.json()) as TasksResponse;
         if (!cancelled) {
           setData(json);
@@ -82,25 +86,31 @@ export default function TasksPage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [view]);
 
   async function clearTasks() {
+    const isArchive = view === 'archived';
     const scope = filter === 'all' ? 'ALL tasks' : `${filter.toUpperCase()} tasks`;
-    if (!confirm(`Clear ${scope}? This cannot be undone.`)) return;
+    const verb = isArchive ? 'PERMANENTLY DELETE' : 'archive';
+    const tail = isArchive
+      ? 'This cannot be undone — they will be removed from the archive too.'
+      : `They will move to the archive (kept ${data?.archiveDays ?? 7}d, then auto-deleted).`;
+    if (!confirm(`${verb} ${scope}? ${tail}`)) return;
     setClearing(true);
     try {
-      const url = filter === 'all'
-        ? '/api/axiom/tasks'
-        : `/api/axiom/tasks?role=${encodeURIComponent(filter)}`;
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('role', filter);
+      if (isArchive) params.set('scope', 'archive');
+      const url = `/api/axiom/tasks${params.toString() ? `?${params}` : ''}`;
       const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        alert(`clear failed: ${json?.error || res.statusText}`);
+        alert(`failed: ${json?.error || res.statusText}`);
       } else {
         await reload();
       }
     } catch (e: any) {
-      alert(`clear failed: ${e?.message || e}`);
+      alert(`failed: ${e?.message || e}`);
     } finally {
       setClearing(false);
     }
@@ -142,9 +152,29 @@ export default function TasksPage() {
                 {id}
               </button>
             ))}
+            <span className="mx-2 hidden h-4 w-px bg-[var(--watch-panel-border)] sm:inline-block" aria-hidden />
+            {(['live', 'archived', 'all'] as const).map((id) => {
+              const count = id === 'live' ? data?.counts?.live : id === 'archived' ? data?.counts?.archived : data?.counts?.total;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  className={`rounded border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                    view === id
+                      ? 'border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] text-[var(--watch-text)]'
+                      : 'border-[var(--watch-panel-border)] text-[var(--watch-text-muted)] hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-text)]'
+                  }`}
+                >
+                  {id}{typeof count === 'number' ? ` (${count})` : ''}
+                </button>
+              );
+            })}
             <span className="ml-auto flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">
-                {data?.retentionDays ? `auto-purge ${data.retentionDays}d` : ''}
+                {data?.retentionDays != null && data?.archiveDays != null
+                  ? `archive after ${data.retentionDays}d · purge after ${data.archiveDays}d`
+                  : ''}
               </span>
               <button
                 type="button"
@@ -152,7 +182,11 @@ export default function TasksPage() {
                 onClick={clearTasks}
                 className="rounded border border-rose-700/40 bg-rose-900/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-rose-200 transition-colors hover:border-rose-500/60 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {clearing ? 'clearing…' : filter === 'all' ? 'clear all' : `clear ${filter}`}
+                {clearing
+                  ? '…'
+                  : view === 'archived'
+                    ? `purge ${filter === 'all' ? 'archive' : filter}`
+                    : `clear ${filter === 'all' ? 'all' : filter}`}
               </button>
             </span>
           </div>
@@ -177,7 +211,11 @@ export default function TasksPage() {
                 return (
                   <div
                     key={`${entry.sessionKey}-${entry.ts}-${i}`}
-                    className="rounded-lg border border-white/5 bg-[rgba(255,255,255,0.02)] p-3"
+                    className={`rounded-lg border p-3 ${
+                      entry.archived
+                        ? 'border-white/5 bg-[rgba(255,255,255,0.015)] opacity-70'
+                        : 'border-white/5 bg-[rgba(255,255,255,0.02)]'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-white/55">
                       <div className="flex flex-wrap items-center gap-2">
@@ -189,6 +227,9 @@ export default function TasksPage() {
                         </span>
                         <span className="text-white/85">{entry.label}</span>
                         {entry.agentId && <span>· {entry.agentId}</span>}
+                        {entry.archived && (
+                          <span className="rounded border border-white/15 px-1.5 py-0.5 text-[9px] tracking-[0.18em] text-white/65">archived</span>
+                        )}
                       </div>
                       <span>{fmtTime(entry.ts)}</span>
                     </div>
