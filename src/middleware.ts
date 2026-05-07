@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthed } from '@/lib/auth';
+import { isAuthed, getWatchApiKey } from '@/lib/auth';
 import { isAdminAuthed } from '@/lib/admin-auth';
 
 const PUBLIC_FILE = /\.(.*)$/;
@@ -97,6 +97,16 @@ export async function middleware(request: NextRequest) {
   if (isAdminPath) {
     if (await isAdminAuthed(request)) {
       return NextResponse.next();
+    }
+    // Allow scriptable access (bot, curl) on /api/axiom/* via the same
+    // WATCH_API_KEY/WATCH_PASSWORD bearer token used by /api/team-office/instruct.
+    if (pathname.startsWith('/api/axiom/')) {
+      const auth = request.headers.get('authorization') || '';
+      const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+      const apiKey = getWatchApiKey();
+      if (bearer && apiKey && bearer === apiKey) {
+        return NextResponse.next();
+      }
     }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized (axiom)' }, { status: 401 });

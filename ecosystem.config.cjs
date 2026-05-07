@@ -34,5 +34,15 @@ module.exports = {
         WATCH_URL: 'http://127.0.0.1:3012',
       },
     },
+    {
+      name: 'clawnux-axiom-project-watcher',
+      cwd: '/opt/watcher',
+      env_file: '/opt/watcher/.env.local',
+      script: 'npm',
+      args: 'run axiom-project:watcher',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
