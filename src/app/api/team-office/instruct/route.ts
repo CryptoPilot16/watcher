@@ -112,13 +112,19 @@ function buildSystemdRunPrefix(): string[] | null {
     '--property=MemoryMax=4G',
     '--property=MemorySwapMax=512M',
     '--property=TasksMax=256',
-    // Block cloud metadata + private RFC1918 ranges at the kernel level (BPF egress filter).
+    // Block cloud metadata + private ranges at the kernel level (BPF egress filter).
+    // IPv4: AWS/GCP/Azure metadata (169.254.169.254) + RFC1918 private LAN.
     '--property=IPAddressDeny=169.254.0.0/16',
     '--property=IPAddressDeny=10.0.0.0/8',
     '--property=IPAddressDeny=172.16.0.0/12',
     '--property=IPAddressDeny=192.168.0.0/16',
+    // IPv6: link-local (fe80::/10) covers IPv6 metadata variants;
+    // unique-local (fc00::/7) covers IPv6 internal networks.
+    '--property=IPAddressDeny=fe80::/10',
+    '--property=IPAddressDeny=fc00::/7',
     // Allow loopback for the bwrap setup itself + rest of internet (default allow).
     '--property=IPAddressAllow=127.0.0.0/8',
+    '--property=IPAddressAllow=::1/128',
     '--property=IPAddressAllow=any',
   ];
 }
@@ -296,6 +302,7 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       ``,
       `CONTEXT YOU CAN USE WHILE CHATTING:`,
       `- You have READ-ONLY tools (Read, Glob, Grep) and may peek at ${AXIOM_PROJECT_DIR} to ground your reasoning. Skim aggressively, quote sparingly.`,
+      `- You also have WebFetch + WebSearch — use them when the operator asks about current events, external docs, market conditions, library APIs, or anything you genuinely don't know. Don't fabricate facts you can verify online. Cite the URL when you do.`,
       `- Maintain ${AXIOM_PROJECT_DIR}/README.md as the live status doc when you have time during chat replies. Don't dispatch a mission just to update the README.`,
       `- Reference managers by department when planning, e.g. "Platform manager owns X".`,
       ``,
@@ -337,7 +344,7 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       `- After finishing, summarise in 2-4 lines: which files you touched, what you ran, what's left.`,
       `- If the task is ambiguous, ask one sharp clarifying question before touching anything.`,
       ``,
-      `YOU HAVE FULL WRITE ACCESS to ${AXIOM_PROJECT_DIR}. Tools: Read, Glob, Grep, Write, Edit, Bash. Use them.`,
+      `YOU HAVE FULL WRITE ACCESS to ${AXIOM_PROJECT_DIR}. Tools: Read, Glob, Grep, Write, Edit, Bash, WebFetch, WebSearch. Use WebFetch/WebSearch to look up library docs, API specs, or external references — don't guess when you can verify.`,
       ``,
       styleRules,
     ].join('\n');
@@ -375,7 +382,12 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
   const meta = axiomTopicMeta(sessionKey);
   // CEO is the chat/orchestrator — read-only on disk so it MUST dispatch real
   // file work to codex via the <<DISPATCH: ...>> tag. Coders get full write tools.
-  const tools = meta.role === 'ceo' ? 'Read,Glob,Grep' : 'Read,Glob,Grep,Write,Edit,Bash';
+  // WebFetch + WebSearch are enabled for online research; the systemd-run cgroup
+  // blocks RFC1918 and cloud-metadata egress so the agent can't pivot to internal
+  // services or scrape host credentials via the IMDS.
+  const tools = meta.role === 'ceo'
+    ? 'Read,Glob,Grep,WebFetch,WebSearch'
+    : 'Read,Glob,Grep,Write,Edit,Bash,WebFetch,WebSearch';
 
   const buildArgs = (resumeMode: boolean, sid: string): string[] => {
     const base = [
@@ -398,13 +410,19 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
       maxBuffer: 16 * 1024 * 1024,
       cwd: AXIOM_PROJECT_DIR,
     };
+    const sdPrefix = buildSystemdRunPrefix();
     if (AXIOM_SANDBOX_ENABLED) {
       const bwrapArgs = [...buildBwrapArgs(), '--', '/usr/bin/claude', ...claudeArgs];
-      const sdPrefix = buildSystemdRunPrefix();
       if (sdPrefix) {
         return run(sdPrefix[0], [...sdPrefix.slice(1), AXIOM_BWRAP_BIN, ...bwrapArgs], opts);
       }
       return run(AXIOM_BWRAP_BIN, bwrapArgs, opts);
+    }
+    // Sandbox off (no bwrap): still wrap in systemd-run so the IP filter +
+    // resource limits stay active. Without this, an agent with internet access
+    // could hit cloud metadata or RFC1918 ranges unrestricted.
+    if (sdPrefix) {
+      return run(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/claude', ...claudeArgs], opts);
     }
     return run('claude', claudeArgs, opts);
   };
