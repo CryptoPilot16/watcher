@@ -9,11 +9,14 @@ import { promises as fs, watch as fsWatch } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { stat as statCb } from 'node:fs';
 import { promisify } from 'node:util';
+import { createHash } from 'node:crypto';
 
 const stat = promisify(statCb);
 
 const PROJECT_DIR = process.env.WATCH_AXIOM_PROJECT_DIR || '/opt/axiom';
 const EVENT_LOG = process.env.WATCH_AXIOM_PROJECT_EVENT_LOG || '/var/lib/watcher/axiom-project-events.jsonl';
+const SNAPSHOT_DIR = process.env.WATCH_AXIOM_PROJECT_SNAPSHOT_DIR || '/var/lib/watcher/axiom-project-snapshots';
+const MAX_SNAPSHOT_BYTES = Number(process.env.WATCH_AXIOM_PROJECT_SNAPSHOT_MAX || 256 * 1024);
 const MAX_EVENT_LOG_BYTES = Number(process.env.WATCH_AXIOM_PROJECT_EVENT_LOG_MAX || 10 * 1024 * 1024);
 const TRUNCATE_KEEP_BYTES = Number(process.env.WATCH_AXIOM_PROJECT_EVENT_LOG_KEEP || 4 * 1024 * 1024);
 const DEBOUNCE_MS = 200;
@@ -66,6 +69,59 @@ async function maybeTruncate() {
 
 const recent = new Map();
 
+// ── snapshot capture for diff view ─────────────────────────────────────────
+// On each event we keep two files per watched path:
+//   <hash>/state.txt  — content right AFTER the most recent event
+//   <hash>/before.txt — content right BEFORE the most recent event
+// At event time we move state.txt → before.txt, then save the live file as
+// the new state.txt. The diff endpoint reads both and returns them; the UI
+// renders a unified diff. before.txt may not exist for the first-ever event
+// on a path — UI handles that gracefully.
+
+function snapshotDirFor(relPath) {
+  const hash = createHash('sha1').update(relPath).digest('hex');
+  return join(SNAPSHOT_DIR, hash);
+}
+
+async function captureSnapshot(relPath, kind) {
+  if (kind === 'deleted') {
+    // Move state.txt → before.txt so the operator can still see "what got deleted".
+    const dir = snapshotDirFor(relPath);
+    try {
+      await fs.rename(join(dir, 'state.txt'), join(dir, 'before.txt'));
+    } catch {}
+    try {
+      await fs.unlink(join(dir, 'state.txt'));
+    } catch {}
+    return;
+  }
+
+  const abs = join(PROJECT_DIR, relPath);
+  let buf;
+  try {
+    const s = await stat(abs);
+    if (s.size === 0 || s.size > MAX_SNAPSHOT_BYTES) return;
+    buf = await fs.readFile(abs);
+    let nul = 0;
+    for (let i = 0; i < Math.min(buf.length, 1024); i++) if (buf[i] === 0) nul++;
+    if (nul > 4) return;
+  } catch {
+    return;
+  }
+
+  const dir = snapshotDirFor(relPath);
+  await fs.mkdir(dir, { recursive: true });
+  const stateFile = join(dir, 'state.txt');
+  const beforeFile = join(dir, 'before.txt');
+
+  try {
+    await fs.rename(stateFile, beforeFile);
+  } catch {
+    // No prior state.txt — this is the first snapshot we've taken for this path.
+  }
+  await fs.writeFile(stateFile, buf);
+}
+
 async function handle(eventName, relPath) {
   if (!relPath) return;
   if (isIgnored(relPath)) return;
@@ -100,6 +156,9 @@ async function handle(eventName, relPath) {
   };
   await fs.appendFile(EVENT_LOG, JSON.stringify(entry) + '\n').catch((err) => {
     process.stderr.write(`[axiom-project-watcher] append error: ${err.message}\n`);
+  });
+  await captureSnapshot(relPath, kind).catch((err) => {
+    process.stderr.write(`[axiom-project-watcher] snapshot error for ${relPath}: ${err.message}\n`);
   });
 }
 

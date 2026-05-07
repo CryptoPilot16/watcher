@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
+import { diffLines, type Change } from 'diff';
 import { AdminShellHeader } from '@/components/admin-shell-header';
 
 type TreeNode = {
@@ -24,6 +25,23 @@ type FileResponse =
   | { ok: true; path: string; size: number; mtime: string; kind: 'text'; content: string; truncated: boolean; maxBytes: number }
   | { ok: true; path: string; size: number; mtime: string; kind: 'binary'; preview: string }
   | { ok: false; error: string };
+
+type DiffResponse =
+  | {
+      ok: true;
+      path: string;
+      before: string | null;
+      after: string | null;
+      afterSource: 'live' | 'snapshot' | 'none';
+      hasBefore: boolean;
+      hasAfter: boolean;
+      liveSize: number | null;
+      liveMtime: string | null;
+      maxBytes: number;
+    }
+  | { ok: false; error: string };
+
+type ViewMode = 'auto' | 'source' | 'diff';
 
 const TREE_POLL_MS = 5_000;
 const SSE_RECONNECT_MS = 3_000;
@@ -97,7 +115,9 @@ export default function ProjectPage() {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']));
   const [fileResp, setFileResp] = useState<FileResponse | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
-  const [renderMarkdown, setRenderMarkdown] = useState(true);
+  const [diffResp, setDiffResp] = useState<DiffResponse | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('auto');
   const [streamConnected, setStreamConnected] = useState(false);
   const flashRef = useRef<Map<string, number>>(new Map());
   const [, setFlashTick] = useState(0);
@@ -188,11 +208,33 @@ export default function ProjectPage() {
     });
   }, []);
 
+  const fetchDiff = useCallback(async (relPath: string) => {
+    setDiffLoading(true);
+    setDiffResp(null);
+    try {
+      const r = await fetch(`/api/axiom/project/diff?path=${encodeURIComponent(relPath)}`, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      const j: DiffResponse = await r.json();
+      setDiffResp(j);
+    } catch (err: any) {
+      setDiffResp({ ok: false, error: err?.message || 'fetch failed' });
+    } finally {
+      setDiffLoading(false);
+    }
+  }, []);
+
   const onSelect = useCallback(async (node: TreeNode) => {
     if (node.type !== 'file') return;
-    setSelectedPath(node.path);
+    setSelectedPath((prev) => {
+      // Reset view-mode preference when switching to a different file.
+      if (prev !== node.path) setViewMode('auto');
+      return node.path;
+    });
     setFileLoading(true);
     setFileResp(null);
+    setDiffResp(null);
     try {
       const r = await fetch(`/api/axiom/project/file?path=${encodeURIComponent(node.path)}`, {
         cache: 'no-store',
@@ -205,7 +247,9 @@ export default function ProjectPage() {
     } finally {
       setFileLoading(false);
     }
-  }, []);
+    // Eagerly fetch the diff snapshot in parallel — many users will toggle to it.
+    fetchDiff(node.path);
+  }, [fetchDiff]);
 
   // Auto-refresh selected file when an event mentions it.
   useEffect(() => {
@@ -215,6 +259,16 @@ export default function ProjectPage() {
       onSelect({ name: selectedPath.split('/').pop() || selectedPath, path: selectedPath, type: 'file' });
     }
   }, [events, selectedPath, onSelect]);
+
+  // Did the most recent event for the selected file produce a diff worth showing?
+  // If so, surface a "diff available" hint by auto-flipping to diff mode the first
+  // time we have a non-trivial change. Idempotent if user has already chosen a mode.
+  useEffect(() => {
+    if (viewMode !== 'auto' || !diffResp?.ok) return;
+    if (diffResp.hasBefore && diffResp.hasAfter && diffResp.before !== diffResp.after) {
+      setViewMode('diff');
+    }
+  }, [diffResp, viewMode]);
 
   const recentEvents = useMemo(() => events.slice().reverse(), [events]);
   const flashed = flashRef.current;
@@ -300,56 +354,15 @@ export default function ProjectPage() {
           </div>
 
           {/* viewer pane */}
-          <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
-              <span className="truncate">viewer{selectedPath ? ` · ${selectedPath}` : ''}</span>
-              <span className="flex shrink-0 items-center gap-2">
-                {selectedPath?.toLowerCase().endsWith('.md') && fileResp?.ok && fileResp.kind === 'text' && (
-                  <button
-                    type="button"
-                    onClick={() => setRenderMarkdown((v) => !v)}
-                    className="rounded border border-[var(--watch-panel-border)] px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-[var(--watch-text-muted)] hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-text)]"
-                  >
-                    {renderMarkdown ? 'show source' : 'render markdown'}
-                  </button>
-                )}
-                {selectedPath && fileResp?.ok && fileResp.kind === 'text' && (
-                  <span className="text-[10px]">{languageHint(selectedPath)} · {fmtSize(fileResp.size)}</span>
-                )}
-              </span>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {!selectedPath ? (
-                <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">select a file in the tree or events feed.</div>
-              ) : fileLoading ? (
-                <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">loading file…</div>
-              ) : fileResp?.ok === false ? (
-                <div className="px-3 py-2 text-xs text-red-300">error: {fileResp.error}</div>
-              ) : fileResp?.ok && fileResp.kind === 'binary' ? (
-                <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">{fileResp.preview}</div>
-              ) : fileResp?.ok && fileResp.kind === 'text' ? (
-                <div>
-                  {fileResp.truncated && (
-                    <div className="bg-amber-900/40 px-3 py-1.5 text-[10px] text-amber-200">file truncated to first {fileResp.maxBytes / 1024}KB</div>
-                  )}
-                  {renderMarkdown && selectedPath?.toLowerCase().endsWith('.md') ? (
-                    <article
-                      className="axiom-md p-4 text-[13px] leading-relaxed text-[var(--watch-text)]"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeMarkdownHtml(
-                          marked.parse(fileResp.content, { gfm: true, breaks: false, async: false }) as string,
-                        ),
-                      }}
-                    />
-                  ) : (
-                    <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-[1.45] text-[var(--watch-text)]">
-                      {fileResp.content}
-                    </pre>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
+          <ViewerPane
+            selectedPath={selectedPath}
+            fileResp={fileResp}
+            fileLoading={fileLoading}
+            diffResp={diffResp}
+            diffLoading={diffLoading}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+          />
         </div>
       </div>
     </main>
@@ -402,4 +415,208 @@ function TreeWithFlash({
     );
   };
   return decorate(node, 0);
+}
+
+// ── viewer pane ─────────────────────────────────────────────────────────────
+
+type ResolvedView = 'rendered-md' | 'source' | 'diff';
+
+function resolveView(viewMode: ViewMode, selectedPath: string | null, hasMd: boolean, hasDiff: boolean): ResolvedView {
+  if (viewMode === 'diff' && hasDiff) return 'diff';
+  if (viewMode === 'source') return 'source';
+  // auto: prefer diff if there's a meaningful one, then markdown, then source.
+  if (viewMode === 'auto' && hasDiff) return 'diff';
+  if (hasMd && (viewMode === 'auto' || viewMode === 'diff' /* but no diff */)) return 'rendered-md';
+  return 'source';
+}
+
+function ViewerPane({
+  selectedPath,
+  fileResp,
+  fileLoading,
+  diffResp,
+  diffLoading,
+  viewMode,
+  setViewMode,
+}: {
+  selectedPath: string | null;
+  fileResp: FileResponse | null;
+  fileLoading: boolean;
+  diffResp: DiffResponse | null;
+  diffLoading: boolean;
+  viewMode: ViewMode;
+  setViewMode: (m: ViewMode) => void;
+}) {
+  const isMd = !!selectedPath && /\.(md|markdown)$/i.test(selectedPath);
+  const fileText = fileResp?.ok && fileResp.kind === 'text' ? fileResp.content : null;
+  const fileBinary = fileResp?.ok && fileResp.kind === 'binary' ? fileResp : null;
+  const fileError = fileResp?.ok === false ? fileResp.error : null;
+
+  const diffOk = diffResp?.ok === true;
+  const hasMeaningfulDiff = !!(
+    diffOk
+    && diffResp.hasBefore
+    && diffResp.hasAfter
+    && diffResp.before !== diffResp.after
+  );
+
+  const resolved = resolveView(viewMode, selectedPath, isMd, hasMeaningfulDiff);
+
+  return (
+    <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
+        <span className="truncate">viewer{selectedPath ? ` · ${selectedPath}` : ''}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {selectedPath && fileText !== null && (
+            <span className="flex items-center gap-1">
+              {(['source', 'diff'] as const).map((m) => {
+                const enabled = m !== 'diff' || hasMeaningfulDiff;
+                const isActive = resolved === m || (m === 'source' && resolved === 'rendered-md');
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setViewMode(m)}
+                    disabled={!enabled}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] tracking-[0.1em] transition-colors ${
+                      isActive
+                        ? 'border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] text-[var(--watch-text-bright)]'
+                        : 'border-[var(--watch-panel-border)] text-[var(--watch-text-muted)] hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-text)]'
+                    } disabled:cursor-not-allowed disabled:opacity-30`}
+                    title={m === 'diff' && !enabled ? 'no previous snapshot to diff against yet' : ''}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </span>
+          )}
+          {selectedPath && fileText !== null && (
+            <span className="text-[10px]">{languageHint(selectedPath)} · {fmtSize(fileResp!.ok && fileResp.kind === 'text' ? fileResp.size : 0)}</span>
+          )}
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {!selectedPath ? (
+          <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">select a file in the tree or events feed.</div>
+        ) : fileLoading ? (
+          <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">loading file…</div>
+        ) : fileError ? (
+          <div className="px-3 py-2 text-xs text-red-300">error: {fileError}</div>
+        ) : fileBinary ? (
+          <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">{fileBinary.preview}</div>
+        ) : fileText !== null ? (
+          <>
+            {fileResp!.ok && fileResp.kind === 'text' && fileResp.truncated && (
+              <div className="bg-amber-900/40 px-3 py-1.5 text-[10px] text-amber-200">
+                file truncated to first {(fileResp.maxBytes / 1024) | 0}KB
+              </div>
+            )}
+            {resolved === 'diff' ? (
+              <DiffView diffResp={diffResp} loading={diffLoading} />
+            ) : resolved === 'rendered-md' ? (
+              <article
+                className="axiom-md p-4 text-[13px] leading-relaxed text-[var(--watch-text)]"
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeMarkdownHtml(
+                    marked.parse(fileText, { gfm: true, breaks: false, async: false }) as string,
+                  ),
+                }}
+              />
+            ) : (
+              <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-[1.45] text-[var(--watch-text)]">
+                {fileText}
+              </pre>
+            )}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ── diff view ───────────────────────────────────────────────────────────────
+
+function DiffView({ diffResp, loading }: { diffResp: DiffResponse | null; loading: boolean }) {
+  const computed = useMemo<Change[] | null>(() => {
+    if (!diffResp || !diffResp.ok) return null;
+    if (!diffResp.hasBefore || !diffResp.hasAfter) return null;
+    return diffLines(diffResp.before || '', diffResp.after || '');
+  }, [diffResp]);
+
+  if (loading) {
+    return <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">loading diff…</div>;
+  }
+  if (!diffResp) return null;
+  if (!diffResp.ok) {
+    return <div className="px-3 py-2 text-xs text-red-300">diff error: {diffResp.error}</div>;
+  }
+  if (!diffResp.hasBefore && diffResp.hasAfter) {
+    return (
+      <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">
+        no previous snapshot for this file yet — the watcher captured the first version on its most recent change. Wait for the next edit and the diff will populate here.
+      </div>
+    );
+  }
+  if (!diffResp.hasAfter && diffResp.hasBefore) {
+    return (
+      <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">
+        file was deleted. Last captured contents:
+        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-rose-900/20 p-2 font-mono text-[11px] text-rose-200">
+          {diffResp.before}
+        </pre>
+      </div>
+    );
+  }
+  if (!computed) {
+    return <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">no diff available.</div>;
+  }
+  if (computed.length === 1 && !computed[0].added && !computed[0].removed) {
+    return <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">no changes since the previous snapshot.</div>;
+  }
+
+  let added = 0;
+  let removed = 0;
+  for (const part of computed) {
+    if (!part.value) continue;
+    const lines = (part.value.match(/\n/g) || []).length || 1;
+    if (part.added) added += lines;
+    else if (part.removed) removed += lines;
+  }
+
+  return (
+    <div className="font-mono text-[11px] leading-[1.5]">
+      <div className="border-b border-[var(--watch-panel-border)] bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-[var(--watch-text-muted)]">
+        <span className="text-emerald-300">+{added}</span>
+        <span className="mx-2">/</span>
+        <span className="text-rose-300">-{removed}</span>
+        <span className="ml-3">vs. previous snapshot</span>
+      </div>
+      <div className="px-0 py-0">
+        {computed.map((part, i) => (
+          <DiffPart key={i} part={part} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DiffPart({ part }: { part: Change }) {
+  if (!part.value) return null;
+  const lines = part.value.split('\n');
+  // diffLines often leaves a trailing "" because of the terminal newline.
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  const bg = part.added ? 'bg-emerald-900/30' : part.removed ? 'bg-rose-900/30' : '';
+  const fg = part.added ? 'text-emerald-200' : part.removed ? 'text-rose-200' : 'text-[var(--watch-text-muted)]';
+  const marker = part.added ? '+' : part.removed ? '-' : ' ';
+  return (
+    <>
+      {lines.map((line, j) => (
+        <div key={j} className={`flex ${bg}`}>
+          <span className={`w-6 shrink-0 select-none px-2 text-right ${fg}`}>{marker}</span>
+          <span className={`min-w-0 flex-1 whitespace-pre-wrap break-words pr-3 ${fg}`}>{line || ' '}</span>
+        </div>
+      ))}
+    </>
+  );
 }
