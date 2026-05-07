@@ -23,5 +23,16 @@ module.exports = {
         WATCH_TELEGRAM_INTERVAL_MS: '60000',
       },
     },
+    {
+      name: 'clawnux-axiom-ceo-bot',
+      cwd: '/opt/watcher',
+      env_file: '/opt/watcher/.env.local',
+      script: 'npm',
+      args: 'run axiom-ceo:bot',
+      env: {
+        NODE_ENV: 'production',
+        WATCH_URL: 'http://127.0.0.1:3012',
+      },
+    },
   ],
 };

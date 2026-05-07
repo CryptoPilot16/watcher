@@ -83,6 +83,20 @@ npm run dev
   - logout route for clearing browser access
 - Mobile-friendly layout across landing page, dashboard, and office view
 
+## AXIOM Office — 51-agent operations floor (showcase)
+
+A second tab at `/axiom` runs a separate 3D office staffed by 51 AI agents — a CEO, 10 managers, and 40 coders, laid out in 10 cubicle compartments around a central CEO podium. Built as a generic startup-org showcase of how to dispatch agent work from a 3D operator surface.
+
+- Click any avatar → opens a per-agent chat box with persistent transcript (24h retention, in-thread reply history, clear button, 32k char message limit)
+- CEO + managers run on **OpenAI Codex (gpt-5.5) in `/goal` mode** — autonomous, workspace-write sandbox in the project directory; they don't stop until the goal is done
+- Coders run on **Claude Code** with a sonnet/haiku/opus rotation, full Read/Glob/Grep/Write/Edit/Bash tooling, `acceptEdits` permission mode (root-friendly)
+- Persistent per-agent sessions: claude `--session-id` / `--resume` and codex `exec resume <thread-id>`. Stale-session fallback retries on a fresh session if a resume fails
+- Live state polling: when you send a directive, the agent's avatar walks to its desk, sits down, and a progress bar ticks above its head until the call completes; auto-decays back to idle after 30 seconds
+- A `/tasks` tab shows the full live feed of every directive across the floor with role filters (CEO / manager / coder), reply transcripts, and timestamps, auto-refreshed every 5 seconds
+- Department names default to a generic startup org (Platform, Frontend, Backend, Data, Infra, Security, ML, Mobile, Growth, Research) and can be overridden by setting `NEXT_PUBLIC_AXIOM_DEPARTMENTS` (comma-separated, exactly 10 names)
+- Project root for agent work defaults to `/opt/axiom`; override via `WATCH_AXIOM_PROJECT_DIR`. Mailbox / session state lives at `/var/lib/watcher/axiom-mailbox` (override via `WATCH_AXIOM_MAILBOX_DIR`)
+- Per-call timeout configurable via `WATCH_AXIOM_CLAUDE_TIMEOUT_MS` (defaults to 600000 = 10 minutes)
+
 ## Main surfaces
 
 ### App routes
@@ -90,6 +104,8 @@ npm run dev
 - `/` — redirects to `/watch`
 - `/login` — password gate for the dashboard
 - `/watch` — authenticated operations dashboard
+- `/axiom` — authenticated 51-agent AXIOM Office showcase floor
+- `/tasks` — authenticated live feed of directives + agent replies across the AXIOM floor
 - `/docs` — authenticated in-app reference
 - `/office-preview` — public sanitized office visualization
 - `/office-preview?debug=1` — public DOM debug HUD
@@ -100,7 +116,10 @@ npm run dev
 - `/api/auth/logout` — clears the browser session cookie
 - `/api/watch` — JSON snapshot of the current Watcher state
 - `/api/watch/faults/clear` — clears stale run/session fault banners
-- `/api/team-office/instruct` — injects instructions into the bound lane session
+- `/api/team-office/instruct` — injects instructions into the bound lane session (or, for AXIOM session keys, dispatches to claude / codex with persistent sessions)
+- `/api/axiom/state` — live status of every active AXIOM agent (running / recent / error) with progress estimates
+- `/api/axiom/transcript?sessionKey=...` — fetch (GET) or clear (DELETE) the per-agent chat transcript with 24h auto-purge
+- `/api/axiom/tasks` — JSON feed of every AXIOM directive ever sent, role-tagged, sorted newest-first
 - `/api/watch-telegram` — Telegram mirror sync endpoint
 - `/api/watch-telegram/init` — forces a fresh Telegram summary message
 

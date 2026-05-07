@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Billboard, ContactShadows, Float, OrbitControls, Outlines, RoundedBox, useAnimations, useGLTF } from '@react-three/drei';
 import { useLoader } from '@react-three/fiber';
@@ -999,6 +999,14 @@ const CHARACTER_MODELS = [
 CHARACTER_MODELS.forEach((p) => { try { (useGLTF as unknown as { preload: (p: string) => void }).preload(p); } catch {} });
 
 function modelPathForTopic(topic: TeamTopic): string {
+  // AXIOM roles take priority — keep CEO/managers/coders visually distinct
+  const role = (topic.configured.role || '').toLowerCase();
+  if (role === 'ceo') return '/models/chars/Barbarian.glb';
+  if (role === 'manager') return '/models/chars/Mage.glb';
+  if (role === 'coder' || role === 'generic_coder') {
+    const seed = hashLabel(topic.topicId);
+    return ['/models/chars/Knight.glb', '/models/chars/Rogue.glb', '/models/chars/Rogue_Hooded.glb'][seed % 3];
+  }
   if (isCloneTopic(topic)) return '/models/chars/Rogue_Hooded.glb';
   if (isProjectDeskTopic(topic)) return '/models/chars/Mage.glb';
   if (isGeneralTopic(topic)) return '/models/chars/Rogue.glb';
@@ -1142,8 +1150,9 @@ function VoxelObj(props: { base: string; position?: [number, number, number]; ro
   );
 }
 
-function VoxelOfficeScene() {
+function VoxelOfficeScene({ layoutVariant = 'default', departmentNames }: { layoutVariant?: LayoutVariant; departmentNames?: string[] }) {
   const S = 0.95;
+  if (layoutVariant === 'axiom') return <AxiomVoxelOfficeScene departmentNames={departmentNames} />;
   return (
     <>
       {/* Uniform mid-grey floor — matches pilot desk body */}
@@ -1200,6 +1209,289 @@ function VoxelOfficeScene() {
       <VoxelObj base="Office_Misc_Plant_03" position={[-11, 0, -4.5]} scale={S * 1.1} />
       <VoxelObj base="Office_Misc_Plant_02" position={[-11, 0, 5.5]} scale={S} />
       <VoxelObj base="Office_Misc_Plant_01" position={[10.8, 0, 9]} scale={S} />
+    </>
+  );
+}
+
+/**
+ * AXIOM Office scene — bigger room (38m × 32m) with 10 visible team compartments.
+ * Geometry mirrors buildAxiomDeskLayouts: 5 teams in a front row at z=+9.5, 5 in a back row
+ * at z=-0.5, with the CEO centered between them. Each team gets a U-shaped low partition
+ * (cubicle wall) that frames the manager + 2×2 coder block on three sides.
+ */
+function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[] }) {
+  const S = 0.95;
+  const FLOOR_W = 42;
+  const FLOOR_D = 34;
+  const FLOOR_OFFSET_Z = 4.5; // center floor between back row (-3) and front edge (+12)
+  const COL_SPACING = 6.4;
+  const COL_X_OFFSET = -((5 - 1) * COL_SPACING) / 2;
+  const FRONT_ROW_Z = 9.5;
+  const BACK_ROW_Z = -0.5;
+  const PARTITION_COLOR = '#7a8088';
+  const PARTITION_TRIM = '#d6bd6f'; // warm gold trim — Watcher accent
+
+  // One U-shaped cubicle partition per team cluster, with optional department label above the far wall.
+  const renderPartition = (cx: number, cz: number, teamRow: 0 | 1, label?: string) => {
+    // Cluster occupies x ∈ [cx-3.0, cx+3.0]; depth ≈ 4.6m.
+    // Front-row teams have the open side facing the CEO (toward -z); back-row open toward +z.
+    const halfW = 3.0;
+    const farOffset = 2.9;
+    const back = teamRow === 0 ? cz + farOffset : cz - farOffset; // far side from CEO
+    const left = cx - halfW;
+    const right = cx + halfW;
+    const wallH = 1.1;
+    const wallY = wallH / 2;
+    const thickness = 0.08;
+    const sideLen = 5.0;
+    const sideZ = teamRow === 0 ? cz + 0.55 : cz - 0.55;
+    const labelY = wallH + 0.7;
+    const labelZ = teamRow === 0 ? back + 0.05 : back - 0.05;
+    // Accent rug colour rotates per column so the floor reads as ten
+    // distinct cubicles, not one repeated pattern.
+    const rugPalette = ['#3a4a3a', '#3a3a4a', '#4a3a3a', '#3a4a4a', '#4a4a3a'];
+    const rugColor = rugPalette[(Math.round((cx - COL_X_OFFSET) / COL_SPACING) + (teamRow === 0 ? 0 : 2)) % rugPalette.length];
+    return (
+      <group key={`partition-${cx.toFixed(2)}-${cz.toFixed(2)}`}>
+        {/* Cubicle rug — colored accent under the desk cluster */}
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[cx, 0.003, sideZ]}
+          receiveShadow
+        >
+          <planeGeometry args={[halfW * 2 - 0.4, sideLen - 0.6]} />
+          <meshStandardMaterial color={rugColor} roughness={0.95} />
+        </mesh>
+        {/* far wall (full width) */}
+        <mesh position={[cx, wallY, back]} castShadow receiveShadow>
+          <boxGeometry args={[halfW * 2, wallH, thickness]} />
+          <meshStandardMaterial color={PARTITION_COLOR} roughness={0.9} />
+        </mesh>
+        {/* trim cap on far wall */}
+        <mesh position={[cx, wallH + 0.04, back]}>
+          <boxGeometry args={[halfW * 2 + 0.04, 0.06, thickness + 0.04]} />
+          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+        </mesh>
+        {/* left side wall */}
+        <mesh position={[left, wallY, sideZ]} castShadow receiveShadow>
+          <boxGeometry args={[thickness, wallH, sideLen]} />
+          <meshStandardMaterial color={PARTITION_COLOR} roughness={0.9} />
+        </mesh>
+        <mesh position={[left, wallH + 0.04, sideZ]}>
+          <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
+          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+        </mesh>
+        {/* right side wall */}
+        <mesh position={[right, wallY, sideZ]} castShadow receiveShadow>
+          <boxGeometry args={[thickness, wallH, sideLen]} />
+          <meshStandardMaterial color={PARTITION_COLOR} roughness={0.9} />
+        </mesh>
+        <mesh position={[right, wallH + 0.04, sideZ]}>
+          <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
+          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+        </mesh>
+        {/* Department name banner above the far wall (visible from the open side) */}
+        {label && (
+          <FloatingNameTag
+            name={label}
+            color="#f6c87a"
+            position={[cx, labelY, labelZ]}
+            visible
+          />
+        )}
+      </group>
+    );
+  };
+
+  // CEO platform — slightly raised carpet pad in the middle aisle.
+  const ceoZ = (FRONT_ROW_Z + BACK_ROW_Z) / 2 + 0.2;
+
+  return (
+    <>
+      {/* Bigger floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, FLOOR_OFFSET_Z]} receiveShadow>
+        <planeGeometry args={[FLOOR_W, FLOOR_D]} />
+        <meshStandardMaterial color="#b8bcc2" roughness={0.9} />
+      </mesh>
+
+      {/* Central aisle carpet — runs across the width between team rows */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, ceoZ]} receiveShadow>
+        <planeGeometry args={[FLOOR_W - 4, 5.6]} />
+        <meshStandardMaterial color="#6e7379" roughness={0.95} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, ceoZ]} receiveShadow>
+        <planeGeometry args={[FLOOR_W - 4.6, 5.0]} />
+        <meshStandardMaterial color="#838890" roughness={0.95} />
+      </mesh>
+
+      {/* CEO podium pad */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, ceoZ]} receiveShadow>
+        <circleGeometry args={[2.4, 48]} />
+        <meshStandardMaterial color="#9aa0a8" roughness={0.92} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, ceoZ]} receiveShadow>
+        <ringGeometry args={[2.2, 2.4, 48]} />
+        <meshStandardMaterial color="#5d6168" roughness={0.92} />
+      </mesh>
+
+      {/* Walls — back, left, right, front */}
+      <mesh position={[0, 2, FLOOR_OFFSET_Z - FLOOR_D / 2]}>
+        <boxGeometry args={[FLOOR_W, 4, 0.1]} />
+        <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
+      </mesh>
+      <mesh position={[0, 2, FLOOR_OFFSET_Z + FLOOR_D / 2]}>
+        <boxGeometry args={[FLOOR_W, 4, 0.1]} />
+        <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
+      </mesh>
+      <mesh position={[-FLOOR_W / 2, 2, FLOOR_OFFSET_Z]}>
+        <boxGeometry args={[0.1, 4, FLOOR_D]} />
+        <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
+      </mesh>
+      <mesh position={[FLOOR_W / 2, 2, FLOOR_OFFSET_Z]}>
+        <boxGeometry args={[0.1, 4, FLOOR_D]} />
+        <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
+      </mesh>
+
+      {/* 10 cubicle partitions — one per team. Department names: front row 0..4, back row 5..9. */}
+      {Array.from({ length: 5 }).map((_, col) => {
+        const cx = COL_X_OFFSET + col * COL_SPACING;
+        const frontLabel = departmentNames?.[col];
+        const backLabel = departmentNames?.[col + 5];
+        return (
+          <Fragment key={`team-row-${col}`}>
+            {renderPartition(cx, FRONT_ROW_Z, 0, frontLabel)}
+            {renderPartition(cx, BACK_ROW_Z, 1, backLabel)}
+          </Fragment>
+        );
+      })}
+
+      {/* Back wall fixtures — 4 frames spread evenly, mounted on the INSIDE face,
+          rotated 180° so the painted/cork side faces the room. */}
+      {(() => {
+        const wallInsideZ = FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.08;
+        const fixtures: Array<{ base: string; x: number }> = [
+          { base: 'Office_Misc_Wall_Corkboard_02', x: -10.5 },
+          { base: 'Office_Misc_Whiteboard_02', x: -3.5 },
+          { base: 'Office_Misc_Whiteboard_02', x: 3.5 },
+          { base: 'Office_Misc_Wall_Corkboard_02', x: 10.5 },
+        ];
+        return fixtures.map((f, i) => (
+          <group
+            key={`back-wall-fixture-${i}`}
+            position={[f.x, 2.0, wallInsideZ]}
+            rotation={[0, Math.PI, 0]}
+            scale={[S * 1.25, S * 1.25, S * 1.25]}
+          >
+            <VoxelObj base={f.base} />
+          </group>
+        ));
+      })()}
+
+      {/* Front wall art — corkboards facing the room (inside face of front wall) */}
+      <group
+        position={[-8, 2.0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 0.08]}
+        rotation={[0, 0, 0]}
+        scale={[S * 1.2, S * 1.2, S * 1.2]}
+      >
+        <VoxelObj base="Office_Misc_Wall_Corkboard_02" />
+      </group>
+      <group
+        position={[8, 2.0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 0.08]}
+        rotation={[0, 0, 0]}
+        scale={[S * 1.2, S * 1.2, S * 1.2]}
+      >
+        <VoxelObj base="Office_Misc_Whiteboard_02" />
+      </group>
+
+      {/* CEO lounge — two couches flanking a coffee table, near the back wall behind the podium.
+          Couches face inward toward the aisle so it reads as a meeting nook. */}
+      <VoxelObj
+        base="Office_Couch_Black_01"
+        position={[-3.2, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        rotationY={Math.PI / 2}
+        scale={S * 1.1}
+      />
+      <VoxelObj
+        base="Office_Couch_White_01"
+        position={[3.2, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        rotationY={-Math.PI / 2}
+        scale={S * 1.1}
+      />
+      <VoxelObj
+        base="Office_Table_Coffee_01_Black"
+        position={[0, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        scale={S * 1.0}
+      />
+      <VoxelObj
+        base="Office_Misc_Coffee_Mug"
+        position={[-0.3, 0.5, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        scale={S * 0.9}
+      />
+      <VoxelObj
+        base="Office_Misc_Coffee_Mug"
+        position={[0.3, 0.5, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        scale={S * 0.9}
+      />
+
+      {/* Lounge accent rug under the coffee table */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.004, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        receiveShadow
+      >
+        <planeGeometry args={[8.5, 4.8]} />
+        <meshStandardMaterial color="#3a2f22" roughness={0.95} />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.005, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
+        receiveShadow
+      >
+        <planeGeometry args={[8.0, 4.3]} />
+        <meshStandardMaterial color="#5a4a30" roughness={0.92} />
+      </mesh>
+
+      {/* Plants in corners — taller varieties to feel like a real floor */}
+      <VoxelObj base="Office_Misc_Plant_03" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.4} />
+      <VoxelObj base="Office_Misc_Plant_03" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.4} />
+      <VoxelObj base="Office_Misc_Plant_02" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.3} />
+      <VoxelObj base="Office_Misc_Plant_01" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.3} />
+
+      {/* Aisle plants — flank the central carpet so the CEO axis feels framed */}
+      <VoxelObj base="Office_Misc_Plant_02" position={[-FLOOR_W / 2 + 1.8, 0, ceoZ - 3.6]} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Plant_02" position={[FLOOR_W / 2 - 1.8, 0, ceoZ - 3.6]} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Plant_01" position={[-FLOOR_W / 2 + 1.8, 0, ceoZ + 3.6]} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Plant_01" position={[FLOOR_W / 2 - 1.8, 0, ceoZ + 3.6]} scale={S * 1.1} />
+
+      {/* Filing cabinets along the back wall, between the wall fixtures */}
+      <VoxelObj
+        base="Office_Misc_Cabinet_01"
+        position={[-7, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
+        scale={S * 1.1}
+      />
+      <VoxelObj
+        base="Office_Misc_Cabinet_01"
+        position={[0, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
+        scale={S * 1.1}
+      />
+      <VoxelObj
+        base="Office_Misc_Cabinet_01"
+        position={[7, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
+        scale={S * 1.1}
+      />
+
+      {/* Side doors */}
+      <VoxelObj base="Office_Misc_Door_01" position={[-FLOOR_W / 2 + 0.3, 0, ceoZ]} rotationY={Math.PI / 2} scale={S * 1.2} />
+      <VoxelObj base="Office_Misc_Door_01" position={[FLOOR_W / 2 - 0.3, 0, ceoZ]} rotationY={-Math.PI / 2} scale={S * 1.2} />
+
+      {/* Warm accent lights — gold pin-spots on the CEO podium and lounge */}
+      <pointLight position={[0, 4.2, ceoZ]} intensity={0.55} distance={9} decay={1.6} color="#f6c87a" />
+      <pointLight position={[0, 3.6, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]} intensity={0.45} distance={7} decay={1.6} color="#f6c87a" />
+      {/* Cool fill lights along the aisle so the floor reads end-to-end */}
+      <pointLight position={[-FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[-FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
     </>
   );
 }
@@ -2237,7 +2529,7 @@ function WindowBlindsFallback() {
   );
 }
 
-function OfficeShell({ manifest, sceneStyle = 'dungeon' }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle }) {
+function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle; layoutVariant?: LayoutVariant; departmentNames?: string[] }) {
   return (
     <>
       {sceneStyle === 'dungeon' && (
@@ -2247,9 +2539,9 @@ function OfficeShell({ manifest, sceneStyle = 'dungeon' }: { manifest?: OfficeAs
           <MedievalDecorations />
         </>
       )}
-      {sceneStyle === 'office' && <VoxelOfficeScene />}
+      {sceneStyle === 'office' && <VoxelOfficeScene layoutVariant={layoutVariant} departmentNames={departmentNames} />}
 
-      {sceneStyle === 'dungeon' && (
+      {sceneStyle === 'dungeon' && layoutVariant !== 'axiom' && (
         <mesh position={[0, 0.015, 4.45]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[11.4, 2.2]} />
           <meshStandardMaterial color="#dee3ea" roughness={0.98} />
@@ -2290,6 +2582,124 @@ function isGeneralTopic(topic: TeamTopic) {
   const r = topic.configured?.role?.toLowerCase() ?? '';
   return (d.includes('general') || r.includes('dispatch') || r.includes('coordination'))
     && !projectBadgeSpec(topic) && !isAssistantTopic(topic) && !isCloneTopic(topic) && !isHousekeepingTopic(topic) && !isCoderTopic(topic);
+}
+
+type LayoutVariant = 'default' | 'axiom';
+
+/**
+ * AXIOM Office layout — 1 CEO + 10 teams of 5 (1 manager + 4 coders).
+ * Each team is a clearly-separated cluster: manager at the front, 4 coders in a 2×2 block behind.
+ * Two rows of 5 teams (5 teams up front, 5 teams in back), big aisle between them so the
+ * manager rows are obvious. CEO sits centered between the two rows of teams.
+ */
+function buildAxiomDeskLayouts(topics: TeamTopic[]) {
+  const ceo = topics.find((t) => (t.configured.role || '').toLowerCase() === 'ceo') || topics[0];
+  const managers = topics.filter((t) => (t.configured.role || '').toLowerCase() === 'manager');
+  const coders = topics.filter((t) => (t.configured.role || '').toLowerCase() === 'coder');
+
+  // Team-cluster geometry (one cluster = manager + 2×2 coders)
+  const COL_SPACING = 6.4;   // distance between adjacent teams in a row
+  const TEAM_ROW_DEPTH = 4.0; // depth of one team cluster (front-to-back)
+  const ROW_GAP = 6.0;        // gap between front row of teams and back row of teams (CEO sits here)
+  const FRONT_TEAMS = 5;
+  const BACK_TEAMS = 5;
+
+  // Center of front row of teams = z=+8, back row = z=-2 (with CEO between)
+  const FRONT_ROW_Z = 9.5;
+  const BACK_ROW_Z = FRONT_ROW_Z - (TEAM_ROW_DEPTH + ROW_GAP); // ~ -0.5
+  const COL_X_OFFSET = -((FRONT_TEAMS - 1) * COL_SPACING) / 2;
+
+  const layouts: DeskLayout[] = [];
+
+  // CEO desk in the center between team rows, slightly forward
+  if (ceo) {
+    const ceoZ = (FRONT_ROW_Z + BACK_ROW_Z) / 2 + 0.2; // ~ +4.6
+    const ceoPos: [number, number, number] = [0, 0, ceoZ];
+    layouts.push({
+      topic: ceo,
+      position: ceoPos,
+      rotationY: 0,
+      workerDeskPosition: [0, 0, ceoZ - 1.2],
+      standbyPosition: [1.6, 0, ceoZ],
+      taskTablePosition: [0, 0, ceoZ - 1.2],
+      taskTableFacing: 0,
+      deliveryPosition: [0, 0, ceoZ - 0.8],
+      focusPoint: [0, 0.92, ceoZ],
+      deskSeatPosition: [0, 0, ceoZ + 0.5],
+      deskStandPosition: [0, 0, ceoZ + 0.9],
+    });
+  }
+
+  // Place one team cluster: manager at the FRONT of the cluster (closer to CEO),
+  // facing the CEO; 4 coders sit BEHIND the manager (away from CEO) in a 2×2 block,
+  // facing the manager (toward CEO).
+  // teamRow = 0 → front row of teams (closer to camera, larger z);  1 → back row of teams
+  const placeTeam = (teamIndex: number, manager: TeamTopic | undefined, teamCoders: TeamTopic[]) => {
+    const colIndex = teamIndex % FRONT_TEAMS; // 0..4
+    const teamRow = Math.floor(teamIndex / FRONT_TEAMS); // 0 = front, 1 = back
+    const teamCenterX = COL_X_OFFSET + colIndex * COL_SPACING;
+    const teamCenterZ = teamRow === 0 ? FRONT_ROW_Z : BACK_ROW_Z;
+
+    // Front-row manager (z>CEO_Z) faces CEO → looking toward -z → rotationY = 0.
+    // Back-row manager (z<CEO_Z) faces CEO → looking toward +z → rotationY = π.
+    const managerRotation = teamRow === 0 ? 0 : Math.PI;
+    // Coders sit behind manager (away from CEO) and face the manager (toward CEO).
+    const coderRotation = teamRow === 0 ? Math.PI : 0;
+
+    // Manager at the side of the cluster closest to CEO.
+    const managerZ = teamRow === 0 ? teamCenterZ - 1.0 : teamCenterZ + 1.0;
+    if (manager) {
+      const facingDz = teamRow === 0 ? -0.6 : 0.6; // direction manager is facing (toward CEO)
+      layouts.push({
+        topic: manager,
+        position: [teamCenterX, 0, managerZ],
+        rotationY: managerRotation,
+        workerDeskPosition: [teamCenterX, 0, managerZ + facingDz],
+        standbyPosition: [teamCenterX + 1.2, 0, managerZ],
+        taskTablePosition: [teamCenterX, 0, managerZ + facingDz],
+        taskTableFacing: 0,
+        deliveryPosition: [teamCenterX, 0, managerZ + facingDz * 2],
+        focusPoint: [teamCenterX, 0.92, managerZ + 0.12],
+        deskSeatPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 0.8],
+        deskStandPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 1.46],
+      });
+    }
+
+    // 4 coders in a 2×2 block BEHIND the manager (away from CEO).
+    const coderBaseZ = teamRow === 0 ? teamCenterZ + 0.7 : teamCenterZ - 0.7;
+    const coderDz = teamRow === 0 ? 1.5 : -1.5; // step further away from CEO
+    const coderOffsets: Array<[number, number]> = [
+      [-1.5, 0],     // closer-to-manager left
+      [+1.5, 0],     // closer-to-manager right
+      [-1.5, coderDz],  // back row left
+      [+1.5, coderDz],  // back row right
+    ];
+    teamCoders.slice(0, 4).forEach((coder, i) => {
+      const [dx, dz] = coderOffsets[i];
+      const x = teamCenterX + dx;
+      const z = coderBaseZ + dz;
+      const rotationY = coderRotation;
+      layouts.push({
+        topic: coder,
+        position: [x, 0, z],
+        rotationY,
+        workerDeskPosition: [x, 0, z + (rotationY === Math.PI ? -0.6 : 0.6)],
+        standbyPosition: [x + 0.9, 0, z],
+        taskTablePosition: [x, 0, z + (rotationY === Math.PI ? -0.6 : 0.6)],
+        taskTableFacing: 0,
+        deliveryPosition: [x, 0, z + (rotationY === Math.PI ? -1.2 : 1.2)],
+        focusPoint: [x, 0.92, z + 0.12],
+        deskSeatPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.48 : -0.48)],
+        deskStandPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.88 : -0.88)],
+      });
+    });
+  };
+
+  for (let t = 0; t < FRONT_TEAMS + BACK_TEAMS; t++) {
+    placeTeam(t, managers[t], coders.slice(t * 4, (t + 1) * 4));
+  }
+
+  return layouts;
 }
 
 function buildDeskLayouts(topics: TeamTopic[]) {
@@ -2401,7 +2811,7 @@ function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) 
 type SceneStyle = 'dungeon' | 'office';
 type DisciplineDemoMode = 'off' | DisciplineAttackMode;
 
-function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', debugRef, onHover, onLeave, onSelect, onDisciplineSettled }: {
+function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopicId, selectedTopicId, disciplineDemoMode, manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames, debugRef, onHover, onLeave, onSelect, onDisciplineSettled }: {
   topics: TeamTopic[];
   groupId?: string;
   demo?: boolean;
@@ -2411,13 +2821,18 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
   disciplineDemoMode?: DisciplineDemoMode;
   manifest?: OfficeAssetManifestOverride;
   sceneStyle?: SceneStyle;
+  layoutVariant?: LayoutVariant;
+  departmentNames?: string[];
   debugRef?: { current: Map<string, TopicDebugSnapshot> };
   onHover: (topicId: string) => void;
   onLeave: (topicId: string) => void;
   onSelect: (topicId: string) => void;
   onDisciplineSettled?: () => void;
 }) {
-  const deskLayouts = useMemo<DeskLayout[]>(() => buildDeskLayouts(topics), [topics]);
+  const deskLayouts = useMemo<DeskLayout[]>(
+    () => (layoutVariant === 'axiom' ? buildAxiomDeskLayouts(topics) : buildDeskLayouts(topics)),
+    [topics, layoutVariant],
+  );
   const disciplineContactRef = useRef(false);
   const avatarPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const manualDisciplineMode = disciplineDemoMode && disciplineDemoMode !== 'off' ? disciplineDemoMode : null;
@@ -2496,10 +2911,14 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
       <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" />
       <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
-      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} />
+      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} layoutVariant={layoutVariant} departmentNames={departmentNames} />
 
-      <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.45]} fallback={<HubFallback sceneStyle={sceneStyle} />} />
-      <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.45]} visible />
+      {layoutVariant !== 'axiom' && (
+        <>
+          <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.45]} fallback={<HubFallback sceneStyle={sceneStyle} />} />
+          <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.45]} visible />
+        </>
+      )}
 
       {deskLayouts.map((desk, index) => {
         const emphasized = hoveredTopicId === desk.topic.topicId || selectedTopicId === desk.topic.topicId;
@@ -2571,13 +2990,14 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
   );
 }
 
-function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotion, demo = false }: {
+function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotion, demo = false, layoutVariant = 'default' }: {
   controlsRef: RefObject<OrbitControlsImpl>;
   mode: CameraMode;
   focusTarget: [number, number, number] | null;
   isMobile: boolean;
   reducedMotion: boolean;
   demo?: boolean;
+  layoutVariant?: LayoutVariant;
 }) {
   const { camera } = useThree();
   const targetVec = useRef(new THREE.Vector3());
@@ -2602,14 +3022,20 @@ function CameraDirector({ controlsRef, mode, focusTarget, isMobile, reducedMotio
 
     if (mode === 'free' || !animating.current) return;
 
-    const overviewTarget: [number, number, number] = demo
-      ? (isMobile ? [0, 0.95, 1.45] : [0, 1.1, 1.75])
-      : (isMobile ? [0, 1.05, 1.35] : [0, 1.15, 1.9]);
+    const overviewTarget: [number, number, number] = layoutVariant === 'axiom'
+      ? [0, 1.0, 4.0]
+      : demo
+        ? (isMobile ? [0, 0.95, 1.45] : [0, 1.1, 1.75])
+        : (isMobile ? [0, 1.05, 1.35] : [0, 1.15, 1.9]);
     const desiredTarget = mode === 'focus' && focusTarget ? focusTarget : overviewTarget;
-    const focusOffset: [number, number, number] = isMobile ? [3.2, 2.0, 3.6] : [3.8, 2.3, 4.3];
-    const overviewOffset: [number, number, number] = demo
-      ? (isMobile ? [0, 5.2, 10.4] : [0, 6.1, 12.2])
-      : (isMobile ? [0, 7.4, 14.5] : [0, 7.2, 14.6]);
+    const focusOffset: [number, number, number] = layoutVariant === 'axiom'
+      ? (isMobile ? [3.6, 2.4, 4.0] : [4.2, 2.8, 4.8])
+      : (isMobile ? [3.2, 2.0, 3.6] : [3.8, 2.3, 4.3]);
+    const overviewOffset: [number, number, number] = layoutVariant === 'axiom'
+      ? (isMobile ? [0, 16, 22] : [0, 18, 24])
+      : demo
+        ? (isMobile ? [0, 5.2, 10.4] : [0, 6.1, 12.2])
+        : (isMobile ? [0, 7.4, 14.5] : [0, 7.2, 14.6]);
 
     targetVec.current.set(...desiredTarget);
     if (mode === 'focus' && focusTarget) {
@@ -2669,21 +3095,70 @@ function topicContextLabel(topic: TeamTopic) {
   return typeof percent === 'number' ? `${percent}%` : 'n/a';
 }
 
+type TranscriptEntry = {
+  ts: string;
+  message: string;
+  reply?: string;
+};
+
 function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
 
   const agentId = topic.configured.agent || '';
   const sessionKey = topic.sessionKey || '';
   const threadId = topic.telegram.threadId;
   const canSend = Boolean(agentId && sessionKey && text.trim() && !sending);
+  const isAxiom = sessionKey.startsWith('axiom:');
+  const charLimit = isAxiom ? 32_000 : 4_000;
+  const overLimit = text.length > charLimit;
+
+  // Load transcript when topic changes (AXIOM only — openclaw doesn't expose transcripts here)
+  useEffect(() => {
+    setStatus(null);
+    setText('');
+    setPendingMessage(null);
+    if (!isAxiom || !sessionKey) {
+      setTranscript([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/axiom/transcript?sessionKey=${encodeURIComponent(sessionKey)}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        const entries = Array.isArray(json?.entries)
+          ? json.entries.map((e: any) => ({ ts: e.ts, message: e.message, reply: e.reply }))
+          : [];
+        setTranscript(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setTranscript([]);
+      });
+    return () => { cancelled = true; };
+  }, [sessionKey, isAxiom]);
+
+  // Auto-scroll transcript on update
+  useEffect(() => {
+    const el = transcriptScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [transcript.length, pendingMessage, sending]);
 
   async function submit() {
     const message = text.trim();
     if (!agentId || !message || sending) return;
+    if (message.length > charLimit) {
+      setStatus({ kind: 'err', message: `too long: ${message.length}/${charLimit} chars` });
+      return;
+    }
     setSending(true);
     setStatus(null);
+    setPendingMessage(message);
     try {
       const res = await fetch('/api/team-office/instruct', {
         method: 'POST',
@@ -2691,27 +3166,125 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
         body: JSON.stringify({ agentId, sessionKey, groupId, threadId, message }),
       });
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      if (!res.ok || !json.ok) {
+        if (isAxiom && typeof json.reply === 'string' && json.reply.trim()) {
+          setTranscript((prev) => [...prev, { ts: new Date().toISOString(), message, reply: json.reply.trim() }]);
+        }
+        throw new Error(json.error || json.detail || `HTTP ${res.status}`);
+      }
       setText('');
-      setStatus({
-        kind: 'ok',
-        message: json.mirrored ? 'sent · mirrored' : json.mirrorError ? 'sent · mirror failed' : 'sent',
-      });
+      let sentLabel: string;
+      if (json.mode === 'axiom-claude' || json.mode === 'axiom-codex') {
+        const ms = typeof json.durationMs === 'number' ? Math.round(json.durationMs / 100) / 10 : null;
+        const engine = json.engine || (json.mode === 'axiom-codex' ? 'codex' : 'claude');
+        const model = json.model ? ` ${json.model}` : '';
+        sentLabel = ms !== null ? `${engine}${model} · ${ms}s` : `${engine}${model}`;
+      } else if (json.mode === 'axiom-mailbox') {
+        sentLabel = 'sent';
+      } else {
+        sentLabel = json.mirrored ? 'sent · mirrored' : json.mirrorError ? 'sent · mirror failed' : 'sent';
+      }
+      setStatus({ kind: 'ok', message: sentLabel });
+      if (isAxiom) {
+        const reply = typeof json.reply === 'string' ? json.reply.trim() : '';
+        setTranscript((prev) => [...prev, { ts: new Date().toISOString(), message, reply }]);
+      }
     } catch (error: any) {
       setStatus({ kind: 'err', message: String(error?.message || error || 'send failed') });
     } finally {
       setSending(false);
+      setPendingMessage(null);
+    }
+  }
+
+  async function clearTranscript() {
+    if (!isAxiom || !sessionKey || clearing) return;
+    setClearing(true);
+    try {
+      await fetch(`/api/axiom/transcript?sessionKey=${encodeURIComponent(sessionKey)}`, { method: 'DELETE' });
+      setTranscript([]);
+      setStatus({ kind: 'ok', message: 'cleared · fresh session next message' });
+    } catch (error: any) {
+      setStatus({ kind: 'err', message: String(error?.message || error || 'clear failed') });
+    } finally {
+      setClearing(false);
     }
   }
 
   const disabledReason = !agentId ? 'no agent bound' : !sessionKey ? 'no session bound' : null;
+  const fmtTime = (ts: string) => {
+    try {
+      const d = new Date(ts);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${hh}:${mm}`;
+    } catch { return ''; }
+  };
 
   return (
     <div className="pointer-events-auto mt-3 border-t border-white/10 pt-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-white/50">instruct</div>
-      <div className="mt-1.5 flex items-end gap-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-white/50">
+          chat{isAxiom ? ` · ${transcript.length} turn${transcript.length === 1 ? '' : 's'} · 24h retention` : ''}
+        </div>
+        {isAxiom && transcript.length > 0 && (
+          <button
+            type="button"
+            onClick={clearTranscript}
+            disabled={clearing}
+            className="rounded border border-white/15 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] text-white/55 hover:border-white/30 hover:text-white/85 disabled:opacity-40"
+          >
+            {clearing ? 'clearing…' : 'clear'}
+          </button>
+        )}
+      </div>
+
+      {isAxiom && (transcript.length > 0 || pendingMessage) && (
+        <div ref={transcriptScrollRef} className="mt-2 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+          {transcript.map((entry, i) => (
+            <div key={`${entry.ts}-${i}`} className="space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 text-[9px] uppercase tracking-[0.18em] text-white/40">{fmtTime(entry.ts)}</span>
+                <div className="flex-1 rounded-md border border-white/10 bg-[rgba(255,255,255,0.03)] px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-[0.18em] text-white/45">you</div>
+                  <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-white/85">{entry.message}</div>
+                </div>
+              </div>
+              {entry.reply && (
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-[9px] uppercase tracking-[0.18em] text-white/40">·</span>
+                  <div className="flex-1 rounded-md border border-[rgba(125,211,252,0.25)] bg-[rgba(103,232,249,0.06)] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-[0.18em] text-[rgb(125,211,252)]">{topicDisplayLabel(topic)}</div>
+                    <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-white/90">{entry.reply}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {pendingMessage && (
+            <div className="space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 text-[9px] uppercase tracking-[0.18em] text-white/40">now</span>
+                <div className="flex-1 rounded-md border border-white/10 bg-[rgba(255,255,255,0.03)] px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-[0.18em] text-white/45">you</div>
+                  <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-white/85">{pendingMessage}</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 text-[9px] uppercase tracking-[0.18em] text-white/40">·</span>
+                <div className="flex-1 rounded-md border border-[rgba(125,211,252,0.25)] bg-[rgba(103,232,249,0.06)] px-2 py-1.5">
+                  <div className="text-[9px] uppercase tracking-[0.18em] text-[rgb(125,211,252)]">{topicDisplayLabel(topic)}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-white/60 italic">thinking…</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-end gap-2">
         <textarea
-          rows={2}
+          rows={3}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -2720,24 +3293,25 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
               submit();
             }
           }}
-          placeholder={disabledReason ? disabledReason : 'add instructions (⌘/Ctrl+Enter)'}
+          placeholder={disabledReason ? disabledReason : 'message this agent (⌘/Ctrl+Enter to send)'}
           disabled={Boolean(disabledReason) || sending}
-          className="min-h-[38px] flex-1 resize-none rounded-md border border-white/10 bg-[rgba(255,255,255,0.04)] px-2 py-1.5 text-xs leading-5 text-white/90 placeholder:text-white/35 focus:border-[rgba(103,232,249,0.45)] focus:outline-none disabled:opacity-50"
+          className={`min-h-[52px] flex-1 resize-y rounded-md border bg-[rgba(255,255,255,0.04)] px-2 py-1.5 text-xs leading-5 text-white/90 placeholder:text-white/35 focus:outline-none disabled:opacity-50 ${overLimit ? 'border-[#f87171] focus:border-[#f87171]' : 'border-white/10 focus:border-[rgba(103,232,249,0.45)]'}`}
         />
         <button
           type="button"
           onClick={submit}
-          disabled={!canSend}
+          disabled={!canSend || overLimit}
           className="shrink-0 rounded-md border border-[rgba(103,232,249,0.4)] bg-[rgba(103,232,249,0.14)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[rgb(103,232,249)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {sending ? 'sending' : 'send'}
+          {sending ? 'thinking…' : 'send'}
         </button>
       </div>
-      {status && (
-        <div className={`mt-1.5 text-[10px] uppercase tracking-[0.14em] ${status.kind === 'ok' ? 'text-[rgb(103,232,249)]' : 'text-[#f87171]'}`}>
-          {status.message}
-        </div>
-      )}
+      <div className="mt-1 flex items-center justify-between text-[9px] uppercase tracking-[0.16em] text-white/40">
+        <span>{text.length.toLocaleString()} / {charLimit.toLocaleString()} chars{overLimit ? ' · over limit' : ''}</span>
+        {status && (
+          <span className={status.kind === 'ok' ? 'text-[rgb(103,232,249)]' : 'text-[#f87171]'}>{status.message}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -2785,6 +3359,18 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <span>context</span>
           <span>{topicContextLabel(topic)}</span>
         </div>
+        {topic.configured.runtime && (
+          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+            <span>model</span>
+            <span className="text-white/85">{topic.configured.runtime}</span>
+          </div>
+        )}
+        {topic.configured.capabilities.length > 0 && (
+          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+            <span>capabilities</span>
+            <span className="truncate text-white/85">{topic.configured.capabilities.join(' · ')}</span>
+          </div>
+        )}
         {isHousekeepingTopic(topic) && (
           <div className="mt-3 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => onDisciplineDemo('punch')}
@@ -2803,7 +3389,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   }
 
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-10 w-[264px] rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md">
+    <div className="pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
@@ -2829,6 +3415,22 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           <div className="mt-1 text-[11px] text-white/85">{topicContextLabel(topic)}</div>
         </div>
       </div>
+      {(topic.configured.runtime || topic.configured.capabilities.length > 0) && (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.14em] text-white/55">
+          {topic.configured.runtime && (
+            <div>
+              <div>model</div>
+              <div className="mt-1 text-[11px] text-white/85">{topic.configured.runtime}</div>
+            </div>
+          )}
+          {topic.configured.capabilities.length > 0 && (
+            <div>
+              <div>capabilities</div>
+              <div className="mt-1 text-[11px] text-white/85">{topic.configured.capabilities.join(' · ')}</div>
+            </div>
+          )}
+        </div>
+      )}
       {isHousekeepingTopic(topic) && (
         <div className="mt-3 grid grid-cols-1 gap-2">
           <button type="button" onClick={() => onDisciplineDemo('punch')}
@@ -2974,7 +3576,7 @@ function SceneHud({ running, recent, mode, isMobile, onMode, sceneStyle, onStyle
   );
 }
 
-export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = false, debug = false }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride; demo?: boolean; debug?: boolean }) {
+export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = false, debug = false, layoutVariant = 'default', departmentNames }: { topics: TeamTopic[]; groupId?: string; assetManifest?: OfficeAssetManifestOverride; demo?: boolean; debug?: boolean; layoutVariant?: LayoutVariant; departmentNames?: string[] }) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const [fallback, setFallback] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -3072,7 +3674,10 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     preloadOfficeAssets(resolvedAssetManifest);
   }, [resolvedAssetManifest]);
 
-  const deskLayouts = useMemo(() => buildDeskLayouts(topics), [topics]);
+  const deskLayouts = useMemo(
+    () => (layoutVariant === 'axiom' ? buildAxiomDeskLayouts(topics) : buildDeskLayouts(topics)),
+    [topics, layoutVariant],
+  );
   const layoutById = useMemo(() => {
     const map = new Map<string, DeskLayout>();
     for (const desk of deskLayouts) map.set(desk.topic.topicId, desk);
@@ -3143,7 +3748,10 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   return (
     <div className={`relative overflow-hidden bg-[rgba(0,0,0,0.12)] ${demo ? 'h-full w-full min-h-[320px]' : `rounded-xl border border-[var(--watch-panel-border)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}`}>
       <Canvas
-        camera={{ position: demo ? (isMobile ? [0, 6.2, 11.6] : [0, 7.1, 13.2]) : [0, 8.4, 16.5], fov: isMobile ? 44 : 40, near: 0.1, far: 180 }}
+        camera={{ position: layoutVariant === 'axiom'
+          ? (isMobile ? [0, 16, 24] : [0, 18, 26])
+          : demo ? (isMobile ? [0, 6.2, 11.6] : [0, 7.1, 13.2])
+                 : [0, 8.4, 16.5], fov: isMobile ? 44 : 40, near: 0.1, far: 220 }}
         dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.2 : 1.7)}
         onCreated={({ camera }) => {
           camera.lookAt(0, 1.15, 1.65);
@@ -3165,6 +3773,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
             disciplineDemoMode={disciplineDemoMode}
             manifest={resolvedAssetManifest}
             sceneStyle={sceneStyle}
+            layoutVariant={layoutVariant}
+            departmentNames={departmentNames}
             debugRef={debug ? debugRef : undefined}
             onHover={setHoveredTopicId}
             onLeave={(topicId) => {
@@ -3186,6 +3796,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
           isMobile={isMobile}
           reducedMotion={reducedMotion}
           demo={demo}
+          layoutVariant={layoutVariant}
         />
 
         <OrbitControls
@@ -3196,7 +3807,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
           enableDamping
           dampingFactor={0.08}
           minDistance={3.5}
-          maxDistance={48}
+          maxDistance={layoutVariant === 'axiom' ? 90 : 48}
           zoomSpeed={1.35}
           panSpeed={1.2}
           rotateSpeed={0.9}
