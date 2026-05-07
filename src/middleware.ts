@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthed } from '@/lib/auth';
+import { isAdminAuthed } from '@/lib/admin-auth';
 
 const PUBLIC_FILE = /\.(.*)$/;
 
@@ -59,17 +60,54 @@ function getRedirectUrl(request: NextRequest, pathname: string, search = '') {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Legacy /admin/* paths from the previous URL scheme — permanently redirect to /axiom/*.
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    const target = pathname === '/admin'
+      ? '/axiom'
+      : pathname === '/admin/login'
+        ? '/axiom/login'
+        : pathname === '/admin/axiom' || pathname === '/admin/axiom/'
+          ? '/axiom'
+          : pathname.replace(/^\/admin/, '/axiom');
+    return NextResponse.redirect(getRedirectUrl(request, target, request.nextUrl.search || ''), 308);
+  }
+
+  // Public routes — no auth required
   if (
     pathname === '/' ||
     pathname === '/login' ||
+    pathname === '/axiom/login' ||
     pathname.startsWith('/office-preview') ||
     pathname.startsWith('/api/auth/login') ||
+    pathname.startsWith('/api/admin/auth/login') ||
     pathname.startsWith('/_next/') ||
     PUBLIC_FILE.test(pathname)
   ) {
     return NextResponse.next();
   }
 
+  // AXIOM zone — requires AXIOM admin cookie. Covers /axiom/* pages, /api/admin/*
+  // (auth endpoints), /api/axiom/* (state, transcript, tasks).
+  const isAdminPath =
+    pathname === '/axiom' ||
+    pathname.startsWith('/axiom/') ||
+    pathname.startsWith('/api/admin') ||
+    pathname.startsWith('/api/axiom');
+
+  if (isAdminPath) {
+    if (await isAdminAuthed(request)) {
+      return NextResponse.next();
+    }
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized (axiom)' }, { status: 401 });
+    }
+    const redirectPath = `${pathname}${request.nextUrl.search || ''}`;
+    return NextResponse.redirect(
+      getRedirectUrl(request, '/axiom/login', `?redirect=${encodeURIComponent(redirectPath)}`),
+    );
+  }
+
+  // Watcher zone — requires watch cookie or API key
   if (await isAuthed(request)) {
     return NextResponse.next();
   }

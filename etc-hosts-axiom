@@ -1,0 +1,9 @@
+# /etc/hosts override for AXIOM agent sandbox.
+# Bind-mounted into bwrap as /etc/hosts so cloud-metadata services resolve to nothing.
+127.0.0.1 localhost
+::1       localhost
+# Block cloud metadata endpoints (AWS/GCP/Azure/DO/Hetzner/Oracle/Alibaba)
+0.0.0.0   metadata.google.internal
+0.0.0.0   metadata.aws.internal
+0.0.0.0   metadata.azure.com
+# 169.254.169.254 is also blocked at the kernel level via systemd IPAddressDeny.

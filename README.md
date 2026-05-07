@@ -85,7 +85,7 @@ npm run dev
 
 ## AXIOM Office — 51-agent operations floor (showcase)
 
-A second tab at `/axiom` runs a separate 3D office staffed by 51 AI agents — a CEO, 10 managers, and 40 coders, laid out in 10 cubicle compartments around a central CEO podium. Built as a generic startup-org showcase of how to dispatch agent work from a 3D operator surface.
+A separate admin zone at `/axiom` runs a 3D office staffed by 51 AI agents — a CEO, 10 managers, and 40 coders, laid out in 10 cubicle compartments around a central CEO podium. Built as a generic startup-org showcase of how to dispatch agent work from a 3D operator surface. Behind its own password (`WATCH_AXIOM_PASSWORD`, default `axiom`) and its own browser session cookie, separate from `/watch`. Agents are filesystem-sandboxed via bubblewrap so they can only write inside the configured project directory — they cannot edit other projects on the host or delete arbitrary files.
 
 - Click any avatar → opens a per-agent chat box with persistent transcript (24h retention, in-thread reply history, clear button, 32k char message limit)
 - CEO + managers run on **OpenAI Codex (gpt-5.5) in `/goal` mode** — autonomous, workspace-write sandbox in the project directory; they don't stop until the goal is done
@@ -103,17 +103,20 @@ A second tab at `/axiom` runs a separate 3D office staffed by 51 AI agents — a
 
 - `/` — redirects to `/watch`
 - `/login` — password gate for the dashboard
-- `/watch` — authenticated operations dashboard
-- `/axiom` — authenticated 51-agent AXIOM Office showcase floor
-- `/tasks` — authenticated live feed of directives + agent replies across the AXIOM floor
+- `/watch` — authenticated operations dashboard (gated by WATCH_PASSWORD)
+- `/axiom/login` — separate password gate for the AXIOM admin zone (gated by WATCH_AXIOM_PASSWORD)
+- `/axiom` — admin-authenticated 51-agent AXIOM Office showcase floor
+- `/axiom/tasks` — admin-authenticated live feed of directives + agent replies across the AXIOM floor
 - `/docs` — authenticated in-app reference
 - `/office-preview` — public sanitized office visualization
 - `/office-preview?debug=1` — public DOM debug HUD
 
 ### API routes
 
-- `/api/auth/login` — browser login endpoint
-- `/api/auth/logout` — clears the browser session cookie
+- `/api/auth/login` — watch browser login endpoint
+- `/api/auth/logout` — clears the watch browser session cookie
+- `/api/admin/auth/login` — admin browser login endpoint (AXIOM zone)
+- `/api/admin/auth/logout` — clears the admin browser session cookie
 - `/api/watch` — JSON snapshot of the current Watcher state
 - `/api/watch/faults/clear` — clears stale run/session fault banners
 - `/api/team-office/instruct` — injects instructions into the bound lane session (or, for AXIOM session keys, dispatches to claude / codex with persistent sessions)

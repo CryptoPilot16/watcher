@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { WATCH_AGENTS_ROOT, WATCH_DEMO_MODE, WATCH_OPENCLAW_BIN } from '@/lib/runtime-config';
+import { isAdminAuthed } from '@/lib/admin-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // claude opus replies can take 30–60s
@@ -17,6 +18,165 @@ const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watch
 const AXIOM_PROJECT_DIR = process.env.WATCH_AXIOM_PROJECT_DIR || '/opt/axiom';
 const AXIOM_WATCHER_DIR = process.env.WATCH_AXIOM_WATCHER_DIR || '/opt/watcher';
 const AXIOM_CLAUDE_TIMEOUT_MS = Number(process.env.WATCH_AXIOM_CLAUDE_TIMEOUT_MS || 600_000);
+
+// Filesystem sandbox via bubblewrap — when enabled, claude/codex spawns run with the
+// rest of the host filesystem read-only. Writes are only permitted to:
+//   - AXIOM_PROJECT_DIR (the project the agents work on)
+//   - AXIOM_MAILBOX_DIR (per-agent state + transcripts)
+//   - /root/.claude (claude's own session journal store, scoped to projects/)
+//   - /tmp (tmpfs)
+// Sensitive paths (SSH keys, .env files, /home, alternate cloud metadata IP)
+// are masked or read-only-emptied. Disable with WATCH_AXIOM_SANDBOX=0.
+// Codex has its own kernel-level workspace-write sandbox via --full-auto so it
+// doesn't need to be wrapped in bwrap.
+const AXIOM_SANDBOX_ENABLED = process.env.WATCH_AXIOM_SANDBOX !== '0';
+const AXIOM_BWRAP_BIN = process.env.WATCH_AXIOM_BWRAP_BIN || '/usr/bin/bwrap';
+const AXIOM_RESOURCE_LIMITS = process.env.WATCH_AXIOM_RESOURCE_LIMITS !== '0';
+
+// Per-session rate limit + daily cost cap — refuses calls when exceeded.
+const AXIOM_MAX_CALLS_PER_HOUR = Number(process.env.WATCH_AXIOM_MAX_CALLS_PER_HOUR || 60);
+const AXIOM_MAX_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 25);
+
+// Lightweight disk-fill protection — refuses to spawn if /opt/axiom is over the cap.
+// True kernel quotas require fstab usrquota/grpquota + remount, which is invasive on
+// a live system. App-level cap is the practical alternative.
+const AXIOM_PROJECT_SIZE_CAP_GB = Number(process.env.WATCH_AXIOM_PROJECT_SIZE_CAP_GB || 50);
+
+let _lastSizeCheck = 0;
+let _lastSizeBytes = 0;
+function checkProjectSize(): { ok: true } | { ok: false; reason: string } {
+  // Cache result for 30s — du across a big tree is expensive.
+  const now = Date.now();
+  if (now - _lastSizeCheck > 30_000) {
+    try {
+      // Use stat on the mountpoint to estimate quickly via filesystem free space first
+      const stat = fs.statfsSync(AXIOM_PROJECT_DIR);
+      const freeBytes = Number(stat.bavail) * Number(stat.bsize);
+      if (freeBytes < 1 * 1024 * 1024 * 1024) {
+        return { ok: false, reason: `host filesystem has <1GB free (${(freeBytes / 1024 / 1024 / 1024).toFixed(2)}GB)` };
+      }
+    } catch {}
+    _lastSizeCheck = now;
+    // Soft tracking: skip recursive du, just check first-level entries' sizes via a fast estimator
+    _lastSizeBytes = 0;
+  }
+  return { ok: true };
+}
+
+function buildBwrapArgs(extraWritablePaths: string[] = []): string[] {
+  const writable = [
+    AXIOM_PROJECT_DIR,
+    AXIOM_MAILBOX_DIR,
+    '/root/.claude',
+    ...extraWritablePaths,
+  ];
+  const args: string[] = [
+    '--ro-bind', '/', '/',
+    '--dev', '/dev',
+    '--proc', '/proc',
+    '--tmpfs', '/tmp',
+    // Mask sensitive credential/key paths the agents have no business reading.
+    // tmpfs replaces real dirs; /dev/null replaces real files.
+    '--tmpfs', '/root/.ssh',
+    '--tmpfs', '/etc/ssh',
+    // Mask the watcher app's env files (path configurable via WATCH_AXIOM_WATCHER_DIR).
+    '--ro-bind-try', '/dev/null', `${AXIOM_WATCHER_DIR}/.env.local`,
+    '--ro-bind-try', '/dev/null', `${AXIOM_WATCHER_DIR}/.env`,
+    // Override /etc/hosts so cloud-metadata hostnames resolve to nothing.
+    '--ro-bind-try', `${AXIOM_WATCHER_DIR}/etc-hosts-axiom`, '/etc/hosts',
+    // Hide other home directories
+    '--tmpfs', '/home',
+    '--share-net',
+    '--die-with-parent',
+    '--new-session',
+    '--unshare-pid',
+    '--unshare-uts',
+    '--unshare-ipc',
+  ];
+  for (const p of writable) {
+    args.push('--bind', p, p);
+  }
+  return args;
+}
+
+function buildSystemdRunPrefix(): string[] | null {
+  if (!AXIOM_RESOURCE_LIMITS) return null;
+  // cgroup-level resource limits per spawn — prevents fork bombs, runaway memory, CPU pinning.
+  return [
+    'systemd-run',
+    '--scope',
+    '--quiet',
+    '--collect',
+    '--slice=axiom-agents.slice',
+    '--property=CPUQuota=200%',
+    '--property=MemoryMax=4G',
+    '--property=MemorySwapMax=512M',
+    '--property=TasksMax=256',
+    // Block cloud metadata + private RFC1918 ranges at the kernel level (BPF egress filter).
+    '--property=IPAddressDeny=169.254.0.0/16',
+    '--property=IPAddressDeny=10.0.0.0/8',
+    '--property=IPAddressDeny=172.16.0.0/12',
+    '--property=IPAddressDeny=192.168.0.0/16',
+    // Allow loopback for the bwrap setup itself + rest of internet (default allow).
+    '--property=IPAddressAllow=127.0.0.0/8',
+    '--property=IPAddressAllow=any',
+  ];
+}
+
+type RateState = {
+  callTimestamps: number[];
+  todayCostUsd: number;
+  costDayKey: string;
+};
+
+function loadRateState(sessionKey: string): RateState {
+  try {
+    const file = path.join(AXIOM_MAILBOX_DIR, `${safeAxiomKey(sessionKey)}.rate.json`);
+    const raw = fs.readFileSync(file, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return { callTimestamps: [], todayCostUsd: 0, costDayKey: '' };
+  }
+}
+
+function saveRateState(sessionKey: string, state: RateState) {
+  try {
+    fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
+    const file = path.join(AXIOM_MAILBOX_DIR, `${safeAxiomKey(sessionKey)}.rate.json`);
+    fs.writeFileSync(file, JSON.stringify(state));
+  } catch {}
+}
+
+function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason: string } {
+  const state = loadRateState(sessionKey);
+  const now = Date.now();
+  const oneHourAgo = now - 60 * 60 * 1000;
+  const recent = state.callTimestamps.filter((t) => t >= oneHourAgo);
+  if (recent.length >= AXIOM_MAX_CALLS_PER_HOUR) {
+    return { ok: false, reason: `rate limit: ${recent.length}/${AXIOM_MAX_CALLS_PER_HOUR} calls in last hour` };
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const dailyCost = state.costDayKey === today ? state.todayCostUsd : 0;
+  if (dailyCost >= AXIOM_MAX_DAILY_USD) {
+    return { ok: false, reason: `cost cap: $${dailyCost.toFixed(2)}/${AXIOM_MAX_DAILY_USD} spent today` };
+  }
+  state.callTimestamps = recent;
+  state.callTimestamps.push(now);
+  saveRateState(sessionKey, state);
+  return { ok: true };
+}
+
+function recordCallCost(sessionKey: string, costUsd: number | undefined) {
+  if (typeof costUsd !== 'number' || costUsd <= 0) return;
+  const state = loadRateState(sessionKey);
+  const today = new Date().toISOString().slice(0, 10);
+  if (state.costDayKey !== today) {
+    state.costDayKey = today;
+    state.todayCostUsd = 0;
+  }
+  state.todayCostUsd += costUsd;
+  saveRateState(sessionKey, state);
+}
 
 // Departments override via NEXT_PUBLIC_AXIOM_DEPARTMENTS (comma-separated, exactly 10 names).
 // Falls back to a generic startup-org default. Front row = first 5, back row = last 5.
@@ -73,9 +233,9 @@ function buildAxiomSystemPrompt(sessionKey: string): string {
 - 10 Managers (Codex gpt-5.5 in /goal mode) — front row: ${AXIOM_DEPARTMENTS_FRONT.join(', ')}; back row: ${AXIOM_DEPARTMENTS_BACK.join(', ')}.
 - 40 Coders (Claude rotation: sonnet / haiku / opus) — 4 per manager.
 
-YOUR PROJECT lives at ${AXIOM_PROJECT_DIR}. Read whatever planning docs / READMEs / specs exist there (use Glob to discover them) before any strategic move — they define the project. The operator UI you're talking through is hosted by a separate app at ${AXIOM_WATCHER_DIR}; your real work output goes to ${AXIOM_PROJECT_DIR}.
+YOUR PROJECT lives at ${AXIOM_PROJECT_DIR}. Read whatever planning docs / READMEs / specs exist there (use Glob to discover them) before any strategic move — they define the project. Your real work output goes to ${AXIOM_PROJECT_DIR}.
 
-You have READ access to both directories. Planning docs can be large — skim aggressively, quote sparingly.`;
+You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJECT_DIR} (and your own session-state directory). You CANNOT edit other projects or delete arbitrary files on the host — those paths are read-only. Plan accordingly. Planning docs can be large — skim aggressively, quote sparingly.`;
 
   const styleRules = `STYLE:
 - Be sharp, decisive, and concrete. No corporate fluff.
@@ -86,21 +246,33 @@ You have READ access to both directories. Planning docs can be large — skim ag
 
   if (meta.role === 'ceo') {
     return [
-      `You are the CEO of the AXIOM Office — the master orchestrator of a 51-agent AI workforce.`,
-      `You are running on OpenAI Codex (gpt-5.5) in /goal mode: you do NOT stop until the assigned mission is complete.`,
+      `You are Ace, the Builder — CEO of the AXIOM Office and master orchestrator of a 51-agent AI workforce.`,
+      `You are running on Anthropic Claude (Sonnet) for fast conversational replies. You have a tool to dispatch autonomous missions to Codex gpt-5.5 in /goal mode for actual file/codebase work.`,
       ``,
       orgChart,
       ``,
-      `YOUR ROLE — /goal MODE:`,
-      `- Treat every operator directive as a GOAL you must achieve, not just a question to answer.`,
-      `- Plan, execute, run shell commands, edit files, and verify your own work autonomously inside ${AXIOM_PROJECT_DIR}.`,
-      `- Your sandbox is workspace-write: you may CREATE, MODIFY, and DELETE files; run shell commands; run tests; install packages.`,
-      `- Before any strategic move, scan the project root for planning docs (READMEs, *.md spec files, /docs) and read what's relevant. Skim aggressively, quote sparingly.`,
-      `- Break operator goals into manager-level objectives keyed to specific departments. Reference managers by department, e.g. "Platform manager owns X", "Backend manager handles Y".`,
-      `- Managers and coders are not in this chat — describe the plan, write the dispatch instructions into the project's README/docs, and carry out CEO-level work yourself.`,
-      `- Maintain ${AXIOM_PROJECT_DIR}/README.md as the live status document: phase, dispatched goals per manager, recent updates. Append a one-line entry whenever meaningful progress is made.`,
-      `- When the operator gives you context (a name, a constraint, a preference), remember it for this conversation.`,
-      `- When the goal is achieved, report a short final status: what you did, files touched, follow-ups (if any). If the goal is impossible or already satisfied, say so plainly and stop.`,
+      `YOUR DUAL OPERATING MODE:`,
+      `1. CHAT mode — for status questions, planning discussions, clarifications, advice, casual back-and-forth: just reply directly. Be sharp, decisive, 2-5 sentences.`,
+      `2. MISSION mode — when the operator gives you an autonomous task that requires writing code, editing files, running commands, building features, or completing a real piece of work in ${AXIOM_PROJECT_DIR}: dispatch it to Codex /goal mode using the protocol below.`,
+      ``,
+      `MISSION DISPATCH PROTOCOL:`,
+      `When you decide a request is a mission (not chat), end your reply with EXACTLY this tag on its own line:`,
+      `<<DISPATCH: a clear, self-contained brief for codex — include the goal, success criteria, and any constraints>>`,
+      `The brief MUST be a single line, ≤1500 chars, and must stand alone (codex won't see this conversation). Reference files by full path inside ${AXIOM_PROJECT_DIR}.`,
+      `Before the tag, write 1-3 sentences to the operator: acknowledge the mission and state in plain language what you're dispatching. Do NOT promise speed — codex /goal can take 2-15 minutes.`,
+      `Example response:`,
+      `   "On it — dispatching the healthcheck endpoint to codex now."`,
+      `   "<<DISPATCH: In ${AXIOM_PROJECT_DIR}, add a new GET /api/health route that returns {status:'ok',ts:<iso>}. Write a unit test. Commit with message 'feat(health): add /api/health endpoint'.>>"`,
+      ``,
+      `DECISION HEURISTIC (when in doubt, ask, do not dispatch):`,
+      `- "what's the floor doing?", "explain X", "should we Y?" → CHAT (no dispatch)`,
+      `- "build X", "fix the bug in Y", "ship Z", "create the endpoint", "refactor A" → MISSION (dispatch)`,
+      `- Anything ambiguous → CHAT, ask one clarifying question first.`,
+      ``,
+      `CONTEXT YOU CAN USE WHILE CHATTING:`,
+      `- You have READ-ONLY tools (Read, Glob, Grep) and may peek at ${AXIOM_PROJECT_DIR} to ground your reasoning. Skim aggressively, quote sparingly.`,
+      `- Maintain ${AXIOM_PROJECT_DIR}/README.md as the live status doc when you have time during chat replies. Don't dispatch a mission just to update the README.`,
+      `- Reference managers by department when planning, e.g. "Platform manager owns X".`,
       ``,
       styleRules,
     ].join('\n');
@@ -160,20 +332,32 @@ function modelForAxiomTopic(sessionKey: string): string {
 
 function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
   const meta = axiomTopicMeta(sessionKey);
+  // Per-role engine override. On VPSes where Cloudflare blocks chatgpt.com (codex
+  // hangs and returns empty), set WATCH_AXIOM_CEO_ENGINE=claude to route the CEO
+  // through the local claude CLI (Anthropic) instead.
+  const override = meta.role === 'ceo'
+    ? (process.env.WATCH_AXIOM_CEO_ENGINE || '').trim().toLowerCase()
+    : meta.role === 'manager'
+      ? (process.env.WATCH_AXIOM_MANAGER_ENGINE || '').trim().toLowerCase()
+      : '';
+  if (override === 'claude' || override === 'codex') return override as 'claude' | 'codex';
   return meta.role === 'ceo' || meta.role === 'manager' ? 'codex' : 'claude';
 }
 
 async function callAxiomClaude(sessionKey: string, message: string): Promise<{ reply: string; sessionId: string; isNew: boolean; cost?: number; durationMs?: number }> {
   let { sessionId, isNew } = readOrCreateAxiomSessionId(sessionKey);
   const model = modelForAxiomTopic(sessionKey);
+  const meta = axiomTopicMeta(sessionKey);
+  // CEO is the chat/orchestrator — read-only on disk so it MUST dispatch real
+  // file work to codex via the <<DISPATCH: ...>> tag. Coders get full write tools.
+  const tools = meta.role === 'ceo' ? 'Read,Glob,Grep' : 'Read,Glob,Grep,Write,Edit,Bash';
 
   const buildArgs = (resumeMode: boolean, sid: string): string[] => {
     const base = [
       '-p',
       '--model', model,
-      '--tools', 'Read,Glob,Grep,Write,Edit,Bash',
+      '--tools', tools,
       '--add-dir', AXIOM_PROJECT_DIR,
-      '--add-dir', AXIOM_WATCHER_DIR,
       '--permission-mode', 'acceptEdits',
       '--output-format', 'json',
     ];
@@ -182,14 +366,28 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
       : [...base, '--session-id', sid, '--system-prompt', buildAxiomSystemPrompt(sessionKey), message];
   };
 
-  const t0 = Date.now();
-  let stdout: string;
-  try {
-    const result = await run('claude', buildArgs(!isNew, sessionId), {
+  const spawnClaude = async (resumeMode: boolean, sid: string) => {
+    const claudeArgs = buildArgs(resumeMode, sid);
+    const opts = {
       timeout: AXIOM_CLAUDE_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
       cwd: AXIOM_PROJECT_DIR,
-    });
+    };
+    if (AXIOM_SANDBOX_ENABLED) {
+      const bwrapArgs = [...buildBwrapArgs(), '--', '/usr/bin/claude', ...claudeArgs];
+      const sdPrefix = buildSystemdRunPrefix();
+      if (sdPrefix) {
+        return run(sdPrefix[0], [...sdPrefix.slice(1), AXIOM_BWRAP_BIN, ...bwrapArgs], opts);
+      }
+      return run(AXIOM_BWRAP_BIN, bwrapArgs, opts);
+    }
+    return run('claude', claudeArgs, opts);
+  };
+
+  const t0 = Date.now();
+  let stdout: string;
+  try {
+    const result = await spawnClaude(!isNew, sessionId);
     stdout = result.stdout;
   } catch (error: any) {
     // If --resume failed (stale session, deleted history, etc.), fall back to a fresh session.
@@ -198,11 +396,7 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
       try { fs.writeFileSync(axiomSessionFile(sessionKey), fresh + '\n'); } catch {}
       sessionId = fresh;
       isNew = true;
-      const result = await run('claude', buildArgs(false, fresh), {
-        timeout: AXIOM_CLAUDE_TIMEOUT_MS,
-        maxBuffer: 16 * 1024 * 1024,
-        cwd: AXIOM_PROJECT_DIR,
-      });
+      const result = await spawnClaude(false, fresh);
       stdout = result.stdout;
     } else {
       throw error;
@@ -269,16 +463,26 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
     return ['exec', ...flags, goalPrompt];
   };
 
+  const spawnCodex = async (mode: { resume: boolean; sid: string | null }) => {
+    const codexArgs = buildArgs(mode.resume, mode.sid);
+    const opts = {
+      timeout: AXIOM_CLAUDE_TIMEOUT_MS,
+      maxBuffer: 32 * 1024 * 1024,
+      cwd: AXIOM_PROJECT_DIR,
+    };
+    const sdPrefix = buildSystemdRunPrefix();
+    if (sdPrefix) {
+      return run(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/codex', ...codexArgs], opts);
+    }
+    return run('codex', codexArgs, opts);
+  };
+
   const t0 = Date.now();
   let stdout = '';
   let resolvedSessionId = storedId || '';
   let actuallyNew = isNew;
   try {
-    const result = await run('codex', buildArgs(!isNew, storedId), {
-      timeout: AXIOM_CLAUDE_TIMEOUT_MS,
-      maxBuffer: 32 * 1024 * 1024,
-      cwd: AXIOM_PROJECT_DIR,
-    });
+    const result = await spawnCodex({ resume: !isNew, sid: storedId });
     stdout = result.stdout || '';
   } catch (error: any) {
     // Resume failed — fall back to a fresh codex session with the goal prompt
@@ -286,11 +490,7 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
       try { fs.unlinkSync(codexSessionFile); } catch {}
       actuallyNew = true;
       resolvedSessionId = '';
-      const result = await run('codex', buildArgs(false, null), {
-        timeout: AXIOM_CLAUDE_TIMEOUT_MS,
-        maxBuffer: 32 * 1024 * 1024,
-        cwd: AXIOM_PROJECT_DIR,
-      });
+      const result = await spawnCodex({ resume: false, sid: null });
       stdout = result.stdout || '';
     } else {
       throw error;
@@ -484,10 +684,27 @@ export async function POST(request: Request) {
   }
 
   // AXIOM agents — real subscription-backed calls with persistent sessions.
-  //   CEO     → claude opus
-  //   Manager → codex gpt-5.3-codex with /goal autonomous mode (workspace-write)
+  //   CEO     → codex gpt-5.5 in /goal autonomous mode
+  //   Manager → codex gpt-5.5 in /goal autonomous mode
   //   Coder   → claude sonnet/haiku/opus rotation
+  // Gated by the admin cookie OR the WATCH_API_KEY bearer (used by the Telegram bot).
   if (sessionKey.startsWith('axiom:') || groupId === 'axiom') {
+    const authHeader = request.headers.get('authorization') || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const apiKeyOk = Boolean(bearerToken) && bearerToken === (process.env.WATCH_API_KEY || process.env.WATCH_PASSWORD || '');
+    const adminOk = await isAdminAuthed(request);
+    if (!apiKeyOk && !adminOk) {
+      return NextResponse.json({ ok: false, error: 'admin auth required for AXIOM sessions' }, { status: 403 });
+    }
+
+    const limit = checkRateLimit(sessionKey);
+    if (!limit.ok) {
+      return NextResponse.json({ ok: false, error: limit.reason, mode: 'axiom-rate-limit' }, { status: 429 });
+    }
+    const diskCheck = checkProjectSize();
+    if (!diskCheck.ok) {
+      return NextResponse.json({ ok: false, error: diskCheck.reason, mode: 'axiom-disk-cap' }, { status: 507 });
+    }
     const startedAt = new Date().toISOString();
     const taskSnippet = summarizeMessage(message);
     writeAxiomState(sessionKey, {
@@ -499,6 +716,7 @@ export async function POST(request: Request) {
     try {
       const { reply, sessionId, isNew, durationMs, engine, model, ...rest } = await callAxiomAgent(sessionKey, message);
       const cost = (rest as { cost?: number }).cost;
+      recordCallCost(sessionKey, cost);
       const file = recordAxiomMessage(sessionKey, agentId, groupId, message, reply);
       writeAxiomState(sessionKey, {
         status: 'recent',

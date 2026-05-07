@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { WatchShellHeader } from '@/components/watch-shell-header';
+import { AdminShellHeader } from '@/components/admin-shell-header';
 
 type TaskEntry = {
   ts: string;
@@ -77,7 +77,7 @@ export default function TasksPage() {
   return (
     <main className="min-h-screen bg-[var(--watch-bg)] p-3 sm:p-5">
       <div className="mx-auto flex min-h-[calc(100vh-24px)] max-w-[1400px] flex-col gap-3">
-        <WatchShellHeader activeTab="tasks" />
+        <AdminShellHeader activeTab="tasks" />
 
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ tasks at hand</div>

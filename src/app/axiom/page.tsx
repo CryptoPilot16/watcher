@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
-import { WatchShellHeader } from '@/components/watch-shell-header';
+import { AdminShellHeader } from '@/components/admin-shell-header';
 import type { TeamTopic } from '@/lib/watch-team';
 
 type AgentState = {
@@ -242,7 +242,7 @@ export default function AxiomPage() {
   return (
     <main className="min-h-screen bg-[var(--watch-bg)] p-3 sm:p-5">
       <div className="mx-auto flex min-h-[calc(100vh-24px)] max-w-[1600px] flex-col gap-3">
-        <WatchShellHeader activeTab="axiom" />
+        <AdminShellHeader activeTab="axiom" />
 
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ axiom operations floor</div>
