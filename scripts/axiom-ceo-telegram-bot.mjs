@@ -106,7 +106,17 @@ async function callCeo(message) {
     const detail = json && (json.detail || json.error) ? (json.detail || json.error) : `HTTP ${r.status}`;
     return { ok: false, reply: `(CEO call failed: ${String(detail).slice(0, 1500)})` };
   }
-  return { ok: true, reply: String(json.reply || '(empty reply)'), engine: json.engine, model: json.model, durationMs: json.durationMs };
+  return {
+    ok: true,
+    reply: String(json.reply || '(empty reply)'),
+    engine: json.engine,
+    model: json.model,
+    durationMs: json.durationMs,
+    inputTokens: json.inputTokens,
+    outputTokens: json.outputTokens,
+    cacheReadTokens: json.cacheReadTokens,
+    costUsd: json.costUsd,
+  };
 }
 
 async function downloadTelegramFile(fileId, suffix) {
@@ -236,6 +246,7 @@ async function transcribeMessageMedia(chatId, msg) {
 // the brief, and DM the operator when codex returns.
 
 const DISPATCH_RE = /<<\s*DISPATCH\s*:\s*([\s\S]*?)\s*>>/;
+const REPORT_RE = /<<\s*REPORT_FILE\s*:\s*([^\s>][^>]*?)\s*>>/;
 
 function parseDispatch(reply) {
   if (!reply) return { cleaned: '', brief: null };
@@ -244,6 +255,252 @@ function parseDispatch(reply) {
   const brief = match[1].trim().replace(/\s+/g, ' ').slice(0, 1500);
   const cleaned = reply.replace(DISPATCH_RE, '').trim();
   return { cleaned, brief };
+}
+
+// Parse <<REPORT_FILE: relative/path.md>> — Ace writes long-form output to a
+// file and just summarises in chat. The bot strips the tag and sends the file
+// as a Telegram document with the summary as the caption. Path must resolve
+// inside AXIOM_PROJECT_DIR (no traversal).
+function parseReportFile(reply) {
+  if (!reply) return { cleaned: '', reportPath: null };
+  const match = REPORT_RE.exec(reply);
+  if (!match) return { cleaned: reply.trim(), reportPath: null };
+  let raw = match[1].trim();
+  // Allow either "reports/foo.md" or absolute path inside the project dir.
+  if (raw.startsWith('/')) raw = raw.replace(new RegExp(`^${AXIOM_PROJECT_DIR}/?`), '');
+  if (raw.includes('..') || raw.includes('\0')) {
+    return { cleaned: reply.replace(REPORT_RE, '').trim(), reportPath: null };
+  }
+  const cleaned = reply.replace(REPORT_RE, '').trim();
+  return { cleaned, reportPath: raw };
+}
+
+async function sendReportDocument(chatId, relPath, caption) {
+  const abs = join(AXIOM_PROJECT_DIR, relPath);
+  let stat;
+  try {
+    stat = await fs.stat(abs);
+  } catch {
+    await tg('sendMessage', { chat_id: chatId, text: `${caption}\n\n(report file not found: ${relPath})` });
+    return false;
+  }
+  if (stat.size > 50 * 1024 * 1024) {
+    await tg('sendMessage', { chat_id: chatId, text: `${caption}\n\n(report file too large to send: ${relPath} · ${stat.size} bytes)` });
+    return false;
+  }
+  // Telegram bot API caption limit is 1024 chars. Truncate gracefully.
+  const safeCaption = caption.length > 1000 ? caption.slice(0, 997) + '…' : caption;
+  const buf = await fs.readFile(abs);
+  const filename = relPath.split('/').pop() || 'report.md';
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('caption', safeCaption);
+  form.append('document', new Blob([buf], { type: 'text/markdown' }), filename);
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendDocument`, { method: 'POST', body: form });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok || !json.ok) {
+    const desc = json?.description || `HTTP ${r.status}`;
+    process.stderr.write(`[axiom-ceo-bot] sendDocument failed: ${desc}\n`);
+    await tg('sendMessage', { chat_id: chatId, text: `${caption}\n\n(could not attach ${filename}: ${desc})` });
+    return false;
+  }
+  return true;
+}
+
+// ── Persistent context tracking + auto-compaction ──────────────────────────
+// Conversation context grows every turn. We track the most recent input-token
+// count from claude (which represents the resumed conversation length) and
+// trigger a compaction prompt when it crosses a threshold. Ace responds by
+// flushing a recap into CEO_MEMORY.md, then the bot deletes the session
+// file so the next turn starts fresh — but Ace reads CEO_MEMORY.md first so
+// the conversation feels continuous.
+
+const CONTEXT_COMPACT_THRESHOLD = Number(process.env.WATCH_AXIOM_CEO_COMPACT_THRESHOLD || 40_000);
+const CEO_SESSION_FILE = '/var/lib/watcher/axiom-mailbox/axiom:axiom-ceo.session';
+const CEO_MEMORY_FILE = join(AXIOM_PROJECT_DIR, 'CEO_MEMORY.md');
+
+let lastSeenInputTokens = 0;
+let compactionInFlight = false;
+
+async function resetCeoSession() {
+  try { await fs.unlink(CEO_SESSION_FILE); } catch {}
+  lastSeenInputTokens = 0;
+}
+
+async function performCompaction(chatId) {
+  if (compactionInFlight) return;
+  compactionInFlight = true;
+  try {
+    const directive = [
+      'SYSTEM COMPACT SIGNAL: Your conversation context is getting large.',
+      `Append a brief recap paragraph (3-6 lines) to ${CEO_MEMORY_FILE} covering anything significant from the last several turns that is not already recorded there. Update the relevant sections (Mission, Operator, Decisions, Open threads, Recent wins) as you go.`,
+      'After saving, reply with exactly the single word: compacted',
+      'Your session will be reset after this turn — but you will read CEO_MEMORY.md on the next turn so the conversation continues seamlessly.',
+    ].join('\n\n');
+
+    const result = await callCeo(directive);
+    if (!result.ok) {
+      await tg('sendMessage', { chat_id: chatId, text: `🧠 auto-compact failed: ${String(result.reply).slice(0, 200)}` });
+      return;
+    }
+    await resetCeoSession();
+    const lines = (result.reply || '').toLowerCase().split(/\s+/).slice(0, 6).join(' ');
+    if (!lines.includes('compacted')) {
+      await tg('sendMessage', {
+        chat_id: chatId,
+        text: `🧠 context compacted (Ace did not echo "compacted"; reset anyway). CEO_MEMORY.md updated.`,
+      });
+      return;
+    }
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: '🧠 context compacted to CEO_MEMORY.md and session reset. Continuing seamlessly.',
+    });
+  } finally {
+    compactionInFlight = false;
+  }
+}
+
+async function readMemoryFile() {
+  try {
+    return await fs.readFile(CEO_MEMORY_FILE, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watcher/axiom-mailbox';
+const AXIOM_GLOBAL_COST_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-global.cost.json');
+const AXIOM_ALLOWANCE_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-allowance.json');
+const AXIOM_DEFAULT_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10);
+
+async function readJsonFile(file) {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function readEffectiveAllowance() {
+  const override = await readJsonFile(AXIOM_ALLOWANCE_FILE);
+  if (override && typeof override.dailyUsdOverride === 'number' && override.dailyUsdOverride > 0) {
+    return { cap: override.dailyUsdOverride, override };
+  }
+  return { cap: AXIOM_DEFAULT_DAILY_USD, override: null };
+}
+
+async function writeAllowanceOverride(cap, updatedBy) {
+  await fs.mkdir(AXIOM_MAILBOX_DIR, { recursive: true });
+  await fs.writeFile(
+    AXIOM_ALLOWANCE_FILE,
+    JSON.stringify({
+      dailyUsdOverride: cap,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    }, null, 2),
+  );
+}
+
+async function clearAllowanceOverride() {
+  await fs.unlink(AXIOM_ALLOWANCE_FILE).catch(() => {});
+}
+
+async function clearGlobalAlertFlag() {
+  // Re-arm the 90% alert so a fresh allowance can trigger another alert later.
+  const cost = await readJsonFile(AXIOM_GLOBAL_COST_FILE);
+  if (!cost) return;
+  if (cost.alertedAtPercent != null) {
+    delete cost.alertedAtPercent;
+    await fs.writeFile(AXIOM_GLOBAL_COST_FILE, JSON.stringify(cost));
+  }
+}
+
+async function handleBudgetCommand(chatId, userId, text) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const cost = (await readJsonFile(AXIOM_GLOBAL_COST_FILE)) || { todayCostUsd: 0, costDayKey: '' };
+  const spent = cost.costDayKey === todayKey ? Number(cost.todayCostUsd) || 0 : 0;
+  const { cap, override } = await readEffectiveAllowance();
+
+  // Strip the command word (handles `/budget`, `/budget@bot`, `/budget set 20`).
+  const args = text.replace(/^\/budget(@\S+)?\s*/i, '').trim();
+  const updatedBy = `telegram:${userId}`;
+
+  // Status (no args).
+  if (!args) {
+    const pct = cap > 0 ? (spent / cap) * 100 : 0;
+    const lines = [
+      `💰 *AXIOM allowance — ${todayKey}*`,
+      '',
+      `Spent: *$${spent.toFixed(2)}* / $${cap.toFixed(2)} (${pct.toFixed(1)}%)`,
+      `Remaining: $${Math.max(0, cap - spent).toFixed(2)}`,
+      override
+        ? `Override active: $${cap.toFixed(2)} (default $${AXIOM_DEFAULT_DAILY_USD}, set ${override.updatedAt || '?'})`
+        : `Default cap: $${AXIOM_DEFAULT_DAILY_USD}`,
+      '',
+      'Commands:',
+      '`/budget +5` — add $5 to today\'s cap',
+      '`/budget set 20` — raise allowance to $20',
+      '`/budget reset` — clear override',
+      '',
+      '_Membership-backed · figures are token-equivalent, not real billing._',
+    ];
+    await tg('sendMessage', { chat_id: chatId, text: lines.join('\n'), parse_mode: 'Markdown' });
+    return;
+  }
+
+  // Reset.
+  if (/^reset|clear|default$/i.test(args)) {
+    await clearAllowanceOverride();
+    await clearGlobalAlertFlag();
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: `Allowance override cleared. Cap back to default *$${AXIOM_DEFAULT_DAILY_USD}*.`,
+      parse_mode: 'Markdown',
+    });
+    return;
+  }
+
+  // Parse the new value.
+  let newCap = null;
+  const setMatch = args.match(/^set\s+\$?(\d+(?:\.\d+)?)$/i);
+  const addMatch = args.match(/^\+\s*\$?(\d+(?:\.\d+)?)$/);
+  const subMatch = args.match(/^-\s*\$?(\d+(?:\.\d+)?)$/);
+  const numMatch = args.match(/^\$?(\d+(?:\.\d+)?)$/);
+  if (setMatch) newCap = Number(setMatch[1]);
+  else if (addMatch) newCap = cap + Number(addMatch[1]);
+  else if (subMatch) newCap = cap - Number(subMatch[1]);
+  else if (numMatch) newCap = Number(numMatch[1]);
+
+  if (newCap == null || !isFinite(newCap)) {
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: 'usage: `/budget`, `/budget +5`, `/budget set 20`, `/budget reset`',
+      parse_mode: 'Markdown',
+    });
+    return;
+  }
+  if (newCap < 0.5) {
+    await tg('sendMessage', { chat_id: chatId, text: 'minimum allowance is $0.50.' });
+    return;
+  }
+  if (newCap > 500) {
+    await tg('sendMessage', { chat_id: chatId, text: 'sanity-check: cap is limited to $500/day.' });
+    return;
+  }
+
+  await writeAllowanceOverride(newCap, updatedBy);
+  await clearGlobalAlertFlag();
+  const pct = newCap > 0 ? (spent / newCap) * 100 : 0;
+  await tg('sendMessage', {
+    chat_id: chatId,
+    text: [
+      `✅ Allowance updated to *$${newCap.toFixed(2)}* (was $${cap.toFixed(2)}).`,
+      `Spent today: $${spent.toFixed(2)} (${pct.toFixed(1)}%).`,
+      'Agents resume immediately if they were paused.',
+    ].join('\n'),
+    parse_mode: 'Markdown',
+  });
 }
 
 async function readMissionList() {
@@ -426,18 +683,62 @@ async function handleMessage(state, msg) {
 
   if (text === '/start' || text === '/help') {
     const lines = [
-      'AXIOM CEO — Ace, the Builder.',
+      '*AXIOM CEO — Ace, the Builder*',
       '',
       newlyPaired ? `Paired with you (chat ${chatId}).` : 'Connected.',
       '',
       'Talk to me like a chief: ask anything for a fast Claude reply, or hand me a real task and I will dispatch it to codex /goal autonomous mode in the background. I will DM you when the mission lands.',
-      'Commands:',
-      '  /status   — show CEO + active missions',
-      '  /missions — list recent missions',
-      '  /who      — show pairing info',
-      '  /reset    — start a fresh CEO session (rare, destroys context)',
+      '',
+      '*Status*',
+      '`/status`   — CEO state + floor running/recent/error counts',
+      '`/who`      — show pairing info',
+      '`/missions` — list recent codex missions',
+      '',
+      '*Allowance*',
+      '`/budget`         — show today\'s spend, cap, remaining, override status',
+      '`/budget +5`      — add $5 to today\'s cap',
+      '`/budget set 20`  — raise allowance to $20',
+      '`/budget reset`   — clear override, restore default',
+      '_(I DM a 🚨 alert automatically when usage crosses 90%)_',
+      '',
+      '*Memory*',
+      '`/memory`  — show what I remember (CEO\\_MEMORY.md)',
+      '`/compact` — flush context to memory + reset session now',
+      '`/forget`  — clear my memory file',
+      '',
+      '*Session*',
+      '`/reset` — start a fresh CEO session (rare, destroys context)',
+      '',
+      '*Help*',
+      '`/help` — show this list',
     ];
-    await tg('sendMessage', { chat_id: chatId, text: lines.join('\n') });
+    await tg('sendMessage', { chat_id: chatId, text: lines.join('\n'), parse_mode: 'Markdown' });
+    return;
+  }
+
+  if (text === '/memory') {
+    const mem = await readMemoryFile();
+    if (!mem) {
+      await tg('sendMessage', { chat_id: chatId, text: 'CEO_MEMORY.md does not exist yet.' });
+    } else {
+      await sendChunked(chatId, `🧠 CEO_MEMORY.md\n\n${mem}`);
+    }
+    return;
+  }
+
+  if (text === '/compact') {
+    await tg('sendMessage', { chat_id: chatId, text: '🧠 compacting now…' });
+    await performCompaction(chatId);
+    return;
+  }
+
+  if (text === '/forget') {
+    try {
+      await fs.writeFile(CEO_MEMORY_FILE, '# CEO Memory — Ace, the Builder\n\n_(cleared)_\n');
+      await tg('sendMessage', { chat_id: chatId, text: '🧠 memory cleared. CEO_MEMORY.md reset to a blank state.' });
+    } catch (err) {
+      await tg('sendMessage', { chat_id: chatId, text: `forget error: ${err.message}` });
+    }
     return;
   }
 
@@ -477,6 +778,15 @@ async function handleMessage(state, msg) {
     return;
   }
 
+  if (text === '/budget' || text.startsWith('/budget ') || text.startsWith('/budget@')) {
+    try {
+      await handleBudgetCommand(chatId, userId, text);
+    } catch (err) {
+      await tg('sendMessage', { chat_id: chatId, text: `budget error: ${err.message}` });
+    }
+    return;
+  }
+
   if (text === '/missions') {
     const missions = await readMissionList();
     if (!missions.length) {
@@ -494,10 +804,36 @@ async function handleMessage(state, msg) {
   }
 
   const result = await withTyping(chatId, () => callCeo(text));
-  const { cleaned, brief } = parseDispatch(result.reply || '');
+
+  if (typeof result.inputTokens === 'number') {
+    lastSeenInputTokens = result.inputTokens;
+    process.stdout.write(`[axiom-ceo-bot] tokens in=${result.inputTokens} out=${result.outputTokens || '?'} cost=$${(result.costUsd || 0).toFixed(4)}\n`);
+  }
+
+  const dispatchParse = parseDispatch(result.reply || '');
+  const reportParse = parseReportFile(dispatchParse.cleaned);
+  const cleaned = reportParse.cleaned;
+  const brief = dispatchParse.brief;
+  const reportPath = reportParse.reportPath;
+
   const engineTag = result.ok && result.engine
-    ? `\n\n— ${result.engine}/${result.model || '?'}${typeof result.durationMs === 'number' ? ` · ${(result.durationMs / 1000).toFixed(1)}s` : ''}`
+    ? `\n\n— ${result.engine}/${result.model || '?'}${typeof result.durationMs === 'number' ? ` · ${(result.durationMs / 1000).toFixed(1)}s` : ''}${
+        typeof result.inputTokens === 'number' ? ` · ${result.inputTokens} tok` : ''
+      }`
     : '';
+
+  const maybeAutoCompact = () => {
+    if (
+      !compactionInFlight &&
+      typeof result.inputTokens === 'number' &&
+      result.inputTokens >= CONTEXT_COMPACT_THRESHOLD
+    ) {
+      process.stdout.write(`[axiom-ceo-bot] context ${result.inputTokens} >= ${CONTEXT_COMPACT_THRESHOLD}, auto-compacting\n`);
+      performCompaction(chatId).catch((err) => {
+        process.stderr.write(`[axiom-ceo-bot] auto-compact: ${err.message}\n`);
+      });
+    }
+  };
 
   if (brief && result.ok) {
     let mission;
@@ -505,14 +841,24 @@ async function handleMessage(state, msg) {
       mission = await dispatchMission(brief, chatId);
     } catch (err) {
       await sendChunked(chatId, `${cleaned || '(empty)'}\n\n❌ dispatch failed: ${err.message}` + engineTag, msg.message_id);
+      maybeAutoCompact();
       return;
     }
     const dispatchNote = `\n\n🚀 codex /goal · mission ${mission.id} dispatched — I'll DM the result back.`;
     await sendChunked(chatId, (cleaned || 'On it.') + dispatchNote + engineTag, msg.message_id);
+    maybeAutoCompact();
+    return;
+  }
+
+  if (reportPath && result.ok) {
+    const caption = (cleaned || '(see attached)') + engineTag;
+    await sendReportDocument(chatId, reportPath, caption);
+    maybeAutoCompact();
     return;
   }
 
   await sendChunked(chatId, (cleaned || '(empty)') + engineTag, msg.message_id);
+  maybeAutoCompact();
 }
 
 async function bootstrap() {
@@ -521,8 +867,13 @@ async function bootstrap() {
     await tg('setMyCommands', {
       commands: [
         { command: 'start',    description: 'Pair with the CEO' },
+        { command: 'help',     description: 'Show all commands' },
         { command: 'status',   description: 'Show CEO and floor status' },
+        { command: 'budget',   description: 'View / change daily allowance' },
         { command: 'missions', description: 'List recent codex missions' },
+        { command: 'memory',   description: 'Show CEO_MEMORY.md' },
+        { command: 'compact',  description: 'Flush context to memory + reset session' },
+        { command: 'forget',   description: 'Clear CEO memory file' },
         { command: 'who',      description: 'Show pairing info' },
         { command: 'reset',    description: 'Start a fresh CEO session' },
       ],

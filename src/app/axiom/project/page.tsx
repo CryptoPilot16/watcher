@@ -119,6 +119,7 @@ export default function ProjectPage() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('auto');
   const [streamConnected, setStreamConnected] = useState(false);
+  const [mobilePane, setMobilePane] = useState<'tree' | 'events' | 'viewer'>('events');
   const flashRef = useRef<Map<string, number>>(new Map());
   const [, setFlashTick] = useState(0);
 
@@ -232,6 +233,8 @@ export default function ProjectPage() {
       if (prev !== node.path) setViewMode('auto');
       return node.path;
     });
+    // On mobile, auto-flip to the viewer pane so tap-to-open feels native.
+    setMobilePane('viewer');
     setFileLoading(true);
     setFileResp(null);
     setDiffResp(null);
@@ -300,9 +303,31 @@ export default function ProjectPage() {
           )}
         </div>
 
+        {/* Mobile pane switcher — hidden on lg+ where all three panes show side-by-side. */}
+        <div className="flex shrink-0 items-stretch gap-1 lg:hidden">
+          {(['tree', 'events', 'viewer'] as const).map((p) => {
+            const active = mobilePane === p;
+            const counts = p === 'events' ? ` (${recentEvents.length})` : '';
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setMobilePane(p)}
+                className={`flex-1 rounded-md border px-2 py-2 text-[11px] uppercase tracking-[0.15em] transition-colors ${
+                  active
+                    ? 'border-[var(--watch-panel-border-strong)] bg-[var(--watch-accent-soft)] text-[var(--watch-text-bright)]'
+                    : 'border-[var(--watch-panel-border)] text-[var(--watch-text-muted)] hover:text-[var(--watch-text)]'
+                }`}
+              >
+                {p}{counts}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="grid flex-1 min-h-0 grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_minmax(0,1.5fr)]">
           {/* tree pane */}
-          <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
+          <div className={`flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] ${mobilePane === 'tree' ? '' : 'hidden'} lg:flex`}>
             <div className="border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
               tree
             </div>
@@ -323,7 +348,7 @@ export default function ProjectPage() {
           </div>
 
           {/* events pane */}
-          <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
+          <div className={`flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] ${mobilePane === 'events' ? '' : 'hidden'} lg:flex`}>
             <div className="border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
               recent file events ({recentEvents.length})
             </div>
@@ -355,6 +380,7 @@ export default function ProjectPage() {
 
           {/* viewer pane */}
           <ViewerPane
+            className={`${mobilePane === 'viewer' ? '' : 'hidden'} lg:flex`}
             selectedPath={selectedPath}
             fileResp={fileResp}
             fileLoading={fileLoading}
@@ -431,6 +457,7 @@ function resolveView(viewMode: ViewMode, selectedPath: string | null, hasMd: boo
 }
 
 function ViewerPane({
+  className,
   selectedPath,
   fileResp,
   fileLoading,
@@ -439,6 +466,7 @@ function ViewerPane({
   viewMode,
   setViewMode,
 }: {
+  className?: string;
   selectedPath: string | null;
   fileResp: FileResponse | null;
   fileLoading: boolean;
@@ -463,7 +491,7 @@ function ViewerPane({
   const resolved = resolveView(viewMode, selectedPath, isMd, hasMeaningfulDiff);
 
   return (
-    <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
+    <div className={`flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] ${className || ''}`}>
       <div className="flex items-center justify-between gap-2 border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
         <span className="truncate">viewer{selectedPath ? ` · ${selectedPath}` : ''}</span>
         <span className="flex shrink-0 items-center gap-2">

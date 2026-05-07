@@ -213,3 +213,19 @@ pre {
 .axiom-md th { background: rgba(255,255,255,0.05); text-align: left; }
 .axiom-md hr { border: 0; border-top: 1px solid var(--watch-panel-border); margin: 1.5em 0; }
 .axiom-md img { max-width: 100%; border-radius: 4px; }
+
+/* Mobile polish — touch-friendly hit areas + safe-area insets */
+@media (max-width: 640px) {
+  button, a, [role="button"] {
+    min-height: 32px;
+  }
+  /* Honor iOS safe-area on full-bleed pages so content isn't under the notch */
+  main { padding-bottom: max(env(safe-area-inset-bottom), 0.75rem); }
+
+  /* /axiom/project event-feed entries get a touch more vertical padding for
+     thumb selection */
+  ul.divide-y > li { padding-top: 0.45rem; padding-bottom: 0.45rem; }
+}
+
+/* Always allow long file paths in mono panes to wrap rather than overflow */
+pre { word-break: break-word; overflow-wrap: anywhere; }

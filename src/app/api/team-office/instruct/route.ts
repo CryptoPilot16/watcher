@@ -142,9 +142,48 @@ type RateState = {
 type GlobalCostState = {
   todayCostUsd: number;
   costDayKey: string;
+  alertedAtPercent?: number;
+};
+
+type AllowanceOverride = {
+  dailyUsdOverride?: number;
+  updatedAt?: string;
+  updatedBy?: string;
 };
 
 const AXIOM_GLOBAL_COST_FILE = 'axiom-global.cost.json';
+const AXIOM_ALLOWANCE_FILE = 'axiom-allowance.json';
+const AXIOM_ALERT_THRESHOLD_PERCENT = 90;
+
+function loadAllowance(): AllowanceOverride {
+  try {
+    const file = path.join(AXIOM_MAILBOX_DIR, AXIOM_ALLOWANCE_FILE);
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function getEffectiveDailyCap(): number {
+  const override = loadAllowance().dailyUsdOverride;
+  if (typeof override === 'number' && override > 0) return override;
+  return AXIOM_MAX_DAILY_USD;
+}
+
+async function sendTelegramAlert(text: string): Promise<void> {
+  const token = process.env.WATCH_AXIOM_CEO_BOT_TOKEN;
+  const chatId = process.env.WATCH_AXIOM_CEO_OPERATOR_ID;
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+  } catch {
+    // best-effort; don't let alert failures break agent calls
+  }
+}
 
 function loadRateState(sessionKey: string): RateState {
   try {
@@ -194,8 +233,9 @@ function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason:
   const today = new Date().toISOString().slice(0, 10);
   const global = loadGlobalCost();
   const dailyCost = global.costDayKey === today ? global.todayCostUsd : 0;
-  if (dailyCost >= AXIOM_MAX_DAILY_USD) {
-    return { ok: false, reason: `cost cap: $${dailyCost.toFixed(2)}/${AXIOM_MAX_DAILY_USD} spent today across all agents` };
+  const cap = getEffectiveDailyCap();
+  if (dailyCost >= cap) {
+    return { ok: false, reason: `allowance cap: $${dailyCost.toFixed(2)}/${cap} spent today across all agents — extend via /budget on Telegram` };
   }
   state.callTimestamps = recent;
   state.callTimestamps.push(now);
@@ -210,9 +250,36 @@ function recordCallCost(_sessionKey: string, costUsd: number | undefined) {
   if (global.costDayKey !== today) {
     global.costDayKey = today;
     global.todayCostUsd = 0;
+    global.alertedAtPercent = undefined;
   }
+  const previousCost = global.todayCostUsd;
   global.todayCostUsd += costUsd;
   saveGlobalCost(global);
+
+  // Fire a Telegram alert when crossing the 90% threshold (once per day per threshold).
+  const cap = getEffectiveDailyCap();
+  const previousPercent = (previousCost / cap) * 100;
+  const newPercent = (global.todayCostUsd / cap) * 100;
+  const lastAlerted = global.alertedAtPercent ?? 0;
+  if (newPercent >= AXIOM_ALERT_THRESHOLD_PERCENT && previousPercent < AXIOM_ALERT_THRESHOLD_PERCENT && lastAlerted < AXIOM_ALERT_THRESHOLD_PERCENT) {
+    global.alertedAtPercent = AXIOM_ALERT_THRESHOLD_PERCENT;
+    saveGlobalCost(global);
+    const remaining = Math.max(0, cap - global.todayCostUsd);
+    const msg = [
+      '🚨 *AXIOM allowance — 90% reached*',
+      '',
+      `Used: *$${global.todayCostUsd.toFixed(2)}* / $${cap.toFixed(2)} (token-equiv)`,
+      `Remaining: $${remaining.toFixed(2)}`,
+      '',
+      'Reply with one of:',
+      '`/budget +5` — add $5 more',
+      '`/budget set 20` — raise allowance to $20',
+      '`/budget reset` — restore default',
+      '',
+      'Otherwise all 51 agents pause when the cap is hit (resets at UTC midnight). Membership-backed — no real billing.',
+    ].join('\n');
+    void sendTelegramAlert(msg);
+  }
 }
 
 // Departments override via NEXT_PUBLIC_AXIOM_DEPARTMENTS (comma-separated, exactly 10 names).
@@ -307,10 +374,33 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       `- Anything ambiguous → CHAT, ask one clarifying question first.`,
       ``,
       `CONTEXT YOU CAN USE WHILE CHATTING:`,
-      `- You have READ-ONLY tools (Read, Glob, Grep) and may peek at ${AXIOM_PROJECT_DIR} to ground your reasoning. Skim aggressively, quote sparingly.`,
+      `- You have Read/Glob/Grep over ${AXIOM_PROJECT_DIR}. Skim aggressively, quote sparingly.`,
       `- You also have WebFetch + WebSearch — use them when the operator asks about current events, external docs, market conditions, library APIs, or anything you genuinely don't know. Don't fabricate facts you can verify online. Cite the URL when you do.`,
-      `- Maintain ${AXIOM_PROJECT_DIR}/README.md as the live status doc when you have time during chat replies. Don't dispatch a mission just to update the README.`,
+      `- You may suggest README.md updates but DO NOT use Write/Edit on README.md directly — that's mission territory, route it via <<DISPATCH:>>.`,
       `- Reference managers by department when planning, e.g. "Platform manager owns X".`,
+      ``,
+      `PERSISTENT MEMORY — ${AXIOM_PROJECT_DIR}/CEO_MEMORY.md:`,
+      `This is your brain that survives session resets and conversation compactions.`,
+      `BEFORE responding to any non-trivial operator message, READ this file (use the Read tool). It tells you who the operator is, what the mission is, what's been decided, and what's open.`,
+      `WHEN you learn something worth remembering — operator preferences ("call me X", "I prefer Y"), mission constraints, decisions made, recurring stakeholders, or open threads — APPEND or UPDATE the relevant section using the Write/Edit tool. Keep entries dated and terse (1-2 lines).`,
+      `Sections to maintain (create on first use):`,
+      `   ## Mission        — current overarching goal + phase`,
+      `   ## Operator       — who you're talking to + how they like to work`,
+      `   ## Decisions      — dated bullets of significant calls`,
+      `   ## Open threads   — what's in flight; what's blocked; pending decisions`,
+      `   ## Recent wins    — last 5-10 things the floor delivered`,
+      `Keep the file under ~200 lines. When it grows, prune the oldest entries from "Recent wins" first, then collapse "Decisions" into a "Decisions (older)" section.`,
+      `If the operator says "compact your context" or you receive a system-level COMPACT signal, append a one-paragraph recap of the last few turns to CEO_MEMORY.md (cover anything not already there) and reply with exactly "compacted" — your session will be reset after that turn.`,
+      ``,
+      `LONG-FORM REPORTS — ${AXIOM_PROJECT_DIR}/reports/:`,
+      `When your reply would be a structured document — a roadmap, status report, design memo, multi-section plan, code listing, or anything that reads like a doc rather than chat — DO NOT dump the whole thing into the Telegram reply (it bloats the chat history and burns tokens on every subsequent turn).`,
+      `Instead: write it as ${AXIOM_PROJECT_DIR}/reports/<slug>-<YYYY-MM-DD-HHmm>.md (use Write tool) where slug is a 2-4 word kebab-case name, then reply in chat with a 2-3 sentence summary plus this tag on its own line:`,
+      `<<REPORT_FILE: reports/<slug>-<YYYY-MM-DD-HHmm>.md>>`,
+      `The bot will send the file as a downloadable Telegram document with your summary as the caption, and the file will live in /axiom/project for browser viewing.`,
+      `Use this whenever your reply would otherwise exceed ~800 chars or 8 sentences. Routine acknowledgements + short answers stay in chat as normal.`,
+      ``,
+      `WRITE TOOL CONSTRAINTS:`,
+      `Your Write/Edit access is for CEO_MEMORY.md and reports/ ONLY. Never use Write/Edit on code files, configs, package.json, README.md, or anything outside those two targets — those go through <<DISPATCH:>> to codex /goal. Violating this defeats the whole architecture.`,
       ``,
       styleRules,
     ].join('\n');
@@ -382,17 +472,19 @@ function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
   return meta.role === 'ceo' || meta.role === 'manager' ? 'codex' : 'claude';
 }
 
-async function callAxiomClaude(sessionKey: string, message: string): Promise<{ reply: string; sessionId: string; isNew: boolean; cost?: number; durationMs?: number }> {
+async function callAxiomClaude(sessionKey: string, message: string): Promise<{ reply: string; sessionId: string; isNew: boolean; cost?: number; durationMs?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }> {
   let { sessionId, isNew } = readOrCreateAxiomSessionId(sessionKey);
   const model = modelForAxiomTopic(sessionKey);
   const meta = axiomTopicMeta(sessionKey);
-  // CEO is the chat/orchestrator — read-only on disk so it MUST dispatch real
-  // file work to codex via the <<DISPATCH: ...>> tag. Coders get full write tools.
-  // WebFetch + WebSearch are enabled for online research; the systemd-run cgroup
-  // blocks RFC1918 and cloud-metadata egress so the agent can't pivot to internal
-  // services or scrape host credentials via the IMDS.
+  // CEO is the chat/orchestrator — file work MUST dispatch to codex via the
+  // <<DISPATCH: ...>> tag. The narrow Write/Edit grant for the CEO is for its
+  // own bookkeeping only: persistent memory at CEO_MEMORY.md and long-form
+  // reports under reports/. The system prompt enforces "no code work, ever" —
+  // Ace either chats, dispatches, or writes one of those two file targets.
+  // WebFetch + WebSearch are enabled for online research; the systemd-run
+  // cgroup blocks RFC1918 + cloud-metadata egress.
   const tools = meta.role === 'ceo'
-    ? 'Read,Glob,Grep,WebFetch,WebSearch'
+    ? 'Read,Glob,Grep,Write,Edit,WebFetch,WebSearch'
     : 'Read,Glob,Grep,Write,Edit,Bash,WebFetch,WebSearch';
 
   const buildArgs = (resumeMode: boolean, sid: string): string[] => {
@@ -400,7 +492,7 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
     // calls so WebFetch/WebSearch don't trip the interactive permission gate
     // (which would otherwise reply "tool call was denied" in headless -p mode).
     const allowed = meta.role === 'ceo'
-      ? 'WebFetch WebSearch'
+      ? 'WebFetch WebSearch Write Edit'
       : 'WebFetch WebSearch Bash Edit Write';
     const base = [
       '-p',
@@ -463,17 +555,26 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
   // claude -p --output-format json emits a JSON envelope with the assistant text in `result`.
   let reply = '';
   let cost: number | undefined;
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  let cacheReadTokens: number | undefined;
   try {
     const parsed = JSON.parse(stdout.trim());
     if (typeof parsed.result === 'string') reply = parsed.result;
     else if (typeof parsed.text === 'string') reply = parsed.text;
     if (typeof parsed.total_cost_usd === 'number') cost = parsed.total_cost_usd;
     else if (typeof parsed.cost_usd === 'number') cost = parsed.cost_usd;
+    const usage = parsed.usage || parsed.total_usage || null;
+    if (usage && typeof usage === 'object') {
+      if (typeof usage.input_tokens === 'number') inputTokens = usage.input_tokens;
+      if (typeof usage.output_tokens === 'number') outputTokens = usage.output_tokens;
+      if (typeof usage.cache_read_input_tokens === 'number') cacheReadTokens = usage.cache_read_input_tokens;
+    }
   } catch {
     reply = stdout.trim();
   }
   if (!reply) reply = '(empty reply from claude)';
-  return { reply, sessionId, isNew, cost, durationMs };
+  return { reply, sessionId, isNew, cost, durationMs, inputTokens, outputTokens, cacheReadTokens };
 }
 
 /**
@@ -782,6 +883,9 @@ export async function POST(request: Request) {
     try {
       const { reply, sessionId, isNew, durationMs, engine, model, ...rest } = await callAxiomAgent(sessionKey, message);
       const cost = (rest as { cost?: number }).cost;
+      const inputTokens = (rest as { inputTokens?: number }).inputTokens;
+      const outputTokens = (rest as { outputTokens?: number }).outputTokens;
+      const cacheReadTokens = (rest as { cacheReadTokens?: number }).cacheReadTokens;
       recordCallCost(sessionKey, cost);
       const file = recordAxiomMessage(sessionKey, agentId, groupId, message, reply, {
         costUsd: cost,
@@ -811,6 +915,9 @@ export async function POST(request: Request) {
         sessionId,
         firstMessage: isNew,
         costUsd: cost,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
         durationMs,
         mode: engine === 'codex' ? 'axiom-codex' : 'axiom-claude',
       });
