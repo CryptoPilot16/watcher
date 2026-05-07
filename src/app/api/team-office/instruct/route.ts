@@ -35,7 +35,7 @@ const AXIOM_RESOURCE_LIMITS = process.env.WATCH_AXIOM_RESOURCE_LIMITS !== '0';
 
 // Per-session rate limit + daily cost cap — refuses calls when exceeded.
 const AXIOM_MAX_CALLS_PER_HOUR = Number(process.env.WATCH_AXIOM_MAX_CALLS_PER_HOUR || 60);
-const AXIOM_MAX_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 5);
+const AXIOM_MAX_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10);
 
 // Lightweight disk-fill protection — refuses to spawn if /opt/axiom is over the cap.
 // True kernel quotas require fstab usrquota/grpquota + remount, which is invasive on
@@ -79,11 +79,17 @@ function buildBwrapArgs(extraWritablePaths: string[] = []): string[] {
     // tmpfs replaces real dirs; /dev/null replaces real files.
     '--tmpfs', '/root/.ssh',
     '--tmpfs', '/etc/ssh',
-    // Mask the watcher app's env files (path configurable via WATCH_AXIOM_WATCHER_DIR).
-    '--ro-bind-try', '/dev/null', `${AXIOM_WATCHER_DIR}/.env.local`,
-    '--ro-bind-try', '/dev/null', `${AXIOM_WATCHER_DIR}/.env`,
-    // Override /etc/hosts so cloud-metadata hostnames resolve to nothing.
-    '--ro-bind-try', `${AXIOM_WATCHER_DIR}/etc-hosts-axiom`, '/etc/hosts',
+  ];
+  // Mask the watcher app's env files. Only bind over targets that exist on the
+  // host — bwrap cannot create a missing target file under the read-only root,
+  // and `--ro-bind-try` only handles a missing SOURCE, not a missing TARGET.
+  const envTargets = [`${AXIOM_WATCHER_DIR}/.env.local`, `${AXIOM_WATCHER_DIR}/.env`];
+  for (const target of envTargets) {
+    if (fs.existsSync(target)) args.push('--ro-bind', '/dev/null', target);
+  }
+  // Override /etc/hosts so cloud-metadata hostnames resolve to nothing.
+  args.push('--ro-bind-try', `${AXIOM_WATCHER_DIR}/etc-hosts-axiom`, '/etc/hosts');
+  args.push(
     // Hide other home directories
     '--tmpfs', '/home',
     '--share-net',
@@ -92,7 +98,7 @@ function buildBwrapArgs(extraWritablePaths: string[] = []): string[] {
     '--unshare-pid',
     '--unshare-uts',
     '--unshare-ipc',
-  ];
+  );
   for (const p of writable) {
     args.push('--bind', p, p);
   }
@@ -390,10 +396,17 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
     : 'Read,Glob,Grep,Write,Edit,Bash,WebFetch,WebSearch';
 
   const buildArgs = (resumeMode: boolean, sid: string): string[] => {
+    // --tools exposes the toolset to the model; --allowedTools auto-permits
+    // calls so WebFetch/WebSearch don't trip the interactive permission gate
+    // (which would otherwise reply "tool call was denied" in headless -p mode).
+    const allowed = meta.role === 'ceo'
+      ? 'WebFetch WebSearch'
+      : 'WebFetch WebSearch Bash Edit Write';
     const base = [
       '-p',
       '--model', model,
       '--tools', tools,
+      '--allowedTools', allowed,
       '--add-dir', AXIOM_PROJECT_DIR,
       '--permission-mode', 'acceptEdits',
       '--output-format', 'json',
@@ -601,7 +614,14 @@ function writeAxiomState(sessionKey: string, state: Record<string, unknown>) {
   } catch {}
 }
 
-function recordAxiomMessage(sessionKey: string, agentId: string, groupId: string, message: string, reply: string) {
+function recordAxiomMessage(
+  sessionKey: string,
+  agentId: string,
+  groupId: string,
+  message: string,
+  reply: string,
+  meta?: { costUsd?: number; engine?: string; durationMs?: number },
+) {
   try {
     fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
     const safeKey = sessionKey.replace(/[^a-z0-9_.\-:]/gi, '_').slice(0, 200) || 'unknown';
@@ -613,6 +633,9 @@ function recordAxiomMessage(sessionKey: string, agentId: string, groupId: string
       groupId,
       message,
       reply,
+      ...(meta?.costUsd != null ? { costUsd: meta.costUsd } : {}),
+      ...(meta?.engine ? { engine: meta.engine } : {}),
+      ...(meta?.durationMs != null ? { durationMs: meta.durationMs } : {}),
     });
     fs.appendFileSync(file, entry + '\n');
     return file;
@@ -760,7 +783,11 @@ export async function POST(request: Request) {
       const { reply, sessionId, isNew, durationMs, engine, model, ...rest } = await callAxiomAgent(sessionKey, message);
       const cost = (rest as { cost?: number }).cost;
       recordCallCost(sessionKey, cost);
-      const file = recordAxiomMessage(sessionKey, agentId, groupId, message, reply);
+      const file = recordAxiomMessage(sessionKey, agentId, groupId, message, reply, {
+        costUsd: cost,
+        engine,
+        durationMs,
+      });
       writeAxiomState(sessionKey, {
         status: 'recent',
         startedAt,
