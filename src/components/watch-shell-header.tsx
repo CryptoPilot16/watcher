@@ -3,11 +3,12 @@
 import Link from 'next/link';
 
 type WatchShellHeaderProps = {
-  activeTab: 'watch' | 'docs';
+  activeTab: 'watch' | 'docs' | 'axiom';
 };
 
 const tabs = [
   { id: 'watch', label: 'watch', href: '/watch' },
+  { id: 'axiom', label: 'axiom', href: '/axiom' },
   { id: 'docs', label: 'docs', href: '/docs' },
 ] as const;
 
