@@ -532,7 +532,7 @@ async function bootstrap() {
   }
   try {
     await tg('setMyDescription', {
-      description: 'Direct line to IAN, the CEO of the AXIOM Office — orchestrator of 51 AI agents on one operations floor.',
+      description: 'Direct line to the CEO of the AXIOM Office — orchestrator of 51 AI agents on one operations floor.',
     });
   } catch {}
   try {
