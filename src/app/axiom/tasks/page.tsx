@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminShellHeader } from '@/components/admin-shell-header';
 
 type TaskEntry = {
@@ -22,6 +22,7 @@ type TasksResponse = {
   total: number;
   entries: TaskEntry[];
   mailboxDir?: string;
+  retentionDays?: number;
 };
 
 function fmtTime(ts: string) {
@@ -44,6 +45,20 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'ceo' | 'manager' | 'coder'>('all');
+  const [clearing, setClearing] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      const res = await fetch('/api/axiom/tasks', { cache: 'no-store' });
+      const json = (await res.json()) as TasksResponse;
+      setData(json);
+      setError(null);
+    } catch (e: any) {
+      setError(String(e?.message || e || 'failed to load'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +84,28 @@ export default function TasksPage() {
     };
   }, []);
 
+  async function clearTasks() {
+    const scope = filter === 'all' ? 'ALL tasks' : `${filter.toUpperCase()} tasks`;
+    if (!confirm(`Clear ${scope}? This cannot be undone.`)) return;
+    setClearing(true);
+    try {
+      const url = filter === 'all'
+        ? '/api/axiom/tasks'
+        : `/api/axiom/tasks?role=${encodeURIComponent(filter)}`;
+      const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        alert(`clear failed: ${json?.error || res.statusText}`);
+      } else {
+        await reload();
+      }
+    } catch (e: any) {
+      alert(`clear failed: ${e?.message || e}`);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const entries = (data?.entries || []).filter((e) => (filter === 'all' ? true : e.role === filter));
   const ceoCount = (data?.entries || []).filter((e) => e.role === 'ceo').length;
   const managerCount = (data?.entries || []).filter((e) => e.role === 'manager').length;
@@ -90,7 +127,7 @@ export default function TasksPage() {
             <span><span style={{ color: roleColor('manager') }}>{managerCount}</span> manager</span>
             <span><span style={{ color: roleColor('coder') }}>{coderCount}</span> coder</span>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {(['all', 'ceo', 'manager', 'coder'] as const).map((id) => (
               <button
                 key={id}
@@ -105,6 +142,19 @@ export default function TasksPage() {
                 {id}
               </button>
             ))}
+            <span className="ml-auto flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-muted)]">
+                {data?.retentionDays ? `auto-purge ${data.retentionDays}d` : ''}
+              </span>
+              <button
+                type="button"
+                disabled={clearing || !(data?.entries?.length)}
+                onClick={clearTasks}
+                className="rounded border border-rose-700/40 bg-rose-900/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-rose-200 transition-colors hover:border-rose-500/60 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {clearing ? 'clearing…' : filter === 'all' ? 'clear all' : `clear ${filter}`}
+              </button>
+            </span>
           </div>
         </div>
 

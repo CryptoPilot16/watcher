@@ -532,7 +532,42 @@ function ViewerPane({
         ) : fileError ? (
           <div className="px-3 py-2 text-xs text-red-300">error: {fileError}</div>
         ) : fileBinary ? (
-          <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">{fileBinary.preview}</div>
+          (() => {
+            const ext = (selectedPath.split('.').pop() || '').toLowerCase();
+            const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico'].includes(ext);
+            const isPdf = ext === 'pdf';
+            if (isImage) {
+              return (
+                <div className="flex h-full flex-col">
+                  <div className="border-b border-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
+                    image · {fileBinary.size.toLocaleString()} bytes · {ext}
+                  </div>
+                  <div className="flex-1 overflow-auto p-3">
+                    <img
+                      src={`/api/axiom/project/raw?path=${encodeURIComponent(selectedPath)}`}
+                      alt={selectedPath}
+                      className="max-w-full rounded border border-white/10"
+                    />
+                  </div>
+                </div>
+              );
+            }
+            if (isPdf) {
+              return (
+                <div className="flex h-full flex-col">
+                  <div className="border-b border-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
+                    pdf · {fileBinary.size.toLocaleString()} bytes
+                  </div>
+                  <iframe
+                    src={`/api/axiom/project/raw?path=${encodeURIComponent(selectedPath)}#view=FitH`}
+                    title={selectedPath}
+                    className="h-full w-full flex-1 bg-white"
+                  />
+                </div>
+              );
+            }
+            return <div className="px-3 py-2 text-xs text-[var(--watch-text-muted)]">{fileBinary.preview}</div>;
+          })()
         ) : fileText !== null ? (
           <>
             {fileResp!.ok && fileResp.kind === 'text' && fileResp.truncated && (
