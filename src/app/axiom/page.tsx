@@ -247,7 +247,7 @@ export default function AxiomPage() {
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ axiom operations floor</div>
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
-            51 Claude Code agents · 1 CEO · 10 managers · 40 coders · 10 teams of 5
+            51 AI agents · 1 CEO · 10 managers · 40 coders · 10 teams of 5
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--watch-text-muted)]">
             <span><span className="text-[var(--watch-accent-strong)]">{runningCount}</span> running</span>
