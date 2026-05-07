@@ -102,12 +102,27 @@ A separate admin zone at `/axiom` runs a 3D office staffed by 51 AI agents — a
 A dedicated Telegram bot pairs the operator 1:1 with the AXIOM CEO so you can run the floor from your phone. Text or voice both round-trip to the same CEO conversation as the web `/axiom` UI.
 
 - **Hybrid model split**: chat replies stream from Claude Sonnet (Anthropic Max subscription, ~10s typical) for fast back-and-forth. When the CEO judges a request needs autonomous execution — building features, editing files, running commands — it tags its reply with `<<DISPATCH: brief>>`. The bot strips the tag, spawns Codex `gpt-5.5 --enable goals` (ChatGPT subscription, `/goal` autonomous mode, `--sandbox workspace-write` inside the project dir) in the background, and DMs the result back when codex finishes (typically 2–15 min)
-- Decision split is enforced architecturally: the CEO's claude call is locked to read-only tools (`Read,Glob,Grep`) so it cannot do file work itself; writes must go through codex
+- Decision split is enforced architecturally: the CEO's claude call has narrow Write/Edit access (only for memory + reports — see below) so substantive code work must dispatch to codex
 - **Voice messages** are transcribed locally via a long-running `faster-whisper` Python sidecar (CTranslate2, `small.en` int8 model kept warm in process). First transcription pays a ~3s model-load cost; subsequent voice notes transcribe in <1s. No cloud API, no key, no per-clip charge
 - Bot pairing: `WATCH_AXIOM_CEO_OPERATOR_ID` locks the bot to one Telegram user ID. If unset, the first user to `/start` is auto-paired and persisted to `/var/lib/watcher/axiom-ceo-bot-state.json`
-- Commands: `/start` (pair), `/status` (CEO + floor health), `/missions` (recent dispatches), `/who`, `/reset`
+- Commands: `/start` (pair), `/status` (CEO + floor health), `/missions` (recent dispatches), `/memory` (show CEO_MEMORY.md), `/compact` (force a memory flush + session reset now), `/forget` (clear memory file), `/who`, `/reset`
 - Engine override: set `WATCH_AXIOM_CEO_ENGINE=claude` (default `codex` in code) to keep the CEO on Claude even if the route's role-default would pick something else; same for managers via `WATCH_AXIOM_MANAGER_ENGINE`
 - Run as a pm2 service: `npm run axiom-ceo:bot` (entry registered in `ecosystem.config.cjs` as `clawnux-axiom-ceo-bot`)
+
+#### Persistent CEO memory + auto-compaction
+
+Every claude turn carries the full conversation as input tokens, so a long Telegram chat balloons cost. To keep that bounded, the CEO maintains a persistent `CEO_MEMORY.md` at the project root and the bot auto-compacts the live session when it grows too large.
+
+- **`CEO_MEMORY.md`** lives at `${WATCH_AXIOM_PROJECT_DIR}/CEO_MEMORY.md` with structured sections (Mission, Operator, Decisions, Open threads, Recent wins). The CEO's system prompt instructs it to read this file before any non-trivial reply and update it as it learns operator preferences, decisions, and stakeholders. Survives every kind of session reset
+- The CEO's claude tools are scoped to `Read,Glob,Grep,Write,Edit,WebFetch,WebSearch` and the system prompt enforces that Write/Edit may only target `CEO_MEMORY.md` and the `reports/` directory — anything else (code, configs, README) must dispatch to codex via `<<DISPATCH:>>`. Bwrap also kernel-restricts writes to the project dir
+- **Auto-compaction**: bot tracks `inputTokens` from each claude response. When the conversation crosses `WATCH_AXIOM_CEO_COMPACT_THRESHOLD` (default 40000 tokens), the bot fires a background SYSTEM-COMPACT directive asking Ace to flush a recap to `CEO_MEMORY.md`, then deletes the session file. The next turn boots fresh but reads memory first, so the chat continues without losing the why
+- Manual override: `/compact` triggers compaction now; `/memory` shows the current memory state in chat; `/forget` resets the memory file to a blank template
+
+#### Long-form report attachments
+
+For replies that would be reports / plans / design memos / multi-section docs, dumping the whole text into chat bloats every subsequent turn's context (since claude resumes the full transcript). Instead the CEO writes the document to `${WATCH_AXIOM_PROJECT_DIR}/reports/<slug>-<YYYY-MM-DD-HHmm>.md` and emits `<<REPORT_FILE: reports/...md>>` after a 2–3 sentence chat summary.
+
+The bot detects the tag, strips it, and uses Telegram's `sendDocument` to attach the markdown file with the chat summary as caption. The file also persists in `/axiom/project` where the markdown viewer renders it inline with diff support against the previous version.
 
 Required env for the Telegram path:
 
@@ -117,7 +132,28 @@ WATCH_AXIOM_CEO_OPERATOR_ID=      # your Telegram user id (numeric)
 WATCH_AXIOM_CEO_WHISPER_PYTHON=   # path to a venv with faster-whisper installed; voice disabled if unset
 ```
 
-Optional knobs: `WATCH_AXIOM_CEO_ENGINE`, `WATCH_AXIOM_CEO_MODEL`, `WATCH_AXIOM_CODEX_MISSION_MODEL`, `WATCH_AXIOM_MISSION_TIMEOUT_MS`, `WATCH_AXIOM_CEO_WHISPER_MODEL` (default `small.en`), `WATCH_AXIOM_MISSION_DIR`.
+Optional knobs: `WATCH_AXIOM_CEO_ENGINE`, `WATCH_AXIOM_CEO_MODEL`, `WATCH_AXIOM_CODEX_MISSION_MODEL`, `WATCH_AXIOM_MISSION_TIMEOUT_MS`, `WATCH_AXIOM_CEO_WHISPER_MODEL` (default `small.en`), `WATCH_AXIOM_MISSION_DIR`, `WATCH_AXIOM_CEO_COMPACT_THRESHOLD` (default 40000).
+
+### `/axiom/project` — live file tree, change feed, diff viewer
+
+A separate admin tab at `/axiom/project` shows what the agents are actually building in real time. Three panes (file tree, recent file events, file viewer) backed by a long-running `fs.watch` sidecar that streams events over SSE, plus per-file before/after snapshots so the viewer can show a unified diff of the most recent edit.
+
+- **Tree** — collapsible `/opt/axiom` file tree polled every 5s, with size + amber tint on recently-touched files
+- **Events feed** — chronological list of created / modified / deleted events, streamed via SSE so updates land in <1s. Click any event to jump to the file
+- **Viewer** — three modes selectable per file:
+  - **source** — raw text, monospace
+  - **rendered markdown** for `.md` files (sanitized agent-authored HTML) — auto-selected when there's no diff to show
+  - **diff** — unified diff against the previous snapshot, with `+N/-M` summary and green/red gutter markers; auto-selected for any file the watcher has captured at least two snapshots of
+- **Mobile** — three panes collapse to a tab switcher (tree | events | viewer) on phones; tapping a file auto-flips to viewer
+- **Auth** — same admin cookie as the rest of `/axiom/*`, plus the `WATCH_API_KEY`/`WATCH_PASSWORD` bearer for scriptable access
+
+Backed by a pm2 sidecar (`clawnux-axiom-project-watcher`) that writes events to `/var/lib/watcher/axiom-project-events.jsonl` (auto-truncates at 10MB → 4MB) and snapshots to `/var/lib/watcher/axiom-project-snapshots/<sha1>/`. New API routes: `/api/axiom/project/{tree,file,diff,events,events/stream}`.
+
+Configurable via `WATCH_AXIOM_PROJECT_EVENT_LOG`, `WATCH_AXIOM_PROJECT_SNAPSHOT_DIR`, `WATCH_AXIOM_PROJECT_SNAPSHOT_MAX` (256KB default), `WATCH_AXIOM_PROJECT_EVENT_LOG_MAX`, `WATCH_AXIOM_PROJECT_EVENT_LOG_KEEP`.
+
+### `/axiom/settings` — daily allowance + usage telemetry
+
+Live view of the AXIOM office's daily spend (computed from each claude turn's `total_cost_usd`), per-agent call rate over the last hour, and a breakdown of recent agent actions by category (image / pdf / document / voice / code / text) with average cost and duration. Override the default daily cap (`WATCH_AXIOM_MAX_DAILY_USD`, default $5) at runtime without restarting.
 
 ## Main surfaces
 
@@ -129,6 +165,8 @@ Optional knobs: `WATCH_AXIOM_CEO_ENGINE`, `WATCH_AXIOM_CEO_MODEL`, `WATCH_AXIOM_
 - `/axiom/login` — separate password gate for the AXIOM admin zone (gated by WATCH_AXIOM_PASSWORD)
 - `/axiom` — admin-authenticated 51-agent AXIOM Office showcase floor
 - `/axiom/tasks` — admin-authenticated live feed of directives + agent replies across the AXIOM floor
+- `/axiom/project` — admin-authenticated live file tree + change feed + diff viewer for `/opt/axiom`
+- `/axiom/settings` — admin-authenticated daily allowance + per-agent + per-action usage telemetry
 - `/docs` — authenticated in-app reference
 - `/office-preview` — public sanitized office visualization
 - `/office-preview?debug=1` — public DOM debug HUD
@@ -145,6 +183,12 @@ Optional knobs: `WATCH_AXIOM_CEO_ENGINE`, `WATCH_AXIOM_CEO_MODEL`, `WATCH_AXIOM_
 - `/api/axiom/state` — live status of every active AXIOM agent (running / recent / error) with progress estimates
 - `/api/axiom/transcript?sessionKey=...` — fetch (GET) or clear (DELETE) the per-agent chat transcript with 24h auto-purge
 - `/api/axiom/tasks` — JSON feed of every AXIOM directive ever sent, role-tagged, sorted newest-first
+- `/api/axiom/project/tree` — JSON file tree of the AXIOM project dir
+- `/api/axiom/project/file?path=...` — text/binary preview of any file under the project dir (256KB cap, traversal-protected)
+- `/api/axiom/project/diff?path=...` — before / after snapshots for the most recent change to a file (client renders unified diff)
+- `/api/axiom/project/events` — JSON tail of recent file-change events
+- `/api/axiom/project/events/stream` — Server-Sent Events stream of file changes (instant updates)
+- `/api/axiom/settings` — daily allowance, today's spend, per-agent call rate, per-action cost/duration breakdown; supports POST to override the cap
 - `/api/watch-telegram` — Telegram mirror sync endpoint
 - `/api/watch-telegram/init` — forces a fresh Telegram summary message
 
