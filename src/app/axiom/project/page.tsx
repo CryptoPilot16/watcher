@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { marked } from 'marked';
 import { AdminShellHeader } from '@/components/admin-shell-header';
 
 type TreeNode = {
@@ -25,7 +26,21 @@ type FileResponse =
   | { ok: false; error: string };
 
 const TREE_POLL_MS = 5_000;
-const EVENT_POLL_MS = 2_000;
+const SSE_RECONNECT_MS = 3_000;
+
+// Strip the most dangerous bits from agent-authored markdown HTML before injecting.
+// Agents could plausibly include <script> or onerror= handlers in rendered .md
+// files; we cut those without pulling in DOMPurify for a v1.
+function sanitizeMarkdownHtml(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    .replace(/javascript\s*:/gi, '');
+}
 
 function fmtSize(bytes?: number | null) {
   if (bytes === undefined || bytes === null) return '';
@@ -82,7 +97,8 @@ export default function ProjectPage() {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']));
   const [fileResp, setFileResp] = useState<FileResponse | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
-  const lastEventTsRef = useRef<string>('');
+  const [renderMarkdown, setRenderMarkdown] = useState(true);
+  const [streamConnected, setStreamConnected] = useState(false);
   const flashRef = useRef<Map<string, number>>(new Map());
   const [, setFlashTick] = useState(0);
 
@@ -103,39 +119,49 @@ export default function ProjectPage() {
     }
   }, []);
 
-  const pollEvents = useCallback(async () => {
-    try {
-      const since = lastEventTsRef.current ? `?since=${encodeURIComponent(lastEventTsRef.current)}` : '';
-      const r = await fetch(`/api/axiom/project/events${since}`, { cache: 'no-store', credentials: 'same-origin' });
-      const j = await r.json();
-      if (!j.ok) return;
-      const incoming = j.events as ProjectEvent[];
-      if (!incoming.length) return;
-      setEvents((prev) => {
-        const merged = [...prev, ...incoming];
-        return merged.slice(-300);
+  // Live SSE subscription for file events — instant, no polling.
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const connect = () => {
+      if (cancelled) return;
+      es = new EventSource('/api/axiom/project/events/stream', { withCredentials: true });
+      es.addEventListener('hello', () => setStreamConnected(true));
+      es.addEventListener('file', (msg) => {
+        try {
+          const ev = JSON.parse((msg as MessageEvent).data) as ProjectEvent;
+          setEvents((prev) => {
+            const merged = [...prev, ev];
+            return merged.length > 300 ? merged.slice(-300) : merged;
+          });
+          if (ev.path) flashRef.current.set(ev.path, Date.now());
+          setFlashTick((t) => t + 1);
+        } catch {}
       });
-      const now = Date.now();
-      for (const ev of incoming) {
-        if (ev.path) flashRef.current.set(ev.path, now);
-      }
-      setFlashTick((t) => t + 1);
-      lastEventTsRef.current = incoming[incoming.length - 1].ts;
-    } catch {
-      // ignore transient
-    }
+      es.onerror = () => {
+        setStreamConnected(false);
+        try { es?.close(); } catch {}
+        es = null;
+        if (cancelled) return;
+        reconnectTimer = setTimeout(connect, SSE_RECONNECT_MS);
+      };
+    };
+
+    connect();
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try { es?.close(); } catch {}
+    };
   }, []);
 
   useEffect(() => {
     pollTree();
-    pollEvents();
     const t1 = setInterval(pollTree, TREE_POLL_MS);
-    const t2 = setInterval(pollEvents, EVENT_POLL_MS);
-    return () => {
-      clearInterval(t1);
-      clearInterval(t2);
-    };
-  }, [pollTree, pollEvents]);
+    return () => clearInterval(t1);
+  }, [pollTree]);
 
   // Decay flashes: remove paths flashed >4s ago.
   useEffect(() => {
@@ -199,7 +225,16 @@ export default function ProjectPage() {
         <AdminShellHeader activeTab="project" />
 
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ axiom project — what the agents are building</div>
+          <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
+            <span>▌ axiom project — what the agents are building</span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${streamConnected ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                style={{ boxShadow: streamConnected ? '0 0 6px rgba(74,222,128,0.7)' : '0 0 6px rgba(251,191,36,0.7)' }}
+              />
+              <span>{streamConnected ? 'live' : 'reconnecting'}</span>
+            </span>
+          </div>
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
             {projectDir || '(loading)'} · {events.length} recent file events
           </div>
@@ -266,11 +301,22 @@ export default function ProjectPage() {
 
           {/* viewer pane */}
           <div className="flex min-h-0 flex-col rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)]">
-            <div className="flex items-center justify-between border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
-              <span>viewer{selectedPath ? ` · ${selectedPath}` : ''}</span>
-              {selectedPath && fileResp?.ok && fileResp.kind === 'text' && (
-                <span>{languageHint(selectedPath)} · {fmtSize(fileResp.size)}</span>
-              )}
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--watch-panel-border)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
+              <span className="truncate">viewer{selectedPath ? ` · ${selectedPath}` : ''}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {selectedPath?.toLowerCase().endsWith('.md') && fileResp?.ok && fileResp.kind === 'text' && (
+                  <button
+                    type="button"
+                    onClick={() => setRenderMarkdown((v) => !v)}
+                    className="rounded border border-[var(--watch-panel-border)] px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-[var(--watch-text-muted)] hover:border-[var(--watch-panel-border-strong)] hover:text-[var(--watch-text)]"
+                  >
+                    {renderMarkdown ? 'show source' : 'render markdown'}
+                  </button>
+                )}
+                {selectedPath && fileResp?.ok && fileResp.kind === 'text' && (
+                  <span className="text-[10px]">{languageHint(selectedPath)} · {fmtSize(fileResp.size)}</span>
+                )}
+              </span>
             </div>
             <div className="flex-1 overflow-y-auto">
               {!selectedPath ? (
@@ -286,9 +332,20 @@ export default function ProjectPage() {
                   {fileResp.truncated && (
                     <div className="bg-amber-900/40 px-3 py-1.5 text-[10px] text-amber-200">file truncated to first {fileResp.maxBytes / 1024}KB</div>
                   )}
-                  <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-[1.45] text-[var(--watch-text)]">
-                    {fileResp.content}
-                  </pre>
+                  {renderMarkdown && selectedPath?.toLowerCase().endsWith('.md') ? (
+                    <article
+                      className="axiom-md p-4 text-[13px] leading-relaxed text-[var(--watch-text)]"
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeMarkdownHtml(
+                          marked.parse(fileResp.content, { gfm: true, breaks: false, async: false }) as string,
+                        ),
+                      }}
+                    />
+                  ) : (
+                    <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-[1.45] text-[var(--watch-text)]">
+                      {fileResp.content}
+                    </pre>
+                  )}
                 </div>
               ) : null}
             </div>
