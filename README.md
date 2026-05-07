@@ -97,6 +97,28 @@ A separate admin zone at `/axiom` runs a 3D office staffed by 51 AI agents — a
 - Project root for agent work defaults to `/opt/axiom`; override via `WATCH_AXIOM_PROJECT_DIR`. Mailbox / session state lives at `/var/lib/watcher/axiom-mailbox` (override via `WATCH_AXIOM_MAILBOX_DIR`)
 - Per-call timeout configurable via `WATCH_AXIOM_CLAUDE_TIMEOUT_MS` (defaults to 600000 = 10 minutes)
 
+### CEO over Telegram (voice + chat + autonomous missions)
+
+A dedicated Telegram bot pairs the operator 1:1 with the AXIOM CEO so you can run the floor from your phone. Text or voice both round-trip to the same CEO conversation as the web `/axiom` UI.
+
+- **Hybrid model split**: chat replies stream from Claude Sonnet (Anthropic Max subscription, ~10s typical) for fast back-and-forth. When the CEO judges a request needs autonomous execution — building features, editing files, running commands — it tags its reply with `<<DISPATCH: brief>>`. The bot strips the tag, spawns Codex `gpt-5.5 --enable goals` (ChatGPT subscription, `/goal` autonomous mode, `--sandbox workspace-write` inside the project dir) in the background, and DMs the result back when codex finishes (typically 2–15 min)
+- Decision split is enforced architecturally: the CEO's claude call is locked to read-only tools (`Read,Glob,Grep`) so it cannot do file work itself; writes must go through codex
+- **Voice messages** are transcribed locally via a long-running `faster-whisper` Python sidecar (CTranslate2, `small.en` int8 model kept warm in process). First transcription pays a ~3s model-load cost; subsequent voice notes transcribe in <1s. No cloud API, no key, no per-clip charge
+- Bot pairing: `WATCH_AXIOM_CEO_OPERATOR_ID` locks the bot to one Telegram user ID. If unset, the first user to `/start` is auto-paired and persisted to `/var/lib/watcher/axiom-ceo-bot-state.json`
+- Commands: `/start` (pair), `/status` (CEO + floor health), `/missions` (recent dispatches), `/who`, `/reset`
+- Engine override: set `WATCH_AXIOM_CEO_ENGINE=claude` (default `codex` in code) to keep the CEO on Claude even if the route's role-default would pick something else; same for managers via `WATCH_AXIOM_MANAGER_ENGINE`
+- Run as a pm2 service: `npm run axiom-ceo:bot` (entry registered in `ecosystem.config.cjs` as `clawnux-axiom-ceo-bot`)
+
+Required env for the Telegram path:
+
+```bash
+WATCH_AXIOM_CEO_BOT_TOKEN=        # @AxiomCEO_TheBuilder_Bot or your own bot token
+WATCH_AXIOM_CEO_OPERATOR_ID=      # your Telegram user id (numeric)
+WATCH_AXIOM_CEO_WHISPER_PYTHON=   # path to a venv with faster-whisper installed; voice disabled if unset
+```
+
+Optional knobs: `WATCH_AXIOM_CEO_ENGINE`, `WATCH_AXIOM_CEO_MODEL`, `WATCH_AXIOM_CODEX_MISSION_MODEL`, `WATCH_AXIOM_MISSION_TIMEOUT_MS`, `WATCH_AXIOM_CEO_WHISPER_MODEL` (default `small.en`), `WATCH_AXIOM_MISSION_DIR`.
+
 ## Main surfaces
 
 ### App routes
