@@ -1704,10 +1704,15 @@ function WorkerAvatar({
           ? taskTableFacing
           : (idleFacing ?? 0);
     const baseY = atDesk ? 0.05 : atFront ? 0.06 : 0.07;
+    // Seated bob is bigger when actively working (typing motion shows in the
+    // shoulders + upper body) and tinier when idle/recent. Per-avatar phase
+    // already comes from `t = clock.getElapsedTime() + seed * 0.27`, so 50
+    // avatars don't bob in unison.
+    const seatedWorkBob = topic.live.status === 'running' ? 0.014 : 0.005;
     const bob = atFront
       ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
       : atDesk
-        ? (!reducedMotion ? Math.sin(t * 1.2) * 0.003 : 0)
+        ? (!reducedMotion ? Math.sin(t * (1.4 + (seed % 5) * 0.08)) * seatedWorkBob : 0)
         : (!reducedMotion ? Math.sin(t * 2.0) * 0.008 : 0);
 
     moveTarget.current.set(anchor[0], baseY + bob, anchor[2]);
@@ -1869,8 +1874,36 @@ function WorkerAvatar({
           leftLeg.current.rotation.x = walkStride * 0.35;
           rightLeg.current.rotation.x = -walkStride * 0.35;
         } else {
-          leftArm.current.rotation.x = -1.1;
-          rightArm.current.rotation.x = -1.02;
+          // Seated at desk. Add a per-avatar typing animation so the floor
+          // doesn't read as 50 frozen mannequins. Each avatar gets a
+          // seed-derived typing speed (1.6-2.4 Hz) and an out-of-phase pair
+          // of arm strokes. When the agent is actively running, animate
+          // harder (real "typing"); otherwise just a small idle settle.
+          const isWorking = topic.live.status === 'running';
+          if (!reducedMotion && isWorking) {
+            const typingSpeed = 1.7 + ((seed * 13) % 7) * 0.1; // 1.7-2.3 Hz
+            const phase = (seed * 0.41) % (Math.PI * 2);
+            const typeL = Math.sin(t * typingSpeed + phase);
+            const typeR = Math.sin(t * typingSpeed + phase + Math.PI * 0.7); // out of phase
+            leftArm.current.rotation.x = -1.1 + typeL * 0.08;
+            rightArm.current.rotation.x = -1.02 + typeR * 0.09;
+            // tiny shoulder twitch per keystroke
+            leftArm.current.rotation.z = (typeL > 0 ? typeL : 0) * 0.05;
+            rightArm.current.rotation.z = (typeR > 0 ? typeR : 0) * -0.05;
+          } else if (!reducedMotion) {
+            // Idle / recent / error — a slow settle/breathe so they don't
+            // look completely frozen, but no typing.
+            const settle = Math.sin(t * 0.6 + seed * 0.31) * 0.025;
+            leftArm.current.rotation.x = -1.1 + settle;
+            rightArm.current.rotation.x = -1.02 + settle * 0.8;
+            leftArm.current.rotation.z = 0;
+            rightArm.current.rotation.z = 0;
+          } else {
+            leftArm.current.rotation.x = -1.1;
+            rightArm.current.rotation.x = -1.02;
+            leftArm.current.rotation.z = 0;
+            rightArm.current.rotation.z = 0;
+          }
           leftLeg.current.rotation.x = 1.18;
           rightLeg.current.rotation.x = 1.18;
         }
