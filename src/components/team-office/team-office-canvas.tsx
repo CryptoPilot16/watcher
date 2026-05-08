@@ -1346,6 +1346,9 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
   // above the far wall. Each team's rug + trim is tinted with the
   // department's roadmap color so the floor reads as 10 distinct,
   // identifiable team zones (matches /axiom/roadmap and /axiom/work).
+  // When the team is "active" (any manager/coder running) the rug brightens,
+  // the trim glows harder, and a soft up-pointing spotlight kicks in — same
+  // visual language as the /axiom/work card highlight.
   const renderPartition = (cx: number, cz: number, teamRow: 0 | 1, team: number, label?: string) => {
     const halfW = 3.0;
     const farOffset = 2.9;
@@ -1360,18 +1363,23 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
     const labelY = wallH + 1.0;
     const labelZ = teamRow === 0 ? back + 0.05 : back - 0.05;
     const accent = colorForTeam(team);
-    const rugColor = tintHex(accent, -0.55); // dark-tinted dept color for floor
-    const trimColor = accent; // bright dept color for the wall caps
+    const isActive = activeTeams?.has(team) || false;
+    // Active teams get a lighter, more saturated rug + harder-glowing trim.
+    const rugColor = isActive ? tintHex(accent, -0.25) : tintHex(accent, -0.55);
+    const rugEmissive = isActive ? 0.18 : 0;
+    const trimColor = accent;
+    const trimEmissive = isActive ? 0.62 : 0.18;
     return (
       <group key={`partition-${cx.toFixed(2)}-${cz.toFixed(2)}`}>
-        {/* Cubicle rug — dept-tinted accent under the desk cluster */}
+        {/* Cubicle rug — dept-tinted accent under the desk cluster.
+            Active teams emit a soft glow so the floor reads "lit". */}
         <mesh
           rotation={[-Math.PI / 2, 0, 0]}
           position={[cx, 0.003, sideZ]}
           receiveShadow
         >
           <planeGeometry args={[halfW * 2 - 0.4, sideLen - 0.6]} />
-          <meshStandardMaterial color={rugColor} roughness={0.95} />
+          <meshStandardMaterial color={rugColor} roughness={0.95} emissive={accent} emissiveIntensity={rugEmissive} />
         </mesh>
         {/* far wall (full width) */}
         <mesh position={[cx, wallY, back]} castShadow receiveShadow>
@@ -1381,7 +1389,7 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
         {/* trim cap on far wall — uses dept color */}
         <mesh position={[cx, wallH + 0.04, back]}>
           <boxGeometry args={[halfW * 2 + 0.04, 0.06, thickness + 0.04]} />
-          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={trimEmissive} />
         </mesh>
         {/* left side wall */}
         <mesh position={[left, wallY, sideZ]} castShadow receiveShadow>
@@ -1390,7 +1398,7 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
         </mesh>
         <mesh position={[left, wallH + 0.04, sideZ]}>
           <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
-          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={trimEmissive} />
         </mesh>
         {/* right side wall */}
         <mesh position={[right, wallY, sideZ]} castShadow receiveShadow>
@@ -1399,8 +1407,19 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
         </mesh>
         <mesh position={[right, wallH + 0.04, sideZ]}>
           <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
-          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={trimEmissive} />
         </mesh>
+        {/* Active-team spotlight — soft point light above the cubicle that
+            tints the cluster in the dept color when the team is working. */}
+        {isActive && (
+          <pointLight
+            position={[cx, wallH + 1.4, sideZ]}
+            color={accent}
+            intensity={2.4}
+            distance={5.5}
+            decay={2}
+          />
+        )}
         {/* Big department banner — uses the dept color as background.
             Highlighted (slightly bigger + glowing edge) when this team has
             any agent actively running. */}
@@ -1410,7 +1429,7 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
             color={accent}
             position={[cx, labelY, labelZ]}
             visible
-            highlighted={activeTeams?.has(team) || false}
+            highlighted={isActive}
           />
         )}
       </group>
