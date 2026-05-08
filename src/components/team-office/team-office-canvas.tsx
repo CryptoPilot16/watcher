@@ -2059,7 +2059,19 @@ function WorkerAvatar({
       <ActivityDiamond visible={showActivityDiamond} hasBar={topic.live.status === 'running'} />
       <AgentProgressBar topic={topic} debugRef={debugRef} />
       <AlertDiamond visible={showHousekeepingAlert} />
-      <FloatingNameTag name={hoverLabel} color={statusColor(topic.live.status)} position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]} visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert} />
+      <FloatingNameTag
+        name={hoverLabel}
+        color={(() => {
+          // Use the agent's department color so each cubicle's labels match
+          // the roadmap palette (m4 Substrate orange, m1 Foundation green,
+          // etc). Falls back to status-color for non-axiom topics.
+          const m = topic.topicId.match(/^axiom-mgr-(\d+)$/) || topic.topicId.match(/^axiom-coder-(\d+)-\d+$/);
+          if (m) return colorForTeam(Number(m[1]));
+          return statusColor(topic.live.status);
+        })()}
+        position={[0.18, topic.live.status === 'running' ? 2.6 : 1.78, 0.02]}
+        visible={emphasized || topic.live.status === 'running' || topic.live.status === 'recent' || showHousekeepingAlert}
+      />
       {speechText ? <FloatingSpeechBubble text={speechText} color={speechColor || '#f7c763'} position={[0.05, 2.5, 0.02]} visible /> : null}
 
       <mesh
