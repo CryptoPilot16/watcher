@@ -178,16 +178,33 @@ const PHASE1: Deliverable[] = [
 
 const DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
 
+// ── Phase 2 milestone 1 — Two-gate schedule publish (D9 leads) ────────
+// Source: /opt/axiom/departments/D9_PHASE2_WORK_ORDER.md
+// Doctrine: AXIOM_MASTERPLAN.md §9 (slots & traffic rights two-gate),
+// AXIOM_TECHSTACK.md §8.6, AXIOM_DIAGRAMS.md D-07.
+const PHASE2: Deliverable[] = [
+  { id: 'P2-D9-schema',       label: 'P2 D9 commercial two-gate PG schema (9 canonical entities)',           team: 9, evidence: ['services/p03-data/migrations/0002_commercial_two_gate.sql'] },
+  { id: 'P2-D9-work-order',   label: 'P2 D9 work order with c9-1/c9-2/c9-3 coder briefs',                    team: 9, evidence: ['departments/D9_PHASE2_WORK_ORDER.md'] },
+  { id: 'P2-D9-seeder',       label: 'P2 D9 seed-commercial-two-gate.sh fixture (route/ASA/designation/permit/ownership/slots)', team: 9, evidence: ['scripts/seed-commercial-two-gate.sh'] },
+  { id: 'P2-D9-cli-cmd',      label: 'P2 axiom-cli `commercial gate-check <id>` subcommand',                 team: 9, evidence: ['services/axiom-cli/src/main.rs'] },
+  { id: 'P2-D9-demo',         label: 'P2 demo-two-gate.sh (3 schedules: GREEN, SLOT_BLOCKED, RIGHTS_BLOCKED)', team: 9, evidence: ['scripts/demo-two-gate.sh'] },
+  { id: 'P2-D9-close-report', label: 'P2 milestone-1 close report (two-gate)',                                team: 9, evidence: ['reports/PHASE2_M1_TWO_GATE_DEMO.md'] },
+  { id: 'P2-D2-cba-pgaspac',  label: 'P2 AE PGA/SPAC BTE 33/2009 Layer-2 CBA pack (alongside UPA23)',         team: 2, evidence: ['contracts/cba/pga_spac_bte_33_2009/', 'contracts/rules/cba/pga_spac_bte_33_2009/'] },
+  { id: 'P2-D9-rule-pack',    label: 'P2 commercial two-gate rule pack v0',                                  team: 9, evidence: ['contracts/rules/commercial_two_gate_v0.yaml'] },
+  { id: 'P2-D9-validators',   label: 'P2 D9 commercial validators (board-deck, CORSIA, IFRS16, loyalty, ownership-control, sales-channel, two-gate)', team: 9, evidence: ['contracts/validators/commercial/'] },
+  { id: 'P2-D9-entities',     label: 'P2 D9 slots-rights canonical entities contract',                       team: 9, evidence: ['contracts/entities/commercial/slots_rights_entities.yaml'] },
+];
+
 // Multi-phase platform plan from AXIOM_MASTERPLAN.md §15.1.
 // Phase 0 has detailed deliverables tracked above; future phases shown as
 // high-level scope so the operator sees the trajectory beyond Phase 0.
 const PHASES = [
-  { num: 0, name: 'Foundation',         months: '0–6',   deliverable: 'AXIOM-CORE, ID, LOG, RULE, UI, DOC, OBS, LINK, KMS, reference data', cost: '$2.5–4M',  rationale: 'Nothing else builds honestly without this.' },
-  { num: 1, name: 'Operate',             months: '6–18',  deliverable: 'AXIOM-DISPATCH, CREW, TECH, SMS. Weather, NOTAM, ATC slots, ACARS, FDM connectors',     cost: '$6–10M',   rationale: 'AOC-critical.' },
-  { num: 2, name: 'Sell & Serve',        months: '12–24', deliverable: 'AXIOM-COMM, CUST, OPS, CABIN. NDC/GDS, DCS, BSP/CASS, baggage',                          cost: '$4–7M',    rationale: 'Revenue + customer experience.' },
-  { num: 3, name: 'Run Business',        months: '18–30', deliverable: 'AXIOM-FIN, HR, PROC, LEGAL, QA. Tax engine, IFRS 16, payroll connectors',                cost: '$3–5M',    rationale: 'Internal back office.' },
-  { num: 4, name: 'Harden & Extend',     months: '24–42', deliverable: 'AXIOM-SEC, CYBER, ENV, TRAIN, ERP',                                                       cost: '$3–6M',    rationale: 'Hardening & regulatory expansion.' },
-  { num: 5, name: 'Saleability & Scale', months: '36–48', deliverable: 'Multi-tenant maturity, ≥1 third-party AOC running AXIOM, onboarding playbook',           cost: '$1.5–4M',  rationale: 'Externally validated.' },
+  { num: 0, name: 'Foundation',         months: '0–3',   deliverable: 'AXIOM-CORE, ID, LOG, RULE, UI, DOC, OBS, LINK, KMS, reference data', cost: '$400–600K',  rationale: 'Nothing else builds honestly without this.' },
+  { num: 1, name: 'Operate',             months: '3–9',   deliverable: 'AXIOM-DISPATCH, CREW, TECH, SMS. Weather, NOTAM, ATC slots, ACARS, FDM connectors',     cost: '$1.8–2.5M',  rationale: 'AOC-critical.' },
+  { num: 2, name: 'Sell & Serve',        months: '8–16',  deliverable: 'AXIOM-COMM, CUST, OPS, CABIN. NDC/GDS, DCS, BSP/CASS, baggage',                          cost: '$1.3–2.0M',  rationale: 'Revenue + customer experience.' },
+  { num: 3, name: 'Run Business',        months: '14–22', deliverable: 'AXIOM-FIN, HR, PROC, LEGAL, QA. Tax engine, IFRS 16, payroll connectors',                cost: '$1.0–1.5M',  rationale: 'Internal back office.' },
+  { num: 4, name: 'Harden & Extend',     months: '20–30', deliverable: 'AXIOM-SEC, CYBER, ENV, TRAIN, ERP. Phase-4 audit gate (15 external audits)',             cost: '$1.5–2.0M',  rationale: 'Hardening & regulatory expansion.' },
+  { num: 5, name: 'Saleability & Scale', months: '26–36', deliverable: 'Multi-tenant maturity, ≥1 third-party AOC running AXIOM, onboarding playbook',           cost: '$1.0–1.4M',  rationale: 'Externally validated.' },
 ];
 
 function evidenceMatches(rel: string): { built: boolean; matchedPath: string | null; size: number } {
@@ -285,18 +302,23 @@ export async function GET() {
 
   const phase0Items = evalItems(PHASE0, 0);
   const phase1Items = evalItems(PHASE1, 1);
+  const phase2Items = evalItems(PHASE2, 2);
 
-  // Phase-0 close gate: if every Phase-0 item is built (or qualityHealthy),
-  // mark currentPhase=1; otherwise stay at 0. Operator override via env var.
+  // Phase advance: each phase is "complete" when every item is built.
+  // Phase-2 entry requires both Phase-0 AND Phase-1 closed.
+  // Operator override via env var WATCH_AXIOM_CURRENT_PHASE.
   const phase0AllBuilt = phase0Items.every((i) => i.built);
+  const phase1AllBuilt = phase1Items.every((i) => i.built);
   const currentPhase = process.env.WATCH_AXIOM_CURRENT_PHASE
     ? Number(process.env.WATCH_AXIOM_CURRENT_PHASE)
-    : phase0AllBuilt
-      ? 1
-      : 0;
+    : phase0AllBuilt && phase1AllBuilt
+      ? 2
+      : phase0AllBuilt
+        ? 1
+        : 0;
 
   // Active items = items in the current phase (used for "Remaining" list, % bar)
-  const activeItems = currentPhase === 1 ? phase1Items : phase0Items;
+  const activeItems = currentPhase === 2 ? phase2Items : currentPhase === 1 ? phase1Items : phase0Items;
 
   const byTeam: Record<number, { built: number; total: number; qualityHealthy: number; team: number; dept: string }> = {};
   for (let n = 0; n <= 10; n++) byTeam[n] = { built: 0, total: 0, qualityHealthy: 0, team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1] };
@@ -311,8 +333,9 @@ export async function GET() {
 
   // Per-phase summary (used by the UI to show all-phase strip)
   const phaseSummaries = [
-    { phase: 0, name: 'Foundation', built: phase0Items.filter((i) => i.built).length, total: phase0Items.length, complete: phase0AllBuilt },
-    { phase: 1, name: 'Operate', built: phase1Items.filter((i) => i.built).length, total: phase1Items.length, complete: phase1Items.every((i) => i.built) },
+    { phase: 0, name: 'Foundation',  built: phase0Items.filter((i) => i.built).length, total: phase0Items.length, complete: phase0AllBuilt },
+    { phase: 1, name: 'Operate',     built: phase1Items.filter((i) => i.built).length, total: phase1Items.length, complete: phase1AllBuilt },
+    { phase: 2, name: 'Sell & Serve',built: phase2Items.filter((i) => i.built).length, total: phase2Items.length, complete: phase2Items.every((i) => i.built) },
   ];
 
   const payload = {
@@ -336,7 +359,7 @@ export async function GET() {
       : null,
     byTeam: Object.values(byTeam).filter((b) => b.total > 0),
     items: activeItems,
-    allItems: { phase0: phase0Items, phase1: phase1Items },
+    allItems: { phase0: phase0Items, phase1: phase1Items, phase2: phase2Items },
     phases: PHASES,
     phaseSummaries,
     currentPhase,

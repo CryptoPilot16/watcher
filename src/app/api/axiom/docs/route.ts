@@ -64,7 +64,7 @@ export async function GET() {
       id: 'phase-plan',
       heading: 'Phase plan (where we are)',
       body:
-        'AXIOM ships in 5 phases over ~48 months:\n\n• Phase 0 — Foundation. Done. P01..P10 contracts, validators, audit chain, identity, time, bus, doc service, design system. ~3.5K artifact files. 81 of 82 validators green.\n\n• Phase 1 — Operate. AOC-critical: dispatch, crew, tech ops, safety. Connectors for weather/NOTAM/ATC slots/ACARS/FDM. The MVP target. We are HERE.\n\n• Phase 2 — Sell & Serve. Commercial side: sales, customer self-serve, cabin ops.\n\n• Phase 3 — Run Business. Back office: finance, HR, procurement, legal, QA.\n\n• Phase 4 — Harden & Extend. Security review, regulatory expansion, environmental, training.\n\n• Phase 5 — Saleability & Scale. Multi-tenant, third-party AOCs onboarding, white-label.',
+        'AXIOM ships in 6 phases over ~36 months (AI-floor delivery, planning ±35%, $7–10M gross / ~€4.5–6.5M net of SIFIDE II R&D credit):\n\n• Phase 0 — Foundation. Done. P01..P10 contracts, validators, audit chain, identity, time, bus, doc service, design system. ~3.5K artifact files. 81 of 82 validators green.\n\n• Phase 1 — Operate. AOC-critical: dispatch, crew, tech ops, safety. Connectors for weather/NOTAM/ATC slots/ACARS/FDM. The MVP target. We are HERE.\n\n• Phase 2 — Sell & Serve. Commercial side: sales, customer self-serve, cabin ops.\n\n• Phase 3 — Run Business. Back office: finance, HR, procurement, legal, QA.\n\n• Phase 4 — Harden & Extend. Security review, regulatory expansion, environmental, training.\n\n• Phase 5 — Saleability & Scale. Multi-tenant, third-party AOCs onboarding, white-label.',
     },
     {
       id: 'mvp-deploy',

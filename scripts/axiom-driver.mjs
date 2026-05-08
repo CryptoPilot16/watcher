@@ -30,7 +30,10 @@ const STATE_FILE = process.env.WATCH_AXIOM_DRIVER_STATE_FILE || '/var/lib/watche
 const COST_FILE = join(MAILBOX_DIR, 'axiom-global.cost.json');
 const ALLOWANCE_FILE = join(MAILBOX_DIR, 'axiom-allowance.json');
 const DEFAULT_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10);
-const CAP_HEADROOM_PCT = Number(process.env.WATCH_AXIOM_DRIVER_CAP_HEADROOM_PCT || 90);
+// Pause threshold: by default we run all the way to 100% (only stop when the
+// cap is fully consumed), and warn — but keep running — at WARN_PCT.
+const CAP_HEADROOM_PCT = Number(process.env.WATCH_AXIOM_DRIVER_CAP_HEADROOM_PCT || 100);
+const CAP_WARN_PCT = Number(process.env.WATCH_AXIOM_DRIVER_CAP_WARN_PCT || 90);
 const TG_TOKEN = (process.env.WATCH_AXIOM_CEO_BOT_TOKEN || '').trim();
 const TG_CHAT_ID = (process.env.WATCH_AXIOM_CEO_OPERATOR_ID || '').trim();
 const PROJECT_DIR = process.env.WATCH_AXIOM_PROJECT_DIR || '/opt/axiom';
@@ -443,6 +446,9 @@ async function loop() {
       await writeState({ status: 'cap-reached', spend, cap, budgetPct, interval, cycleNum, lastCycleAt: new Date().toISOString() });
       await new Promise((r) => setTimeout(r, 5 * 60 * 1000));
       continue;
+    }
+    if (budgetPct >= CAP_WARN_PCT) {
+      process.stdout.write(`[axiom-driver] WARN: budget at $${spend.toFixed(2)}/$${cap.toFixed(2)} (${budgetPct.toFixed(0)}%) — continuing until ${CAP_HEADROOM_PCT}%\n`);
     }
 
     cycleNum += 1;

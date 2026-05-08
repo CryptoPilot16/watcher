@@ -221,7 +221,7 @@ export default function RoadmapPage() {
               })}
             </div>
             <div className="mt-2 text-[10px] text-[var(--watch-text-muted)]">
-              Total platform: $20–36M over 4 years (planning ±35%). Per AXIOM_MASTERPLAN.md §15.1.
+              Total platform: $7–10M / €6.5–9.2M gross over ~36 months (planning ±35%, AI-floor delivery; ~€4.5–6.5M net of SIFIDE II credit). Per AXIOM_MASTERPLAN.md §15.1.
             </div>
           </div>
         ) : null}
