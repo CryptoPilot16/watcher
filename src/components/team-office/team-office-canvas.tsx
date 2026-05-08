@@ -3077,7 +3077,11 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
   const activeDisciplineMode = manualDisciplineMode ?? autoDiscipline?.mode ?? null;
   const [disciplineStrikeCount, setDisciplineStrikeCount] = useState(0);
   const [disciplineFeedback, setDisciplineFeedback] = useState<(DisciplineFeedback & { victimId: string; key: string }) | null>(null);
-  const feedbackSentRef = useRef<string | null>(null);
+  // Per-victim dedupe + cooldown for housekeeping nags. Keyed by victim topicId
+  // so we don't burst-fire on every state-poll while a slow agent (e.g. c3
+  // codex /goal, multi-minute) hasn't produced a reply yet.
+  const feedbackSentRef = useRef<Map<string, { sig: string; sentAt: number }>>(new Map());
+  const FEEDBACK_COOLDOWN_MS = 5 * 60_000;
 
   const disciplineVictimId = useMemo(() => {
     if (!activeDisciplineMode) return null;
@@ -3111,11 +3115,18 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
     const victim = topics.find((topic) => topic.topicId === disciplineVictimId);
     if (!victim) return;
     const feedback = disciplineFeedbackForTopic(victim);
-    const feedbackKey = `${disciplineVictimId}:${activeDisciplineMode}:${victim.live.updatedAt ?? 'na'}:${victim.currentTask.updatedAt ?? 'na'}`;
+    // Signature drops live.updatedAt (which churns every ~2s poll, causing
+    // burst nags) and instead reflects the assignment + the agent's last
+    // reply — so we re-nag only when something actually changed.
+    const feedbackSig = `${activeDisciplineMode}:${victim.currentTask.updatedAt ?? 'na'}:${victim.recent.lastAssistantText?.length ?? 0}`;
+    const feedbackKey = `${disciplineVictimId}:${feedbackSig}`;
     setDisciplineFeedback({ ...feedback, victimId: disciplineVictimId, key: feedbackKey });
 
-    if (demo || manualDisciplineMode || feedbackSentRef.current === feedbackKey || !victim.configured.agent || !victim.sessionKey) return;
-    feedbackSentRef.current = feedbackKey;
+    if (demo || manualDisciplineMode || !victim.configured.agent || !victim.sessionKey) return;
+    const last = feedbackSentRef.current.get(disciplineVictimId);
+    const now = Date.now();
+    if (last && (last.sig === feedbackSig || now - last.sentAt < FEEDBACK_COOLDOWN_MS)) return;
+    feedbackSentRef.current.set(disciplineVictimId, { sig: feedbackSig, sentAt: now });
     void fetch('/api/team-office/instruct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

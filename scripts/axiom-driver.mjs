@@ -78,24 +78,30 @@ async function tg(method, body) {
 
 function buildManagerBrief(team, roadmapHint) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
-  // Compressed brief — same instructions, fewer tokens. The full system
-  // prompt is appended separately and already covers role context.
-  const remainingLine = roadmapHint
-    ? roadmapHint.remaining.length > 0
-      ? `Remaining (${roadmapHint.built}/${roadmapHint.total}): ${roadmapHint.remaining.slice(0, 6).join(' · ')}`
-      : `Tracked roadmap is COMPLETE. If D${team}_GOAL.md scope is also done, declare "PHASE-0 SCOPE COMPLETE" and emit empty <<CODERS>> block. No makework.`
+  const remainingItems = roadmapHint?.remaining || [];
+  const remainingBlock = roadmapHint
+    ? remainingItems.length > 0
+      ? `REMAINING for D${team} (${roadmapHint.built}/${roadmapHint.total} done) — your ONLY allowed work this cycle:\n${remainingItems.slice(0, 8).map((it, i) => `  ${i + 1}. ${it}`).join('\n')}`
+      : `Tracked roadmap is COMPLETE for D${team}. If D${team}_GOAL.md scope is also done, reply "PHASE-0 SCOPE COMPLETE" and emit empty <<CODERS>>. Otherwise allocate hardening / regression-test work to all 3 coders.`
     : '';
+  // Critical anti-loop rule: managers were observed spending 8+ cycles
+  // tightening invariants on an already-built item instead of advancing the
+  // remaining list. Cost piled up; roadmap % did not move. The rule below
+  // forbids elaboration of already-built items.
   return [
     `[AUTOPILOT — m${team} ${dept}]`,
-    remainingLine,
-    `Do ONE concrete Phase-0 step for D${team} (schema/contract/validator/spec). Ship to disk. No makework.`,
-    `Reply ≤400 chars + <<CODERS>>...<<END>> block. Allocate ONLY coders with real work. Hints: c1=tests c2=glue c3=QA-reviewer. Skip a c-line if useless. Empty block = team rests.`,
+    remainingBlock,
+    `RULE 1: Pick ONE item from REMAINING above. Build the artifact at the EXACT path the roadmap expects — the API checks file existence at those paths to mark items built. If your dept's items are listed by id like "D1-otel-mandate", look at the corresponding evidence path in src/app/api/axiom/roadmap/route.ts of the watcher repo if you need to confirm.`,
+    `RULE 2: Do NOT elaborate, harden, or add invariants to items you already built in earlier cycles. That is busywork — it spends money without moving the %. If you want to harden, allocate it to c3 as an audit task.`,
+    `RULE 3: Allocate ALL 3 coders every cycle to concrete parallel tasks. Idle c-lines = wasted cycle. Spell out file paths inside ${PROJECT_DIR}.`,
+    `Coder roles: c1 = tests / fixtures / negative cases. c2 = integration glue / fakes / migration. c3 = QA reviewer — runs validators, fixes one real gap.`,
+    `Reply ≤500 chars + <<CODERS>>...<<END>> block.`,
     `Format:`,
-    `m${team} ${dept}: <≤200ch summary>`,
+    `m${team} ${dept}: <≤200ch — which REMAINING item you advanced + file you shipped>`,
     `<<CODERS>>`,
-    `c1: <only if useful>`,
-    `c2: <only if useful>`,
-    `c3: <only if useful — what to audit/fix>`,
+    `c1: <concrete task with file path>`,
+    `c2: <concrete task with file path>`,
+    `c3: <what to audit/fix with file path>`,
     `<<END>>`,
   ].filter(Boolean).join('\n');
 }
@@ -316,36 +322,52 @@ async function runCycle(cycleNum) {
   // Coders use last round's allocations. On the first cycle (no prior
   // allocations), coders skip and the floor warms up after the first
   // manager round.
-  const codTasks = [];
+  //
+  // FIRE-AND-FORGET: coder dispatches are not awaited. A codex /goal session
+  // can take 2–15 min; if the cycle blocked on the slowest coder, fast claude
+  // coders that finished at 30s would sit idle for 14 min. Instead, we fire
+  // each coder dispatch and immediately move on. Their results land in the
+  // state files (writeAxiomState in the watcher API) and isAgentRunning skips
+  // them on the next cycle until they finish. This keeps cycle cadence tied
+  // to manager planning, not coder execution.
+  let codDispatched = 0;
   let codSkippedRunning = 0;
   let codSkippedNoAlloc = 0;
   for (let n = 1; n <= 10; n++) {
     const teamAlloc = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null };
     for (let c = 1; c <= 3; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
-        process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
         codSkippedRunning++;
         continue;
       }
       const assignedTask = teamAlloc[c];
-      // Manager must explicitly allocate — no allocation, no dispatch.
       if (!assignedTask) {
         codSkippedNoAlloc++;
         continue;
       }
       const delay = stagger; stagger += STAGGER_MS;
-      codTasks.push(new Promise((r) => setTimeout(() => r(callCoder(n, c, assignedTask)), delay)));
+      const team = n;
+      const coderIndex = c;
+      setTimeout(() => {
+        callCoder(team, coderIndex, assignedTask)
+          .then((r) => {
+            const tag = r.ok ? 'ok' : 'fail';
+            process.stdout.write(`[axiom-driver] c${coderIndex}/m${team} ${tag} in ${r.dur}s${r.ok ? '' : ` — ${(r.reply || '').replace(/\s+/g, ' ').slice(0, 120)}`}\n`);
+          })
+          .catch((err) => {
+            process.stdout.write(`[axiom-driver] c${coderIndex}/m${team} threw: ${err?.message || err}\n`);
+          });
+      }, delay);
+      codDispatched++;
     }
   }
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${mgrTasks.length} managers + ${codTasks.length} coders concurrently (${codSkippedNoAlloc} coders had no allocation from last round)\n`);
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${mgrTasks.length} managers (await) + ${codDispatched} coders (fire-and-forget) [${codSkippedRunning} skip:running, ${codSkippedNoAlloc} skip:no-alloc]\n`);
 
-  // Run both phases concurrently.
-  const [mgrResults, codResults] = await Promise.all([
-    Promise.all(mgrTasks),
-    Promise.all(codTasks),
-  ]);
+  // Cycle awaits ONLY managers — coders trickle in async via state files.
+  const mgrResults = await Promise.all(mgrTasks);
+  const codResults = []; // intentionally empty: coders are async this cycle
   const mgrOk = mgrResults.filter((r) => r.ok).length;
-  const codOk = codResults.filter((r) => r.ok).length;
+  const codOk = 0;
 
   // Update lastRoundAllocations from this round's manager replies — these
   // become the briefs that the NEXT cycle's coders will execute.
@@ -362,12 +384,11 @@ async function runCycle(cycleNum) {
   const codSkipped = codSkippedRunning + codSkippedNoAlloc;
 
   const allResults = [...mgrResults, ...codResults];
-  const dispatched = allResults.length;
-  const ok = mgrOk + codOk;
+  const dispatched = mgrResults.length;
+  const ok = mgrOk;
   const fail = dispatched - ok;
-  const allocCount = codResults.filter((r) => r.managerAssignedTask).length;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} done: ${ok}/${dispatched} ok (${mgrOk} mgr + ${codOk} cod, ${allocCount}/${codResults.length} coders had manager-assigned tasks), ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s\n`);
-  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount };
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} mgr-done: ${ok}/${dispatched} ok, ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s (coders still running async)\n`);
+  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount: codDispatched };
 }
 
 async function summarizeCycle(cycle) {
