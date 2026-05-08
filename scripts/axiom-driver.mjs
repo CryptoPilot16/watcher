@@ -89,23 +89,22 @@ function buildManagerBrief(team, roadmapHint) {
     `[AUTOPILOT — m${team} ${dept}]`,
     remainingLine,
     `Do ONE concrete Phase-0 step for D${team} (schema/contract/validator/spec). Ship to disk. No makework.`,
-    `Reply ≤400 chars + <<CODERS>>...<<END>> block. Allocate ONLY coders with real work. Hints: c1=tests c2=glue c3=fixtures c4=QA. Skip a c-line if useless. Empty block = team rests.`,
+    `Reply ≤400 chars + <<CODERS>>...<<END>> block. Allocate ONLY coders with real work. Hints: c1=tests c2=glue c3=QA-reviewer. Skip a c-line if useless. Empty block = team rests.`,
     `Format:`,
     `m${team} ${dept}: <≤200ch summary>`,
     `<<CODERS>>`,
     `c1: <only if useful>`,
     `c2: <only if useful>`,
-    `c3: <only if useful>`,
-    `c4: <only if useful>`,
+    `c3: <only if useful — what to audit/fix>`,
     `<<END>>`,
   ].filter(Boolean).join('\n');
 }
 
 // Parse a manager's reply for a <<CODERS>> ... <<END>> block. Returns
-// { c1, c2, c3, c4 } with whatever briefs the manager assigned, or null
-// per-coder if the line was missing.
+// { 1, 2, 3 } with whatever briefs the manager assigned, or null per-coder
+// if the line was missing. Teams have 3 coders: c1=tests, c2=glue, c3=QA.
 function parseCoderAllocations(reply) {
-  const out = { 1: null, 2: null, 3: null, 4: null };
+  const out = { 1: null, 2: null, 3: null };
   if (!reply) return out;
   const blockMatch = reply.match(/<<\s*CODERS\s*>>([\s\S]*?)<<\s*END\s*>>/i);
   const block = blockMatch ? blockMatch[1] : reply; // fall back to full reply if no block
@@ -113,7 +112,11 @@ function parseCoderAllocations(reply) {
   for (const line of lines) {
     const m = line.match(/^c([1-4])\s*[:\-]\s*(.+)$/i);
     if (m) {
-      const idx = Number(m[1]);
+      let idx = Number(m[1]);
+      // Backwards-compat: managers trained on the old 4-coder layout may
+      // still emit a c4 line — fold it into c3 (the QA slot it became).
+      if (idx === 4) idx = 3;
+      if (idx < 1 || idx > 3) continue;
       const task = m[2].trim().slice(0, 600);
       if (task && task.length >= 10) out[idx] = task;
     }
@@ -138,12 +141,12 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
   // allocation, so this branch shouldn't be reached. If something does
   // dispatch without a task, we fall back to the role-default brief
   // rather than crashing.
-  if (coderIndex === 4) {
+  if (coderIndex === 3) {
     return [
       `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
-      `You are coder c4 on the ${dept} team (m${team}, team ${team}). YOU ARE THE TEAM'S QA / REVIEWER, not a forward-builder.`,
+      `You are coder c3 on the ${dept} team (m${team}, team ${team}). YOU ARE THE TEAM'S QA / REVIEWER, not a forward-builder.`,
       ``,
-      `Your job is to harden what your teammates (manager m${team} + coders c1, c2, c3) just shipped. Do NOT write new contracts or new features — that's their lane. You are the audit + test + fix lane.`,
+      `Your job is to harden what your teammates (manager m${team} + coders c1, c2) just shipped. Do NOT write new contracts or new features — that's their lane. You are the audit + test + fix lane.`,
       ``,
       `Workflow each round:`,
       `1. Look at recent file changes in your team's path namespace under ${PROJECT_DIR}/. Use Glob/find with mtime to see what was modified in the last hour.`,
@@ -163,10 +166,10 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
       ``,
       `When done, reply with: (1) what you audited (file paths), (2) what you fixed or added (exact paths), (3) one issue you noticed but didn't fix this round (so the next round can pick it up).`,
       ``,
-      `Reply ends with a signed status: "c4/m${team} ${dept} (QA): <one-line summary>"`,
+      `Reply ends with a signed status: "c3/m${team} ${dept} (QA): <one-line summary>"`,
     ].join('\n');
   }
-  // Forward-builders (c1, c2, c3)
+  // Forward-builders (c1, c2)
   return [
     `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
     `You are coder c${coderIndex} on the ${dept} team (m${team}, team ${team}).`,
@@ -178,7 +181,7 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
     ``,
     `Then do ONE concrete IMPLEMENTATION step in your team's domain. You are the hands, not the brain — write code, tests, fixtures, ETL, migration, integration glue, fakes, validators that exercise your manager's contracts. Don't redo what the manager just did; build ON TOP of it.`,
     ``,
-    `Pick something OTHER coders on your team are unlikely to also pick this round (different file, different feature, different layer). Your role hint: c${coderIndex}=${coderIndex === 1 ? 'tests' : coderIndex === 2 ? 'integration glue' : 'fixtures/seeds'}. (c4 is your team's QA reviewer — they will audit your work next round, so write code that's actually correct.)`,
+    `Your role hint: c${coderIndex}=${coderIndex === 1 ? 'tests/fixtures' : 'integration glue'}. (c3 is your team's QA reviewer — they will audit your work next round, so write code that's actually correct.)`,
     ``,
     `When done, reply with: (1) what you built/wrote in 1-2 lines, (2) exact file paths created or modified.`,
     ``,
@@ -317,8 +320,8 @@ async function runCycle(cycleNum) {
   let codSkippedRunning = 0;
   let codSkippedNoAlloc = 0;
   for (let n = 1; n <= 10; n++) {
-    const teamAlloc = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null, 4: null };
-    for (let c = 1; c <= 4; c++) {
+    const teamAlloc = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null };
+    for (let c = 1; c <= 3; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
         process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
         codSkippedRunning++;

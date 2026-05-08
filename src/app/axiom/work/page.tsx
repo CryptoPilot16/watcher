@@ -119,7 +119,7 @@ export default function AxiomWorkPage() {
       const color = DEPT_COLOR[n] || '#cbd5e1';
       const manager = states[`axiom-mgr-${n}`] || null;
       const coders: Array<{ idx: number; state: AgentState | null }> = [];
-      for (let c = 1; c <= 4; c++) coders.push({ idx: c, state: states[`axiom-coder-${n}-${c}`] || null });
+      for (let c = 1; c <= 3; c++) coders.push({ idx: c, state: states[`axiom-coder-${n}-${c}`] || null });
       const recentFiles = events.filter((e) => e.attributedTo?.team === n).slice(0, 5);
       out.push({ team: n, dept, color, manager, coders, recentFiles });
     }
@@ -154,7 +154,7 @@ export default function AxiomWorkPage() {
             const runningCount = coders.filter((c) => c.state?.status === 'running').length;
             const recentCount = coders.filter((c) => c.state?.status === 'recent').length;
             const errorCount = coders.filter((c) => c.state?.status === 'error').length;
-            const idleCount = 4 - runningCount - recentCount - errorCount;
+            const idleCount = 3 - runningCount - recentCount - errorCount;
             // A team is "active" if its manager OR any coder is running. This
             // lights up the whole card so the operator can spot the working
             // cubicles at a glance instead of scanning for a tiny green dot.
@@ -217,7 +217,7 @@ export default function AxiomWorkPage() {
                 {/* Coders */}
                 <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
                   {coders.map(({ idx, state }) => {
-                    const role = idx === 4 ? 'QA' : idx === 1 ? 'tests' : idx === 2 ? 'glue' : 'fixtures';
+                    const role = idx === 1 ? 'tests' : idx === 2 ? 'glue' : 'QA';
                     const cTask = cleanTask(state?.task);
                     return (
                       <div key={idx} className="rounded bg-black/20 px-1.5 py-1" style={{ borderLeft: `2px solid ${color}55` }}>

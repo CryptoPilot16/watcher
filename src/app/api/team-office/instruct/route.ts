@@ -398,10 +398,10 @@ function readOrCreateAxiomSessionId(sessionKey: string): { sessionId: string; is
 
 function buildAxiomSystemPrompt(sessionKey: string): string {
   const meta = axiomTopicMeta(sessionKey);
-  const orgChart = `AXIOM OFFICE — 51 AI agents on one operations floor (a Claude Code + Codex agent-workforce showcase).
-- 1 CEO (Codex gpt-5.5 in /goal mode) — master orchestrator.
+  const orgChart = `AXIOM OFFICE — 41 AI agents on one operations floor (a Claude Code + Codex agent-workforce showcase).
+- 1 CEO (Claude Sonnet) — master orchestrator.
 - 10 Managers (Codex gpt-5.5 in /goal mode) — front row: ${AXIOM_DEPARTMENTS_FRONT.join(', ')}; back row: ${AXIOM_DEPARTMENTS_BACK.join(', ')}.
-- 40 Coders (Claude rotation: sonnet / haiku / opus) — 4 per manager.
+- 30 Coders (3 per manager): c1 = tests/fixtures (claude haiku), c2 = integration glue (claude haiku), c3 = QA reviewer (codex /goal).
 
 YOUR PROJECT lives at ${AXIOM_PROJECT_DIR}. Read whatever planning docs / READMEs / specs exist there (use Glob to discover them) before any strategic move — they define the project. Your real work output goes to ${AXIOM_PROJECT_DIR}.
 
@@ -416,7 +416,7 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
 
   if (meta.role === 'ceo') {
     return [
-      `You are Ace, the Builder — CEO of the AXIOM Office and master orchestrator of a 51-agent AI workforce.`,
+      `You are Ace, the Builder — CEO of the AXIOM Office and master orchestrator of a 41-agent AI workforce.`,
       `You are running on Anthropic Claude (Sonnet) for fast conversational replies. You have a tool to dispatch autonomous missions to Codex gpt-5.5 in /goal mode for actual file/codebase work.`,
       ``,
       orgChart,
@@ -519,7 +519,7 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       `- If asked to "create X" or "build X", you actually create/build it on disk in ${AXIOM_PROJECT_DIR} — don't just describe what you would do.`,
       `- After completing the goal, append a one-line entry to ${AXIOM_PROJECT_DIR}/README.md under the "Progress log" table noting what your team did.`,
       `- Skim project planning docs for anything tagged "${meta.department}" before deciding scope (use Glob/Read on the project root).`,
-      `- You lead 4 coders (you're allowed to mention them by number). For now you carry the work yourself; coders are stand-ins.`,
+      `- You lead 3 coders: c1 (tests/fixtures), c2 (integration glue), c3 (QA reviewer, autonomous /goal). Allocate to them via the autopilot's <<CODERS>>...<<END>> block — only where useful, no makework.`,
       `- Stay focused on the ${meta.department} domain. If a goal crosses departments, name the other manager(s) you'd loop in but still finish your part.`,
       `- When the goal is achieved, report a short final status: what you did, files touched, follow-ups (if any).`,
       `- If the goal is impossible or already satisfied, say so plainly and stop.`,
@@ -581,7 +581,9 @@ function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
   // find gaps → fix one → add regression test → verify). c1/c2/c3 stay on
   // claude haiku because their tasks are narrow single-step allocations.
   // Override the c4-default by setting WATCH_AXIOM_CODER_ENGINE=claude.
-  if (meta.role === 'coder' && meta.coderIndex === 4) return 'codex';
+  // c3 is the team's QA reviewer (renumbered from c4 when teams went from
+  // 4 → 3 coders). Multi-step audit loop benefits from /goal autonomy.
+  if (meta.role === 'coder' && meta.coderIndex === 3) return 'codex';
   return meta.role === 'ceo' || meta.role === 'manager' ? 'codex' : 'claude';
 }
 
@@ -937,7 +939,7 @@ function generateAxiomReply(sessionKey: string, message: string): string {
   }
   const mgrMatch = topicId.match(/^axiom-mgr-(\d+)$/);
   if (mgrMatch) {
-    return `Got it. I'm routing "${summary}" to my 4 coders, splitting it into subtasks, and reporting back to the CEO once we have progress.`;
+    return `Got it. I'm routing "${summary}" to my 3 coders, splitting it into subtasks, and reporting back to the CEO once we have progress.`;
   }
   const coderMatch = topicId.match(/^axiom-coder-(\d+)-(\d+)$/);
   if (coderMatch) {
