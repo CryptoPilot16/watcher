@@ -970,13 +970,15 @@ async function handleMessage(state, msg) {
       const j = await r.json().catch(() => ({}));
       const states = j?.states || {};
       const summary = j?.summary || {};
-      const lines = [`*AXIOM floor* — ${summary.running || 0} running · ${summary.recent || 0} recent · ${summary.error || 0} error`, ''];
+      // Drop Markdown — too many of the task strings contain *, _, [, `, etc.
+      // and Telegram rejects the whole message if any one entity is unbalanced.
+      const lines = [`AXIOM floor — ${summary.running || 0} running · ${summary.recent || 0} recent · ${summary.error || 0} error`, ''];
       for (let n = 1; n <= 10; n++) {
         const dept = AXIOM_DEPARTMENTS[n - 1] || 'unknown';
         const m = states[`axiom-mgr-${n}`];
         const mIcon = m?.status === 'running' ? '🟢' : m?.status === 'error' ? '🔴' : m?.status === 'recent' ? '🟡' : '⚪';
-        const mTask = m?.task ? String(m.task).replace(/\s+/g, ' ').slice(0, 70) : '';
-        // Coders summary
+        const sanitize = (t) => String(t || '').replace(/[\r\n]+/g, ' ').replace(/[`*_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+        const mTask = m?.task ? sanitize(m.task).slice(0, 70) : '';
         let coderRunning = 0, coderRecent = 0, coderError = 0, coderIdle = 0;
         const coderTasks = [];
         for (let c = 1; c <= 4; c++) {
@@ -987,15 +989,15 @@ async function handleMessage(state, msg) {
           else if (s.status === 'error') coderError++;
           else coderIdle++;
           if (s.status === 'running' && s.task) {
-            const t = String(s.task).replace(/\[.*?\]\s*/g, '').replace(/\s+/g, ' ').slice(0, 50);
-            coderTasks.push(`  c${c}${c === 4 ? ' QA' : ''}: ${t}…`);
+            const t = sanitize(s.task).slice(0, 50);
+            if (t) coderTasks.push(`  c${c}${c === 4 ? ' QA' : ''}: ${t}…`);
           }
         }
-        lines.push(`${mIcon} *m${n} ${dept}*  mgr=${m?.status || 'idle'}  coders ${coderRunning}🟢 ${coderRecent}🟡 ${coderError}🔴 ${coderIdle}⚪`);
+        lines.push(`${mIcon} m${n} ${dept}  mgr=${m?.status || 'idle'}  coders ${coderRunning}🟢 ${coderRecent}🟡 ${coderError}🔴 ${coderIdle}⚪`);
         if (mTask) lines.push(`  📋 ${mTask}…`);
         if (coderTasks.length) lines.push(...coderTasks.slice(0, 2));
       }
-      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n').slice(0, 4000), parse_mode: 'Markdown' });
+      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n').slice(0, 4000) });
     } catch (err) {
       await tg('sendMessage', { chat_id: chatId, text: `floor error: ${err.message}` });
     }
