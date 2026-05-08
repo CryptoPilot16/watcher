@@ -2930,8 +2930,10 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
     });
   };
 
+  // 3 coders per team (was 4 — slice stride must match page.tsx roster
+  // build, otherwise teams drift and back-row m8/m9/m10 lose their coders).
   for (let t = 0; t < FRONT_TEAMS + BACK_TEAMS; t++) {
-    placeTeam(t, managers[t], coders.slice(t * 4, (t + 1) * 4));
+    placeTeam(t, managers[t], coders.slice(t * 3, (t + 1) * 3));
   }
 
   return layouts;
