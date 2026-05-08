@@ -964,23 +964,38 @@ async function handleMessage(state, msg) {
 
   if (text === '/floor') {
     try {
-      const r = await fetch(new URL('/api/axiom/state', WATCH_URL).toString(), { cache: 'no-store' });
+      const headers = { 'Content-Type': 'application/json' };
+      if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
+      const r = await fetch(new URL('/api/axiom/state', WATCH_URL).toString(), { cache: 'no-store', headers });
       const j = await r.json().catch(() => ({}));
       const states = j?.states || {};
-      const lines = ['*AXIOM floor — managers*', ''];
+      const summary = j?.summary || {};
+      const lines = [`*AXIOM floor* — ${summary.running || 0} running · ${summary.recent || 0} recent · ${summary.error || 0} error`, ''];
       for (let n = 1; n <= 10; n++) {
         const dept = AXIOM_DEPARTMENTS[n - 1] || 'unknown';
-        const s = states[`axiom-mgr-${n}`];
-        if (!s) {
-          lines.push(`m${n} ${dept}: idle`);
-          continue;
+        const m = states[`axiom-mgr-${n}`];
+        const mIcon = m?.status === 'running' ? '🟢' : m?.status === 'error' ? '🔴' : m?.status === 'recent' ? '🟡' : '⚪';
+        const mTask = m?.task ? String(m.task).replace(/\s+/g, ' ').slice(0, 70) : '';
+        // Coders summary
+        let coderRunning = 0, coderRecent = 0, coderError = 0, coderIdle = 0;
+        const coderTasks = [];
+        for (let c = 1; c <= 4; c++) {
+          const s = states[`axiom-coder-${n}-${c}`];
+          if (!s) { coderIdle++; continue; }
+          if (s.status === 'running') coderRunning++;
+          else if (s.status === 'recent') coderRecent++;
+          else if (s.status === 'error') coderError++;
+          else coderIdle++;
+          if (s.status === 'running' && s.task) {
+            const t = String(s.task).replace(/\[.*?\]\s*/g, '').replace(/\s+/g, ' ').slice(0, 50);
+            coderTasks.push(`  c${c}${c === 4 ? ' QA' : ''}: ${t}…`);
+          }
         }
-        const icon = s.status === 'running' ? '🟢' : s.status === 'error' ? '🔴' : s.status === 'recent' ? '🟡' : '⚪';
-        const task = s.task ? ` — ${String(s.task).slice(0, 60)}` : '';
-        const dur = s.durationMs ? ` (${(s.durationMs / 1000).toFixed(0)}s)` : '';
-        lines.push(`${icon} m${n} ${dept}: ${s.status}${dur}${task}`);
+        lines.push(`${mIcon} *m${n} ${dept}*  mgr=${m?.status || 'idle'}  coders ${coderRunning}🟢 ${coderRecent}🟡 ${coderError}🔴 ${coderIdle}⚪`);
+        if (mTask) lines.push(`  📋 ${mTask}…`);
+        if (coderTasks.length) lines.push(...coderTasks.slice(0, 2));
       }
-      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n'), parse_mode: 'Markdown' });
+      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n').slice(0, 4000), parse_mode: 'Markdown' });
     } catch (err) {
       await tg('sendMessage', { chat_id: chatId, text: `floor error: ${err.message}` });
     }

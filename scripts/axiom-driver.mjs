@@ -97,6 +97,38 @@ function buildManagerBrief(team) {
 
 function buildCoderBrief(team, coderIndex) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
+  // c4 is the team's QA/reviewer — audits what the rest of the team just
+  // shipped, runs tests, finds gaps, fixes bugs, adds missing coverage.
+  // c1-c3 are forward-builders.
+  if (coderIndex === 4) {
+    return [
+      `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
+      `You are coder c4 on the ${dept} team (m${team}, team ${team}). YOU ARE THE TEAM'S QA / REVIEWER, not a forward-builder.`,
+      ``,
+      `Your job is to harden what your teammates (manager m${team} + coders c1, c2, c3) just shipped. Do NOT write new contracts or new features — that's their lane. You are the audit + test + fix lane.`,
+      ``,
+      `Workflow each round:`,
+      `1. Look at recent file changes in your team's path namespace under ${PROJECT_DIR}/. Use Glob/find with mtime to see what was modified in the last hour.`,
+      `2. Read those files critically. For each, ask:`,
+      `   - Does it actually work (run validators, run tests, parse the schema, lint the proto)?`,
+      `   - Is there missing test coverage (failure cases, edge cases, fixtures for invalid input)?`,
+      `   - Are the references and imports consistent (does the AsyncAPI ref a schema that exists? do Cedar policies match the schema?)?`,
+      `   - Does the file's own claim (e.g. "validates X") actually hold?`,
+      `3. Pick the SINGLE most impactful gap or bug and FIX IT. That might be:`,
+      `   - Adding a fail-case fixture + a validator that proves the validator catches it`,
+      `   - Wiring a CI check (npm test / cargo test) that exercises a contract`,
+      `   - Patching a typo / wrong type / missing field that breaks a schema reference`,
+      `   - Writing a regression test for a bug you found`,
+      `4. If everything passes and there are no gaps, THEN write a new property-based test or fuzz fixture that pushes the existing artifacts harder.`,
+      ``,
+      `Bias toward DELETING bad code, FIXING wrong code, and ADDING failing-then-passing tests. You are the bullshit detector for your team.`,
+      ``,
+      `When done, reply with: (1) what you audited (file paths), (2) what you fixed or added (exact paths), (3) one issue you noticed but didn't fix this round (so the next round can pick it up).`,
+      ``,
+      `Reply ends with a signed status: "c4/m${team} ${dept} (QA): <one-line summary>"`,
+    ].join('\n');
+  }
+  // Forward-builders (c1, c2, c3)
   return [
     `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
     `You are coder c${coderIndex} on the ${dept} team (m${team}, team ${team}).`,
@@ -108,7 +140,7 @@ function buildCoderBrief(team, coderIndex) {
     ``,
     `Then do ONE concrete IMPLEMENTATION step in your team's domain. You are the hands, not the brain — write code, tests, fixtures, ETL, migration, integration glue, fakes, validators that exercise your manager's contracts. Don't redo what the manager just did; build ON TOP of it.`,
     ``,
-    `Pick something OTHER coders on your team are unlikely to also pick this round (different file, different feature, different layer). When in doubt, hash your coderIndex (c${coderIndex}) into your choice: c1=tests, c2=integration glue, c3=fixtures/seeds, c4=tooling/scripts.`,
+    `Pick something OTHER coders on your team are unlikely to also pick this round (different file, different feature, different layer). Your role hint: c${coderIndex}=${coderIndex === 1 ? 'tests' : coderIndex === 2 ? 'integration glue' : 'fixtures/seeds'}. (c4 is your team's QA reviewer — they will audit your work next round, so write code that's actually correct.)`,
     ``,
     `When done, reply with: (1) what you built/wrote in 1-2 lines, (2) exact file paths created or modified.`,
     ``,

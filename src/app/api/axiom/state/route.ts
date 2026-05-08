@@ -7,6 +7,11 @@ export const dynamic = 'force-dynamic';
 const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watcher/axiom-mailbox';
 const RECENT_TTL_MS = 30_000; // 'recent' decays to 'idle' after 30s
 const ERROR_TTL_MS = 60_000; // 'error' decays to 'idle' after 60s
+// 'running' for longer than this is almost certainly a zombie — the parent
+// watcher-web was restarted mid-call (--die-with-parent killed the
+// subprocess) but the state file still claims running because no completion
+// event was written. Auto-decay so the autopilot's next cycle re-dispatches.
+const RUNNING_ZOMBIE_TTL_MS = 5 * 60_000;
 
 type AgentState = {
   sessionKey: string;
@@ -58,6 +63,16 @@ export async function GET() {
 
     if (state.status === 'running' && state.startedAt) {
       const elapsed = now - new Date(state.startedAt).getTime();
+      // Auto-decay zombies. State file claims running but the parent process
+      // was restarted; no completion event will ever fire. Treat as idle so
+      // the autopilot picks them up again next cycle.
+      if (elapsed > RUNNING_ZOMBIE_TTL_MS) {
+        state.status = 'idle';
+        state.progress = null;
+        state.task = null;
+        states[state.topicId] = state;
+        continue;
+      }
       const expected = expectedDurationMs(state.topicId);
       // Cap at 0.92 — never claim 100% until the call actually completes
       state.progress = Math.max(0.04, Math.min(0.92, elapsed / expected));
