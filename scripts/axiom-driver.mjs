@@ -19,8 +19,11 @@ import { join } from 'node:path';
 
 const WATCH_URL = process.env.WATCH_URL || 'http://127.0.0.1:3012';
 const WATCH_AUTH = (process.env.WATCH_API_KEY || process.env.WATCH_PASSWORD || '').trim();
-const INTERVAL_MS = Number(process.env.WATCH_AXIOM_DRIVER_INTERVAL_MS || 15 * 60 * 1000);
-const MIN_INTERVAL_MS = 60 * 1000;
+// Default: back-to-back cycles (10s breather between cycles to avoid pinning
+// the Anthropic API on retries and to let the budget snapshot file settle).
+// The real throttle is the daily budget cap — autopilot pauses at 90%.
+const INTERVAL_MS = Number(process.env.WATCH_AXIOM_DRIVER_INTERVAL_MS || 10 * 1000);
+const MIN_INTERVAL_MS = 5 * 1000;
 const MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watcher/axiom-mailbox';
 const PAUSE_FILE = process.env.WATCH_AXIOM_DRIVER_PAUSE_FILE || '/var/lib/watcher/axiom-autopilot.paused';
 const STATE_FILE = process.env.WATCH_AXIOM_DRIVER_STATE_FILE || '/var/lib/watcher/axiom-driver.state.json';
@@ -157,8 +160,9 @@ async function loop() {
   process.stdout.write(`[axiom-driver] online — interval=${Math.round(interval / 1000)}s pause-file=${PAUSE_FILE}\n`);
   await writeState({ status: 'idle', startedAt: new Date().toISOString(), interval, lastCycleAt: null, cycleNum });
 
-  // Initial wait so we don't hammer immediately on restart.
-  await new Promise((r) => setTimeout(r, Math.min(30_000, interval)));
+  // Tiny initial wait so the first cycle doesn't fire mid-startup if pm2 is
+  // restarting the watcher web at the same moment.
+  await new Promise((r) => setTimeout(r, 5_000));
 
   while (true) {
     if (existsSync(PAUSE_FILE)) {
