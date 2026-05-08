@@ -313,6 +313,7 @@ export default function ProjectPage() {
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
             {projectDir || '(loading)'} · {events.length} recent file events
           </div>
+          <LocPanel />
           {truncated && (
             <div className="mt-1 text-xs text-amber-300">tree truncated — showing first {5_000} entries</div>
           )}
@@ -713,3 +714,41 @@ function DiffPart({ part }: { part: Change }) {
     </>
   );
 }
+
+type LocBucket = { ext?: string; dir?: string; files: number; lines: number; bytes: number };
+type LocResponse = { ok: true; total: { files: number; lines: number; bytes: number }; byExt: LocBucket[]; byTopDir: LocBucket[]; cached?: boolean; generatedAt: string };
+
+function fmtNum(n: number) {
+  return n.toLocaleString();
+}
+
+function LocPanel() {
+  const [data, setData] = useState<LocResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/axiom/project/loc", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as LocResponse;
+        if (!cancelled) { setData(j); setError(null); }
+      } catch (err: any) { if (!cancelled) setError(err?.message || String(err)); }
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  if (error) return <div className="mt-1 text-[11px] text-red-300">loc error: {error}</div>;
+  if (!data) return <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">counting lines…</div>;
+  const top = data.byTopDir.slice(0, 6);
+  return (
+    <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[11px] text-[var(--watch-text-muted)]">
+      <span className="text-[var(--watch-text-bright)]"><b>{fmtNum(data.total.lines)}</b> lines · {fmtNum(data.total.files)} files · {(data.total.bytes / 1024 / 1024).toFixed(1)} MB</span>
+      {top.map((b) => (
+        <span key={b.dir}>{b.dir}: {fmtNum(b.lines)}</span>
+      ))}
+    </div>
+  );
+}
+
