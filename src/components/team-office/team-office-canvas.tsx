@@ -2664,6 +2664,15 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
     const managerRotation = towardCEO === -1 ? Math.PI : 0;
     // Manager sits at the cluster's CEO-side edge (near the cubicle opening).
     const managerZ = teamCenterZ + 1.0 * towardCEO;
+    // Chair model is rendered at desk-local [0.08, 0.02, 0.58] (in front of the
+    // monitor screen). Translate that into world coordinates so the avatar sits
+    // ON the chair instead of on the opposite side of the desk. Rotation here
+    // is always 0 or π, so rotated chair offset = ±[0.08, 0.58]: sign matches
+    // towardCEO. Result: chair (and seated avatar) is 0.58 closer to the CEO
+    // than the manager's standby position, which is also where the cubicle
+    // opening is — i.e. on the aisle/CEO side of the desk.
+    const chairDx = 0.08 * towardCEO;
+    const chairDz = 0.58 * towardCEO;
     if (manager) {
       const facingDz = 0.6 * towardCEO; // step from manager toward where they're looking
       layouts.push({
@@ -2676,8 +2685,8 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
         taskTableFacing: 0,
         deliveryPosition: [teamCenterX, 0, managerZ + facingDz * 2],
         focusPoint: [teamCenterX, 0.92, managerZ + 0.12],
-        deskSeatPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 0.8],
-        deskStandPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 1.46],
+        deskSeatPosition: [teamCenterX + chairDx, 0, managerZ + chairDz],
+        deskStandPosition: [teamCenterX + chairDx * 1.4, 0, managerZ + chairDz * 1.55],
         // Avatar's facing matches the desk's rotation, so they end up looking
         // OPPOSITE of where the monitor's screen faces (back to the screen,
         // looking out the cubicle opening / aisle).
@@ -2705,6 +2714,12 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
       // Desk in front of the coder (toward back wall, opposite of the facing direction).
       // The existing formula keeps stand/seat geometry in the same convention used
       // in the default layout.
+      // Same chair-alignment fix as the manager: place the avatar on the
+      // CEO-side of the desk where the chair model actually is, not on the
+      // back-wall side where it was previously rendered.
+      const cSign = rotationY === Math.PI ? -1 : 1;
+      const cChairDx = 0.08 * cSign;
+      const cChairDz = 0.58 * cSign;
       layouts.push({
         topic: coder,
         position: [x, 0, z],
@@ -2715,8 +2730,8 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
         taskTableFacing: 0,
         deliveryPosition: [x, 0, z + (rotationY === Math.PI ? -1.2 : 1.2)],
         focusPoint: [x, 0.92, z + 0.12],
-        deskSeatPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.48 : -0.48)],
-        deskStandPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.88 : -0.88)],
+        deskSeatPosition: [x + cChairDx, 0, z + cChairDz],
+        deskStandPosition: [x + cChairDx * 1.4, 0, z + cChairDz * 1.55],
         // Match the desk rotation — avatar faces opposite of the monitor screen
         // (back to the screen) just like the manager.
         atDeskFacing: rotationY,
