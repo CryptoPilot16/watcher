@@ -607,7 +607,7 @@ function DepartmentBanner({ name, color, position, visible = true, highlighted =
   // labels show through cubicle walls when the camera looks across the room.
   // depthWrite=false keeps semi-transparent edges from punching holes in
   // anything rendered behind them.
-  const baseScale = highlighted ? 2.85 : 2.6;
+  const baseScale = highlighted ? 2.2 : 2.0;
   return (
     <sprite position={position} scale={[baseScale, baseScale * 0.25, 1]} renderOrder={21}>
       <spriteMaterial map={texture} transparent depthWrite={false} depthTest={true} />
