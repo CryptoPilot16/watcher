@@ -548,15 +548,34 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
   return `You are an AXIOM agent. ${styleRules}`;
 }
 
-function modelForAxiomTopic(sessionKey: string): string {
+// Heuristic: a coder task is "research/reading" if the manager's directive
+// is asking the agent to gather information rather than write code. For those,
+// claude haiku with Read/Glob/Grep/WebFetch/WebSearch is faster + cheaper than
+// spinning up a codex /goal session that's optimized for write-to-disk work.
+const RESEARCH_PATTERNS: RegExp[] = [
+  /\bresearch\b/i,
+  /\binvestigate\b/i,
+  /\blook (up|into)\b/i,
+  /\bread (up on|the docs|the spec|the rfc|documentation)\b/i,
+  /\bweb\s?(search|fetch)\b/i,
+  /\bfind (out|info|references|examples)\b/i,
+  /\bsurvey\b/i,
+  /\bsummari[sz]e\b/i,
+  /\bdocs? on\b/i,
+];
+function isResearchTask(message?: string): boolean {
+  if (!message) return false;
+  return RESEARCH_PATTERNS.some((p) => p.test(message));
+}
+
+function modelForAxiomTopic(sessionKey: string, message?: string): string {
   const meta = axiomTopicMeta(sessionKey);
   if (meta.role === 'ceo') return process.env.WATCH_AXIOM_CEO_MODEL || 'gpt-5.5';
   if (meta.role === 'manager') return process.env.WATCH_AXIOM_MANAGER_MODEL || 'gpt-5.5';
   // Codex on a ChatGPT account only accepts gpt-5.x — passing 'haiku' to
   // codex returns "model not supported" and the call fails. Any coder routed
-  // to the codex engine (today: c3 QA reviewer, or any coder with
-  // WATCH_AXIOM_CODER_ENGINE=codex) must use a codex-compatible model.
-  if (meta.role === 'coder' && engineForAxiomTopic(sessionKey) === 'codex') {
+  // to the codex engine must use a codex-compatible model.
+  if (meta.role === 'coder' && engineForAxiomTopic(sessionKey, message) === 'codex') {
     return process.env.WATCH_AXIOM_CODER_CODEX_MODEL || 'gpt-5.5';
   }
   // claude haiku for forward-builder coders — single-step allocations, cheap.
@@ -566,7 +585,7 @@ function modelForAxiomTopic(sessionKey: string): string {
   return rotation[seed];
 }
 
-function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
+function engineForAxiomTopic(sessionKey: string, message?: string): 'claude' | 'codex' {
   const meta = axiomTopicMeta(sessionKey);
   // Per-role engine override. On VPSes where Cloudflare blocks chatgpt.com (codex
   // hangs and returns empty), set WATCH_AXIOM_CEO_ENGINE=claude to route the CEO
@@ -578,12 +597,15 @@ function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
       : meta.role === 'coder'
         ? (process.env.WATCH_AXIOM_CODER_ENGINE || '').trim().toLowerCase()
         : '';
-  if (override === 'claude' || override === 'codex') return override as 'claude' | 'codex';
-  // c4 (the team's QA reviewer) defaults to codex /goal because the audit
-  // role is genuinely multi-step (read recent output → run validators →
-  // find gaps → fix one → add regression test → verify). c1/c2/c3 stay on
-  // claude haiku because their tasks are narrow single-step allocations.
-  // Override the c4-default by setting WATCH_AXIOM_CODER_ENGINE=claude.
+  if (override === 'claude' || override === 'codex') {
+    // Even with an override, research/reading-flavored coder tasks go to claude
+    // haiku — codex /goal is the wrong shape for "go find out X" and burns time
+    // + cost on a multi-step loop the task doesn't need.
+    if (meta.role === 'coder' && override === 'codex' && isResearchTask(message)) return 'claude';
+    return override as 'claude' | 'codex';
+  }
+  // Same haiku-shortcut applies when there's no explicit override.
+  if (meta.role === 'coder' && isResearchTask(message)) return 'claude';
   // c3 is the team's QA reviewer. Multi-step audit loop benefits from
   // /goal autonomy. (Floor has 3 coders/team: c1 tests, c2 glue, c3 QA.)
   if (meta.role === 'coder' && meta.coderIndex === 3) return 'codex';
@@ -592,7 +614,7 @@ function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
 
 async function callAxiomClaude(sessionKey: string, message: string): Promise<{ reply: string; sessionId: string; isNew: boolean; cost?: number; durationMs?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }> {
   let { sessionId, isNew } = readOrCreateAxiomSessionId(sessionKey);
-  const model = modelForAxiomTopic(sessionKey);
+  const model = modelForAxiomTopic(sessionKey, message);
   const meta = axiomTopicMeta(sessionKey);
   // CEO is the chat/orchestrator — file work MUST dispatch to codex via the
   // <<DISPATCH: ...>> tag. The narrow Write/Edit grant for the CEO is for its
@@ -744,7 +766,7 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
   } catch {}
   const isNew = !storedId;
 
-  const model = modelForAxiomTopic(sessionKey);
+  const model = modelForAxiomTopic(sessionKey, message);
   const lastMessageFile = path.join('/tmp', `axiom-codex-${crypto.randomUUID()}.txt`);
 
   // First message: kick off goal-mode session with system prompt + the operator's directive.
@@ -874,13 +896,13 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
 }
 
 async function callAxiomAgent(sessionKey: string, message: string) {
-  const engine = engineForAxiomTopic(sessionKey);
+  const engine = engineForAxiomTopic(sessionKey, message);
   if (engine === 'codex') {
     const result = await callAxiomCodex(sessionKey, message);
-    return { ...result, engine: 'codex' as const, model: modelForAxiomTopic(sessionKey) };
+    return { ...result, engine: 'codex' as const, model: modelForAxiomTopic(sessionKey, message) };
   }
   const result = await callAxiomClaude(sessionKey, message);
-  return { ...result, engine: 'claude' as const, model: modelForAxiomTopic(sessionKey) };
+  return { ...result, engine: 'claude' as const, model: modelForAxiomTopic(sessionKey, message) };
 }
 
 function safeAxiomKey(sessionKey: string) {
@@ -1062,7 +1084,7 @@ export async function POST(request: Request) {
       status: 'running',
       startedAt,
       task: taskSnippet,
-      engine: engineForAxiomTopic(sessionKey),
+      engine: engineForAxiomTopic(sessionKey, message),
     });
     try {
       const { reply, sessionId, isNew, durationMs, engine, model, ...rest } = await callAxiomAgent(sessionKey, message);
@@ -1106,7 +1128,7 @@ export async function POST(request: Request) {
         mode: engine === 'codex' ? 'axiom-codex' : 'axiom-claude',
       });
     } catch (error: any) {
-      const engine = engineForAxiomTopic(sessionKey);
+      const engine = engineForAxiomTopic(sessionKey, message);
       const stderr = String(error?.stderr || '').trim();
       const stdout = String(error?.stdout || '').trim();
       const errMsg = String(error?.message || error || 'unknown').trim();
