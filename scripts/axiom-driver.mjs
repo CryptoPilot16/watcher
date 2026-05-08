@@ -76,8 +76,18 @@ async function tg(method, body) {
   }
 }
 
-function buildManagerBrief(team) {
+function buildManagerBrief(team, roadmapHint) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
+  const hintBlock = roadmapHint
+    ? [
+        ``,
+        `ROADMAP STATUS for your team (${roadmapHint.built}/${roadmapHint.total} tracked deliverables on disk):`,
+        roadmapHint.remaining.length > 0
+          ? `Remaining tracked items:\n${roadmapHint.remaining.map((r) => `  - ${r}`).join('\n')}`
+          : `All TRACKED Phase-0 items for your team are on disk. Look at D${team}_GOAL.md for the full scope (the tracked list is a subset). If your full goal is genuinely complete, reply with: "m${team} ${dept}: PHASE-0 SCOPE COMPLETE — nothing concrete to ship this round" and emit an empty <<CODERS>> block (no c1/c2/c3/c4 lines). DO NOT invent makework.`,
+        ``,
+      ].join('\n')
+    : '';
   return [
     `[AXIOM AUTOPILOT — round driven by the operator's autopilot, not a CEO chat turn.]`,
     `You are the ${dept} manager (m${team}, team ${team}).`,
@@ -86,8 +96,8 @@ function buildManagerBrief(team) {
     `1. ${PROJECT_DIR}/departments/D${team}_GOAL.md — your binding goal`,
     `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md — full Phase 0 spec`,
     `3. Anything you've already shipped under ${PROJECT_DIR}/ for your domain`,
-    ``,
-    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic. Ship real artifacts on disk.`,
+    hintBlock,
+    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic. Ship real artifacts on disk. If everything tracked AND in your D${team}_GOAL.md is genuinely shipped, declare done and skip — do NOT generate makework.`,
     ``,
     `THEN — and this is critical — allocate concrete work to each of your 4 coders for this round. They will be dispatched by the autopilot with the briefs you write below. Pick tasks that build directly on what you just shipped (or on prior contracts). Coder roles:`,
     `   c1 = tests / fixtures that exercise your contracts`,
@@ -248,9 +258,35 @@ async function isAgentRunning(sessionKey) {
   return true;
 }
 
-async function callManager(team) {
-  const r = await callAgent(`axiom:axiom-mgr-${team}`, buildManagerBrief(team));
+async function callManager(team, roadmapHint) {
+  const r = await callAgent(`axiom:axiom-mgr-${team}`, buildManagerBrief(team, roadmapHint));
   return { ...r, role: 'manager', team, coderIndex: null };
+}
+
+// Pull roadmap once per cycle. Returns Map<team, {built,total,remaining[]}>
+// or null on failure. The driver passes per-team summaries into each
+// manager's brief so they know what's left vs what's shipped — without
+// this they spin generating makework after their tracked items are done.
+async function fetchRoadmapHints() {
+  try {
+    const url = new URL('/api/axiom/roadmap', WATCH_URL).toString();
+    const headers = WATCH_AUTH ? { Authorization: `Bearer ${WATCH_AUTH}` } : {};
+    const r = await fetch(url, { headers });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const map = new Map();
+    const byTeamCounts = new Map((j?.byTeam || []).map((t) => [t.team, t]));
+    for (const team of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      const counts = byTeamCounts.get(team) || { built: 0, total: 0 };
+      const remaining = (j?.items || [])
+        .filter((it) => it.team === team && !it.built)
+        .map((it) => it.label);
+      map.set(team, { built: counts.built, total: counts.total, remaining });
+    }
+    return map;
+  } catch {
+    return null;
+  }
 }
 
 async function callCoder(team, coderIndex, managerAssignedTask) {
@@ -267,6 +303,15 @@ async function runCycle(cycleNum) {
   const startedAt = new Date().toISOString();
   const STAGGER_MS = 150;
 
+  // ── Phase 0: pull roadmap once so managers know what's still pending ─
+  const roadmapHints = await fetchRoadmapHints();
+  if (roadmapHints) {
+    const summary = [...roadmapHints.entries()]
+      .map(([t, h]) => `m${t}=${h.built}/${h.total}`)
+      .join(' ');
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} roadmap: ${summary}\n`);
+  }
+
   // ── Phase 1: managers ──────────────────────────────────────────────
   const mgrTasks = [];
   let mgrSkipped = 0;
@@ -277,8 +322,9 @@ async function runCycle(cycleNum) {
       mgrSkipped++;
       continue;
     }
+    const hint = roadmapHints ? roadmapHints.get(n) : null;
     const delay = stagger; stagger += STAGGER_MS;
-    mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n)), delay)));
+    mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n, hint)), delay)));
   }
   process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase1: dispatching ${mgrTasks.length} managers (${mgrSkipped} skipped)\n`);
   const mgrResults = await Promise.all(mgrTasks);

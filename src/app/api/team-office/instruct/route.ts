@@ -742,13 +742,13 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
     '-m', model,
     '--json',
     '-C', AXIOM_PROJECT_DIR,
-    '--full-auto', // workspace-write sandbox so the manager can actually do work in /opt/watcher
+    '--sandbox', 'workspace-write', // workspace-write sandbox so the manager can actually do work in the project dir (replaces deprecated --full-auto)
     '--output-last-message', lastMessageFile,
   ];
 
   const buildArgs = (resumeMode: boolean, sid: string | null): string[] => {
     if (resumeMode && sid) {
-      return ['exec', 'resume', '--skip-git-repo-check', '--enable', 'goals', '-m', model, '--json', '-C', AXIOM_PROJECT_DIR, '--full-auto', '--output-last-message', lastMessageFile, sid, message];
+      return ['exec', 'resume', '--skip-git-repo-check', '--enable', 'goals', '-m', model, '--json', '-C', AXIOM_PROJECT_DIR, '--sandbox', 'workspace-write', '--output-last-message', lastMessageFile, sid, message];
     }
     return ['exec', ...flags, goalPrompt];
   };

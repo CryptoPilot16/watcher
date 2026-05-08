@@ -65,9 +65,13 @@ type AgentState = {
 };
 
 function expectedDurationMs(topicId: string): number {
-  if (topicId === 'axiom-ceo') return 180_000; // CEO opus reading large docs
-  if (topicId.startsWith('axiom-mgr-')) return 120_000; // managers via codex /goal
-  return 60_000; // coders
+  // Realistic medians from the autopilot's recorded jsonl entries — codex
+  // /goal managers run 2-5 min on a typical Phase-0 step; claude coders
+  // hit 1-3 min. Old values (60s, 120s) saturated the 0.92 cap almost
+  // immediately so every running bar looked the same.
+  if (topicId === 'axiom-ceo') return 240_000; // 4 min — CEO reads + plans
+  if (topicId.startsWith('axiom-mgr-')) return 300_000; // 5 min — codex /goal
+  return 180_000; // 3 min — coders
 }
 
 function readState(file: string): AgentState | null {
