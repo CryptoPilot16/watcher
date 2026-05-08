@@ -25,7 +25,7 @@ const TeamOfficeCanvas = dynamic(
 
 // Department names — front row (indices 0..4) and back row (indices 5..9).
 // Override locally via NEXT_PUBLIC_AXIOM_DEPARTMENTS env var (comma-separated, exactly 10 names)
-// to fit your own project. The 51-agent floor layout is project-agnostic.
+// to fit your own project. The 41-agent floor layout is project-agnostic.
 const DEFAULT_DOMAINS = [
   'Platform',
   'Frontend',
@@ -149,8 +149,8 @@ function buildAxiomTopics(): TeamTopic[] {
       ),
     );
 
-    for (let coderIdx = 0; coderIdx < 4; coderIdx++) {
-      const globalIdx = teamIdx * 4 + coderIdx;
+    for (let coderIdx = 0; coderIdx < 3; coderIdx++) {
+      const globalIdx = teamIdx * 3 + coderIdx;
       const model = CODER_MODELS[globalIdx % CODER_MODELS.length];
       topics.push(
         makeTopic(
@@ -247,7 +247,7 @@ export default function AxiomPage() {
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
           <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ axiom operations floor</div>
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
-            51 AI agents · 1 CEO · 10 managers · 40 coders · 10 teams of 5
+            41 AI agents · 1 CEO · 10 managers · 30 coders · 10 teams of 4
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--watch-text-muted)]">
             <span><span className="text-[var(--watch-accent-strong)]">{runningCount}</span> running</span>

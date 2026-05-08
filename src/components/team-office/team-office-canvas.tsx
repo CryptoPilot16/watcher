@@ -2887,18 +2887,16 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
       });
     }
 
-    // Coders: 2×2 grid behind manager (away from CEO). All face the CEO too,
-    // so the team reads as one unified line presenting to the aisle.
-    // Back-pair sits at awayDz=1.7 so the chair behind each coder doesn't
-    // poke through the cubicle's far wall at farOffset=2.9.
+    // Coders: 3 per team. c1 + c2 flank the manager near the front; c3
+    // (QA reviewer) sits centered behind. Wider spacing than the old 2x2
+    // grid since each cubicle holds 4 avatars total (1 mgr + 3 coders).
     const coderRotation = managerRotation;
     const coderOffsets: Array<{ dx: number; awayDz: number }> = [
-      { dx: -1.5, awayDz: 0.5 }, // c1 left near-manager (tests)
-      { dx: +1.5, awayDz: 0.5 }, // c2 right near-manager (glue)
-      { dx: -1.5, awayDz: 1.7 }, // c3 left back (fixtures/seeds)
-      { dx: +1.5, awayDz: 1.7 }, // c4 right back (QA reviewer)
+      { dx: -1.7, awayDz: 0.6 }, // c1 left near-manager (tests/fixtures)
+      { dx: +1.7, awayDz: 0.6 }, // c2 right near-manager (glue)
+      { dx:  0.0, awayDz: 1.8 }, // c3 centered behind (QA reviewer)
     ];
-    teamCoders.slice(0, 4).forEach((coder, i) => {
+    teamCoders.slice(0, 3).forEach((coder, i) => {
       const o = coderOffsets[i];
       const x = teamCenterX + o.dx;
       // awayDz is the (positive) step away from the CEO; -towardCEO points away.
