@@ -557,7 +557,9 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
 
 // Bigger, color-bleed department banner — used above each team cubicle so the
 // 10 departments are unmistakable at a glance and match the roadmap palette.
-function buildDepartmentBannerTexture(name: string, accent: string) {
+// `highlighted=true` adds a glowing outer ring for teams that are actively
+// working this round.
+function buildDepartmentBannerTexture(name: string, accent: string, highlighted: boolean) {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -568,19 +570,20 @@ function buildDepartmentBannerTexture(name: string, accent: string) {
   const h = canvas.height;
   const r = 18;
   ctx.clearRect(0, 0, w, h);
+  // Outer glow ring (only when highlighted).
+  if (highlighted) {
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 32;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.roundRect(2, 2, w - 4, h - 4, r);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
   // Solid colored background with rounded corners.
   ctx.fillStyle = accent;
   ctx.beginPath();
-  ctx.moveTo(r, 0);
-  ctx.lineTo(w - r, 0);
-  ctx.quadraticCurveTo(w, 0, w, r);
-  ctx.lineTo(w, h - r);
-  ctx.quadraticCurveTo(w, h, w - r, h);
-  ctx.lineTo(r, h);
-  ctx.quadraticCurveTo(0, h, 0, h - r);
-  ctx.lineTo(0, r);
-  ctx.quadraticCurveTo(0, 0, r, 0);
-  ctx.closePath();
+  ctx.roundRect(highlighted ? 6 : 0, highlighted ? 6 : 0, w - (highlighted ? 12 : 0), h - (highlighted ? 12 : 0), r);
   ctx.fill();
   // Inner darker bar across top + bottom for chrome.
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
@@ -590,19 +593,24 @@ function buildDepartmentBannerTexture(name: string, accent: string) {
   ctx.font = '700 56px Inter, JetBrains Mono, monospace';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillStyle = highlighted ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.85)';
   ctx.fillText(name.toUpperCase(), w / 2, h / 2);
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
 }
 
-function DepartmentBanner({ name, color, position, visible = true }: { name: string; color: string; position: [number, number, number]; visible?: boolean }) {
-  const texture = useMemo(() => buildDepartmentBannerTexture(name, color), [name, color]);
+function DepartmentBanner({ name, color, position, visible = true, highlighted = false }: { name: string; color: string; position: [number, number, number]; visible?: boolean; highlighted?: boolean }) {
+  const texture = useMemo(() => buildDepartmentBannerTexture(name, color, highlighted), [name, color, highlighted]);
   if (!texture || !visible) return null;
+  // depthTest=true so walls properly occlude the banner — without this the
+  // labels show through cubicle walls when the camera looks across the room.
+  // depthWrite=false keeps semi-transparent edges from punching holes in
+  // anything rendered behind them.
+  const baseScale = highlighted ? 2.85 : 2.6;
   return (
-    <sprite position={position} scale={[2.6, 0.65, 1]} renderOrder={21}>
-      <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
+    <sprite position={position} scale={[baseScale, baseScale * 0.25, 1]} renderOrder={21}>
+      <spriteMaterial map={texture} transparent depthWrite={false} depthTest={true} />
     </sprite>
   );
 }
@@ -1253,9 +1261,9 @@ function VoxelObj(props: { base: string; position?: [number, number, number]; ro
   );
 }
 
-function VoxelOfficeScene({ layoutVariant = 'default', departmentNames }: { layoutVariant?: LayoutVariant; departmentNames?: string[] }) {
+function VoxelOfficeScene({ layoutVariant = 'default', departmentNames, activeTeams }: { layoutVariant?: LayoutVariant; departmentNames?: string[]; activeTeams?: Set<number> }) {
   const S = 0.95;
-  if (layoutVariant === 'axiom') return <AxiomVoxelOfficeScene departmentNames={departmentNames} />;
+  if (layoutVariant === 'axiom') return <AxiomVoxelOfficeScene departmentNames={departmentNames} activeTeams={activeTeams} />;
   return (
     <>
       {/* Uniform mid-grey floor — matches pilot desk body */}
@@ -1322,7 +1330,7 @@ function VoxelOfficeScene({ layoutVariant = 'default', departmentNames }: { layo
  * at z=-0.5, with the CEO centered between them. Each team gets a U-shaped low partition
  * (cubicle wall) that frames the manager + 2×2 coder block on three sides.
  */
-function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[] }) {
+function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNames?: string[]; activeTeams?: Set<number> }) {
   const S = 0.95;
   const FLOOR_W = 40;
   const FLOOR_D = 24;
@@ -1393,13 +1401,16 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
           <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
           <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
         </mesh>
-        {/* Big department banner — uses the dept color as background */}
+        {/* Big department banner — uses the dept color as background.
+            Highlighted (slightly bigger + glowing edge) when this team has
+            any agent actively running. */}
         {label && (
           <DepartmentBanner
             name={label}
             color={accent}
             position={[cx, labelY, labelZ]}
             visible
+            highlighted={activeTeams?.has(team) || false}
           />
         )}
       </group>
@@ -2663,7 +2674,7 @@ function WindowBlindsFallback() {
   );
 }
 
-function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle; layoutVariant?: LayoutVariant; departmentNames?: string[] }) {
+function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames, activeTeams }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle; layoutVariant?: LayoutVariant; departmentNames?: string[]; activeTeams?: Set<number> }) {
   return (
     <>
       {sceneStyle === 'dungeon' && (
@@ -2673,7 +2684,7 @@ function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'defaul
           <MedievalDecorations layoutVariant={layoutVariant} />
         </>
       )}
-      {sceneStyle === 'office' && <VoxelOfficeScene layoutVariant={layoutVariant} departmentNames={departmentNames} />}
+      {sceneStyle === 'office' && <VoxelOfficeScene layoutVariant={layoutVariant} departmentNames={departmentNames} activeTeams={activeTeams} />}
 
       {sceneStyle === 'dungeon' && layoutVariant !== 'axiom' && (
         <mesh position={[0, 0.015, 4.45]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -3070,6 +3081,20 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
     onDisciplineSettled?.();
   }, [disciplineComplete, manualDisciplineMode, onDisciplineSettled]);
 
+  // Compute the set of teams that have any agent (manager or coder) currently
+  // running or just-recent. Used by AxiomVoxelOfficeScene to highlight the
+  // department banner when its team is actively working.
+  const activeTeams = useMemo(() => {
+    const set = new Set<number>();
+    for (const t of topics) {
+      const status = t.live?.status;
+      if (status !== 'running' && status !== 'recent') continue;
+      const m = t.topicId.match(/^axiom-mgr-(\d+)$/) || t.topicId.match(/^axiom-coder-(\d+)-\d+$/);
+      if (m) set.add(Number(m[1]));
+    }
+    return set;
+  }, [topics]);
+
   return (
     <>
       <color attach="background" args={['#eef5f6']} />
@@ -3078,7 +3103,7 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
       <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" />
       <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
-      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} layoutVariant={layoutVariant} departmentNames={departmentNames} />
+      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} layoutVariant={layoutVariant} departmentNames={departmentNames} activeTeams={activeTeams} />
 
       {layoutVariant !== 'axiom' && (
         <>
