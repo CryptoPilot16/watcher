@@ -993,9 +993,9 @@ async function handleMessage(state, msg) {
         return '';
       }
       const totals = { running: summary.running || 0, recent: summary.recent || 0, error: summary.error || 0 };
-      const idle = 41 - (totals.running + totals.recent + totals.error);
+      const idle = 51 - (totals.running + totals.recent + totals.error);
       const lines = [
-        `AXIOM floor (41 agents) — ${totals.running}🟢 ${totals.recent}🟡 ${totals.error}🔴 ${idle}⚪`,
+        `AXIOM floor (51 agents) — ${totals.running}🟢 ${totals.recent}🟡 ${totals.error}🔴 ${idle}⚪`,
         '(🟢=typing, 🟡=just-finished, 🔴=error, ⚪=idle)',
         '',
       ];
@@ -1016,7 +1016,7 @@ async function handleMessage(state, msg) {
         const m = states[`axiom-mgr-${n}`];
         const mIcon = iconFor(m?.status);
         let coderRunning = 0, coderRecent = 0, coderError = 0, coderIdle = 0;
-        for (let c = 1; c <= 3; c++) {
+        for (let c = 1; c <= 4; c++) {
           const s = states[`axiom-coder-${n}-${c}`];
           const status = s?.status || 'idle';
           if (status === 'running') coderRunning++;
