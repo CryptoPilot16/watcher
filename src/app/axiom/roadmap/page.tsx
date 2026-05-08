@@ -24,12 +24,16 @@ type Phase = {
   rationale: string;
 };
 
+type PhaseSummary = { phase: number; name: string; built: number; total: number; complete: boolean };
+
 type Resp = {
   ok: true;
   generatedAt: string;
   overall: { built: number; total: number; percent: number };
   byTeam: ByTeam[];
   items: Item[];
+  allItems?: { phase0: Item[]; phase1: Item[] };
+  phaseSummaries?: PhaseSummary[];
   phases?: Phase[];
   currentPhase?: number;
 };
@@ -41,9 +45,12 @@ const DEPT_COLOR: Record<number, string> = {
 
 const POLL_MS = 10_000;
 
+const DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
+
 export default function RoadmapPage() {
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPhase, setSelectedPhase] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,15 +69,51 @@ export default function RoadmapPage() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  const activePhase = selectedPhase ?? data?.currentPhase ?? 0;
+  const activePhaseName = data?.phases?.find((p) => p.num === activePhase)?.name ?? '';
+
+  const phaseItems: Item[] = useMemo(() => {
+    if (!data) return [];
+    if (data.allItems) {
+      return activePhase === 1 ? data.allItems.phase1 : data.allItems.phase0;
+    }
+    return activePhase === (data.currentPhase ?? 0) ? data.items : [];
+  }, [data, activePhase]);
+
+  const phaseStats = useMemo(() => {
+    const built = phaseItems.filter((i) => i.built).length;
+    const total = phaseItems.length;
+    const percent = total ? Math.round((built / total) * 100) : 0;
+    return { built, total, percent };
+  }, [phaseItems]);
+
+  const phaseByTeam = useMemo(() => {
+    const acc: Record<number, ByTeam> = {};
+    for (const it of phaseItems) {
+      if (!acc[it.team]) {
+        acc[it.team] = {
+          team: it.team,
+          dept: it.team === 0 ? 'CEO / shared' : DEPARTMENTS[it.team - 1] || `m${it.team}`,
+          built: 0,
+          total: 0,
+        };
+      }
+      acc[it.team].total += 1;
+      if (it.built) acc[it.team].built += 1;
+    }
+    return Object.values(acc).sort((a, b) => a.team - b.team);
+  }, [phaseItems]);
+
   const itemsByTeam = useMemo(() => {
     const out = new Map<number, Item[]>();
-    if (!data) return out;
-    for (const it of data.items) {
+    for (const it of phaseItems) {
       if (!out.has(it.team)) out.set(it.team, []);
       out.get(it.team)!.push(it);
     }
     return out;
-  }, [data]);
+  }, [phaseItems]);
+
+  const phaseTabs = data?.phaseSummaries ?? (data ? [{ phase: data.currentPhase ?? 0, name: '', built: data.overall.built, total: data.overall.total, complete: false }] : []);
 
   return (
     <main className="min-h-screen bg-[var(--watch-bg)] p-3 sm:p-5">
@@ -79,22 +122,49 @@ export default function RoadmapPage() {
 
         <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
           <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">
-            <span>▌ AXIOM Phase 0 — roadmap</span>
+            <span>▌ AXIOM Phase {activePhase}{activePhaseName ? ` · ${activePhaseName}` : ''} — roadmap</span>
             <span>{data?.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
           </div>
           {data ? (
-            <div className="mt-2">
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-semibold text-[var(--watch-text-bright)]">{data.overall.percent}%</span>
-                <span className="text-sm text-[var(--watch-text-muted)]">{data.overall.built} of {data.overall.total} Phase-0 deliverables on disk</span>
+            <>
+              {phaseTabs.length > 1 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {phaseTabs.map((t) => {
+                    const isActive = t.phase === activePhase;
+                    const isCurrent = t.phase === (data.currentPhase ?? 0);
+                    const pct = t.total ? Math.round((t.built / t.total) * 100) : 0;
+                    return (
+                      <button
+                        key={t.phase}
+                        type="button"
+                        onClick={() => setSelectedPhase(t.phase)}
+                        className="rounded px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide transition-colors"
+                        style={{
+                          color: isActive ? '#7ee787' : 'var(--watch-text-muted)',
+                          border: `1px solid ${isActive ? '#7ee78788' : 'var(--watch-panel-border)'}`,
+                          background: isActive ? '#7ee78714' : 'transparent',
+                        }}
+                        title={isCurrent ? 'current phase' : t.complete ? 'complete' : 'past/future'}
+                      >
+                        Phase {t.phase} · {t.built}/{t.total} · {pct}%{isCurrent ? ' ◀' : t.complete ? ' ✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <div className="mt-2">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl font-semibold text-[var(--watch-text-bright)]">{phaseStats.percent}%</span>
+                  <span className="text-sm text-[var(--watch-text-muted)]">{phaseStats.built} of {phaseStats.total} Phase-{activePhase} deliverables on disk</span>
+                </div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded bg-black/40">
+                  <div
+                    className="h-full bg-emerald-400 transition-all"
+                    style={{ width: `${phaseStats.percent}%` }}
+                  />
+                </div>
               </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded bg-black/40">
-                <div
-                  className="h-full bg-emerald-400 transition-all"
-                  style={{ width: `${data.overall.percent}%` }}
-                />
-              </div>
-            </div>
+            </>
           ) : error ? (
             <div className="mt-2 text-xs text-red-300">roadmap error: {error}</div>
           ) : (
@@ -158,7 +228,7 @@ export default function RoadmapPage() {
 
         {data ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {data.byTeam.map((t) => {
+            {phaseByTeam.map((t) => {
               const color = DEPT_COLOR[t.team] || '#cbd5e1';
               const pct = t.total ? Math.round((t.built / t.total) * 100) : 0;
               const items = itemsByTeam.get(t.team) || [];

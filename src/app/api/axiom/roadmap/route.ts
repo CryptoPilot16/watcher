@@ -123,6 +123,59 @@ const PHASE0: Deliverable[] = [
   { id: 'X-chaos',        label: 'Acceptance: subsystem independence proven by chaos tests',    team: 0, evidence: ['contracts/reliability/chaos', 'tools/chaos-test'] },
 ];
 
+// Phase-1 (Operate) deliverables — masterplan §15.1, lessons from Phase-0 close push.
+// Each item has BOTH an evidence path AND (where applicable) a validator the
+// roadmap API gates quality on. Path discipline: deliverable file paths chosen
+// to match where agents naturally ship, not aspirational locations.
+const PHASE1: Deliverable[] = [
+  // ── D5 DISPATCH (Flight Ops Phase-1 runtime) ───────────────────────────
+  { id: 'P1-D5-rel-impl',     label: 'P1 Dispatch release service (Rust impl of dispatch_release.proto)',  team: 5, evidence: ['services/p11-dispatch/Cargo.toml', 'services/p11-dispatch/src/'] },
+  { id: 'P1-D5-flight-cycle', label: 'P1 Flight-cycle workflow runtime',                                    team: 5, evidence: ['services/p11-dispatch/src/flight_cycle.rs', 'contracts/workflows/dispatch_flight_cycle_runtime.v1.yaml'] },
+  { id: 'P1-D5-efb',          label: 'P1 EFB mobile shell (offline reconcile, captain accept)',             team: 5, evidence: ['mobile/efb/', 'web/efb-mobile/'] },
+  { id: 'P1-D5-weather',      label: 'P1 Weather connector (METAR/TAF live ingest)',                        team: 5, evidence: ['connectors/weather/', 'contracts/connectors/weather.v1.yaml'] },
+  { id: 'P1-D5-notam',        label: 'P1 NOTAM connector (ICAO live ingest)',                               team: 5, evidence: ['connectors/notam/', 'contracts/connectors/notam.v1.yaml'] },
+  { id: 'P1-D5-atc-slots',    label: 'P1 ATC slots connector (Eurocontrol/CDM live)',                       team: 5, evidence: ['connectors/atc-slots/', 'contracts/connectors/atc_slots.v1.yaml'] },
+  { id: 'P1-D5-acars',        label: 'P1 ACARS connector (downlink ingest)',                                team: 5, evidence: ['connectors/acars/', 'contracts/connectors/acars.v1.yaml'] },
+  { id: 'P1-D5-fdm',          label: 'P1 FDM connector (flight data monitoring ingest)',                    team: 5, evidence: ['connectors/fdm/', 'contracts/connectors/fdm.v1.yaml'] },
+  { id: 'P1-D5-latency-real', label: 'P1 Real-world latency budget validated against live traffic',         team: 5, evidence: ['reports/dispatch-latency-real-validation.md', 'contracts/reliability/dispatch-latency-p1.v1.yaml'] },
+
+  // ── D6 CREW (Phase-1 runtime) ──────────────────────────────────────────
+  { id: 'P1-D6-roster-impl',  label: 'P1 CBA roster generation runtime',                                    team: 6, evidence: ['services/p12-crew/Cargo.toml', 'services/p12-crew/src/roster.rs'] },
+  { id: 'P1-D6-duty-eval',    label: 'P1 Duty-rule evaluation service',                                     team: 6, evidence: ['services/p12-crew/src/duty.rs', 'contracts/workflows/crew_duty_eval_runtime.v1.yaml'] },
+  { id: 'P1-D6-fdtl',         label: 'P1 FDTL enforcement (flight duty time limits)',                       team: 6, evidence: ['services/p12-crew/src/fdtl.rs', 'contracts/rules/fdtl_enforcement_v1.yaml'] },
+  { id: 'P1-D6-bidline',      label: 'P1 Bidline awarding engine',                                          team: 6, evidence: ['services/p12-crew/src/bidline.rs', 'contracts/workflows/bidline_award_v1.yaml'] },
+  { id: 'P1-D6-trip-pairing', label: 'P1 Trip-pairing engine',                                              team: 6, evidence: ['services/p12-crew/src/trip_pairing.rs', 'contracts/workflows/trip_pairing_v1.yaml'] },
+
+  // ── D7 TECH (Phase-1 runtime) ──────────────────────────────────────────
+  { id: 'P1-D7-mel-runtime',  label: 'P1 MEL runtime + dispatch-gate enforcement',                          team: 7, evidence: ['services/p13-tech/Cargo.toml', 'services/p13-tech/src/mel.rs', 'tools/validate-tech-dispatch-gate.js'] },
+  { id: 'P1-D7-ad-sb-track',  label: 'P1 AD/SB compliance tracker',                                         team: 7, evidence: ['services/p13-tech/src/ad_sb.rs', 'contracts/workflows/ad_sb_compliance_v1.yaml'] },
+  { id: 'P1-D7-tech-state',   label: 'P1 Aircraft technical-state service',                                 team: 7, evidence: ['services/p13-tech/src/tech_state.rs', 'contracts/workflows/aircraft_tech_state_runtime.v1.yaml'] },
+  { id: 'P1-D7-defect-mgmt',  label: 'P1 Defect-management workflow',                                       team: 7, evidence: ['services/p13-tech/src/defect.rs', 'contracts/workflows/defect_management_v1.yaml'] },
+
+  // ── D8 SAFETY / SMS (Phase-1 runtime) ──────────────────────────────────
+  { id: 'P1-D8-sms-rt',       label: 'P1 SMS runtime + just-culture firewall enforcement',                  team: 8, evidence: ['services/p14-sms/Cargo.toml', 'services/p14-sms/src/'] },
+  { id: 'P1-D8-fdm-exceed',   label: 'P1 FDM exceedance detection',                                         team: 8, evidence: ['services/p14-sms/src/fdm_exceedance.rs', 'contracts/workflows/fdm_exceedance_v1.yaml'] },
+  { id: 'P1-D8-tem-runtime',  label: 'P1 TEM register active management',                                   team: 8, evidence: ['services/p14-sms/src/tem.rs', 'contracts/workflows/tem_active_management_v1.yaml'] },
+  { id: 'P1-D8-avsec',        label: 'P1 AVSEC runtime',                                                    team: 8, evidence: ['services/p14-sms/src/avsec.rs', 'contracts/workflows/avsec_runtime_v1.yaml'] },
+
+  // ── UX (Phase-1 user-facing) ───────────────────────────────────────────
+  { id: 'P1-UX-shell',        label: 'P1 Web shell (Next.js 15 + Radix, real)',                             team: 2, evidence: ['web/package.json', 'web/app/layout.tsx', 'web/app/page.tsx'] },
+  { id: 'P1-UX-design-sys',   label: 'P1 Design system v1 components (WCAG 2.2 AA)',                        team: 2, evidence: ['web/components/', 'web/lib/design-tokens.ts'] },
+  { id: 'P1-UX-dispatch',     label: 'P1 Dispatch console UI',                                              team: 5, evidence: ['web/app/dispatch/page.tsx', 'web/components/dispatch/'] },
+  { id: 'P1-UX-crew',         label: 'P1 Crew rostering UI',                                                team: 6, evidence: ['web/app/crew/page.tsx', 'web/components/crew/'] },
+  { id: 'P1-UX-tech',         label: 'P1 Tech / MEL UI',                                                    team: 7, evidence: ['web/app/tech/page.tsx', 'web/components/tech/'] },
+  { id: 'P1-UX-sms',          label: 'P1 SMS reporting UI',                                                 team: 8, evidence: ['web/app/sms/page.tsx', 'web/components/sms/'] },
+
+  // ── Deployment + ops readiness ─────────────────────────────────────────
+  { id: 'P1-OPS-dockerfiles', label: 'P1 Dockerfiles for every P-service',                                  team: 3, evidence: ['services/p01-identity/Dockerfile', 'services/p11-dispatch/Dockerfile'] },
+  { id: 'P1-OPS-systemd',     label: 'P1 systemd unit files for every P-service',                           team: 3, evidence: ['infra/systemd/'] },
+  { id: 'P1-OPS-caddy',       label: 'P1 Caddy reverse-proxy config (TLS, /p01.. routes)',                  team: 3, evidence: ['infra/caddy/Caddyfile'] },
+  { id: 'P1-OPS-deploy',      label: 'P1 Deploy script (build → ship → reload)',                            team: 3, evidence: ['infra/deploy.sh', 'tools/deploy.sh'] },
+  { id: 'P1-OPS-ci',          label: 'P1 CI workflow (cargo + validators + buf)',                           team: 3, evidence: ['.github/workflows/ci.yml'] },
+  { id: 'P1-OPS-replay-drill',label: 'P1 Replay drill executed (junior <10min)',                            team: 3, evidence: ['reports/audit-replay-drill.log'] },
+  { id: 'P1-OPS-chaos-drill', label: 'P1 Chaos drill executed (P02/P04/P05/P10 outages)',                   team: 3, evidence: ['reports/chaos-drill.log'] },
+];
+
 const DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
 
 // Multi-phase platform plan from AXIOM_MASTERPLAN.md §15.1.
@@ -208,39 +261,60 @@ export async function GET() {
   const passByValidator = new Map<string, boolean>();
   if (matrix) for (const r of matrix.results) passByValidator.set(r.validator, r.passed);
 
-  const items = PHASE0.map((d) => {
-    let hit: { built: boolean; matchedPath: string | null; size: number } = { built: false, matchedPath: null, size: 0 };
-    for (const ev of d.evidence) {
-      hit = evidenceMatches(ev);
-      if (hit.built) break;
-    }
-    // Quality flag: if any validator named in this item's evidence is in the
-    // matrix and FAILED, mark qualityFailed. Items without a validator in
-    // their evidence list inherit qualityFailed=null (no signal).
-    const itemValidators = validatorsForItem(d.evidence);
-    let qualityFailed: boolean | null = null;
-    let failedValidators: string[] = [];
-    if (itemValidators.length && matrix) {
-      const known = itemValidators.filter((v) => passByValidator.has(v));
-      if (known.length) {
-        failedValidators = known.filter((v) => !passByValidator.get(v));
-        qualityFailed = failedValidators.length > 0;
+  // Tag items with their phase + evaluate them.
+  function evalItems(deliverables: Deliverable[], phase: number) {
+    return deliverables.map((d) => {
+      let hit: { built: boolean; matchedPath: string | null; size: number } = { built: false, matchedPath: null, size: 0 };
+      for (const ev of d.evidence) {
+        hit = evidenceMatches(ev);
+        if (hit.built) break;
       }
-    }
-    return { ...d, ...hit, qualityFailed, failedValidators };
-  });
+      const itemValidators = validatorsForItem(d.evidence);
+      let qualityFailed: boolean | null = null;
+      let failedValidators: string[] = [];
+      if (itemValidators.length && matrix) {
+        const known = itemValidators.filter((v) => passByValidator.has(v));
+        if (known.length) {
+          failedValidators = known.filter((v) => !passByValidator.get(v));
+          qualityFailed = failedValidators.length > 0;
+        }
+      }
+      return { ...d, phase, ...hit, qualityFailed, failedValidators };
+    });
+  }
+
+  const phase0Items = evalItems(PHASE0, 0);
+  const phase1Items = evalItems(PHASE1, 1);
+
+  // Phase-0 close gate: if every Phase-0 item is built (or qualityHealthy),
+  // mark currentPhase=1; otherwise stay at 0. Operator override via env var.
+  const phase0AllBuilt = phase0Items.every((i) => i.built);
+  const currentPhase = process.env.WATCH_AXIOM_CURRENT_PHASE
+    ? Number(process.env.WATCH_AXIOM_CURRENT_PHASE)
+    : phase0AllBuilt
+      ? 1
+      : 0;
+
+  // Active items = items in the current phase (used for "Remaining" list, % bar)
+  const activeItems = currentPhase === 1 ? phase1Items : phase0Items;
 
   const byTeam: Record<number, { built: number; total: number; qualityHealthy: number; team: number; dept: string }> = {};
   for (let n = 0; n <= 10; n++) byTeam[n] = { built: 0, total: 0, qualityHealthy: 0, team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1] };
-  for (const it of items) {
+  for (const it of activeItems) {
     byTeam[it.team].total += 1;
     if (it.built) byTeam[it.team].built += 1;
-    // qualityHealthy = built AND no associated validator failed
     if (it.built && it.qualityFailed !== true) byTeam[it.team].qualityHealthy += 1;
   }
-  const built = items.filter((i) => i.built).length;
-  const qualityHealthy = items.filter((i) => i.built && i.qualityFailed !== true).length;
-  const total = items.length;
+  const built = activeItems.filter((i) => i.built).length;
+  const qualityHealthy = activeItems.filter((i) => i.built && i.qualityFailed !== true).length;
+  const total = activeItems.length;
+
+  // Per-phase summary (used by the UI to show all-phase strip)
+  const phaseSummaries = [
+    { phase: 0, name: 'Foundation', built: phase0Items.filter((i) => i.built).length, total: phase0Items.length, complete: phase0AllBuilt },
+    { phase: 1, name: 'Operate', built: phase1Items.filter((i) => i.built).length, total: phase1Items.length, complete: phase1Items.every((i) => i.built) },
+  ];
+
   const payload = {
     ok: true,
     generatedAt: new Date().toISOString(),
@@ -261,9 +335,11 @@ export async function GET() {
         }
       : null,
     byTeam: Object.values(byTeam).filter((b) => b.total > 0),
-    items,
+    items: activeItems,
+    allItems: { phase0: phase0Items, phase1: phase1Items },
     phases: PHASES,
-    currentPhase: 0,
+    phaseSummaries,
+    currentPhase,
   };
   cache = { ts: now, payload };
   return NextResponse.json(payload);
