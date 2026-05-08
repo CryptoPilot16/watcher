@@ -19,6 +19,24 @@ type ProjectEvent = {
   kind: string;
   path: string;
   size: number | null;
+  attributedTo?: { team: number; dept: string } | null;
+};
+
+// Per-department accent color for the file-event badge. Mirrors the office
+// 3D scene's department mapping so the operator can connect "this file
+// changed" to "this cubicle just lit up". team=0 = CEO/shared.
+const DEPT_COLORS: Record<number, string> = {
+  0:  '#a78bfa', // CEO / shared — purple
+  1:  '#7ee787', // Foundation — green
+  2:  '#f7c763', // Governance — amber
+  3:  '#58d9ff', // Reliability — cyan
+  4:  '#ff9d6a', // Substrate — orange
+  5:  '#ffd166', // Flight Ops — yellow
+  6:  '#f08585', // Crew — coral
+  7:  '#9ddafb', // Engineering — pale blue
+  8:  '#f97676', // Safety — red
+  9:  '#c084fc', // Commercial — violet
+  10: '#34d399', // ATC / IQ — teal
 };
 
 type FileResponse =
@@ -368,8 +386,20 @@ export default function ProjectPage() {
                         <span className="truncate font-mono text-[var(--watch-text-bright)]">{ev.path || '(watcher)'}</span>
                         <span className="ml-auto shrink-0 text-[10px] text-[var(--watch-text-muted)]">{fmtAgo(ev.ts)}</span>
                       </div>
-                      <div className="ml-5 text-[10px] text-[var(--watch-text-muted)]">
-                        {ev.kind}{ev.size !== null && ev.size !== undefined ? ` · ${fmtSize(ev.size)}` : ''}
+                      <div className="ml-5 mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--watch-text-muted)]">
+                        {ev.attributedTo ? (
+                          <span
+                            className="inline-flex items-center rounded px-1.5 py-px text-[9px] font-mono uppercase tracking-wide"
+                            style={{
+                              color: DEPT_COLORS[ev.attributedTo.team] || '#cbd5e1',
+                              border: `1px solid ${(DEPT_COLORS[ev.attributedTo.team] || '#cbd5e1')}66`,
+                              background: `${DEPT_COLORS[ev.attributedTo.team] || '#cbd5e1'}14`,
+                            }}
+                          >
+                            {ev.attributedTo.team === 0 ? 'CEO' : `m${ev.attributedTo.team}`} {ev.attributedTo.dept}
+                          </span>
+                        ) : null}
+                        <span>{ev.kind}{ev.size !== null && ev.size !== undefined ? ` · ${fmtSize(ev.size)}` : ''}</span>
                       </div>
                     </li>
                   ))}

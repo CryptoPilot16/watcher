@@ -28,6 +28,32 @@ const IGNORED_PARTS = new Set([
 ]);
 const IGNORED_FILES = /\.(log|swp|swo|tmp|lock)$/i;
 
+// Path → owning team mapper. Each team's manager + 4 coders work in distinct
+// path namespaces (the autopilot prompts steer them there). Most files match
+// the first rule that fits; ambiguous files get team=null and render
+// unattributed. Order matters — more specific patterns first.
+const ATTRIBUTION_RULES = [
+  { team: 1, dept: 'Foundation',   re: /^(services\/p0[125]-|contracts\/protos\/axiom\/core\/v1\/audit|services\/kms\/)/ },
+  { team: 2, dept: 'Governance',   re: /^(services\/p06-rules\/|contracts\/cedar\/(?!sms\/)|contracts\/rules\/jurisdiction\/|tools\/validate-rule-pack)/ },
+  { team: 3, dept: 'Reliability',  re: /^(services\/p09-|observability\/|contracts\/reliability\/|tools\/validate-(otel|dr-drill))/ },
+  { team: 4, dept: 'Substrate',    re: /^(services\/p03-data\/|connectors\/(airports|fleet|units|time)\/|contracts\/protos\/axiom\/substrate\/|contracts\/asyncapi\/axiom\.substrate|contracts\/entities\/substrate\/)/ },
+  { team: 5, dept: 'Flight Ops',   re: /^(contracts\/entities\/flight_ops|contracts\/protos\/axiom\/dispatch\/|contracts\/asyncapi\/dispatch-|contracts\/workflows\/dispatch_)/ },
+  { team: 6, dept: 'Crew',         re: /^(contracts\/asyncapi\/crew\/|contracts\/entities\/crew\/|contracts\/rules\/(cba|crew))/ },
+  { team: 7, dept: 'Engineering',  re: /^(contracts\/entities\/tech\/|contracts\/asyncapi\/axiom\.tech|tools\/validate-tech-)/ },
+  { team: 8, dept: 'Safety',       re: /^(contracts\/asyncapi\/axiom\.(sms|avsec)|contracts\/cedar\/sms\/|contracts\/entities\/m1[78]_|tools\/validate-(sms|avsec)|contracts\/doc\/arinc)/ },
+  { team: 9, dept: 'Commercial',   re: /^(contracts\/entities\/commercial\/|contracts\/asyncapi\/commercial\/|contracts\/rules\/commercial)/ },
+  { team: 10, dept: 'ATC / IQ',    re: /^(contracts\/entities\/(iq\/|atc_)|contracts\/asyncapi\/axiom_atc|contracts\/protos\/axiom\/atc|tools\/validate-atc|contracts\/entities\/m80_)/ },
+  { team: 0, dept: 'CEO / shared', re: /^(README\.md|CEO_MEMORY\.md|AXIOM_(MASTERPLAN|TECHSTACK|DEPARTMENTS)\.md|departments\/D\d+_GOAL\.md|package(-lock)?\.json|tsconfig\.json|reports\/)/ },
+];
+
+function attributePath(relPath) {
+  if (!relPath) return null;
+  for (const rule of ATTRIBUTION_RULES) {
+    if (rule.re.test(relPath)) return { team: rule.team, dept: rule.dept };
+  }
+  return null;
+}
+
 function isIgnored(relPath) {
   if (!relPath) return false;
   for (const part of relPath.split('/')) {
@@ -153,6 +179,7 @@ async function handle(eventName, relPath) {
     kind,
     path: relPath,
     size,
+    attributedTo: attributePath(relPath),
   };
   await fs.appendFile(EVENT_LOG, JSON.stringify(entry) + '\n').catch((err) => {
     process.stderr.write(`[axiom-project-watcher] append error: ${err.message}\n`);

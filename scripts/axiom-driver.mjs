@@ -155,24 +155,34 @@ async function runCycle(cycleNum) {
   const startedAt = new Date().toISOString();
   const tasks = [];
   let skipped = 0;
-  // 10 managers
+  // Stagger dispatches by ~150ms each so progress bars visibly diverge in the
+  // 3D office (without staggering, all 50 agents start in the same instant
+  // and their progress fractions stay clustered, making the bars look
+  // identical). Net effect on cycle wall-time is negligible (~7.5s spread
+  // across 50 agents vs ~5 min slowest).
+  const STAGGER_MS = 150;
+  let stagger = 0;
+  const enqueue = (call) => {
+    const delay = stagger;
+    stagger += STAGGER_MS;
+    tasks.push(new Promise((r) => setTimeout(() => r(call()), delay)));
+  };
+  // Interleave managers and their coders so each cubicle lights up roughly
+  // together rather than all 10 managers first then all 40 coders.
   for (let n = 1; n <= 10; n++) {
     if (await isAgentRunning(`axiom:axiom-mgr-${n}`)) {
       process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip m${n} (already running)\n`);
       skipped++;
-      continue;
+    } else {
+      enqueue(() => callManager(n));
     }
-    tasks.push(callManager(n));
-  }
-  // 40 coders (4 per team)
-  for (let n = 1; n <= 10; n++) {
     for (let c = 1; c <= 4; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
         process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
         skipped++;
         continue;
       }
-      tasks.push(callCoder(n, c));
+      enqueue(() => callCoder(n, c));
     }
   }
   if (!tasks.length) {
