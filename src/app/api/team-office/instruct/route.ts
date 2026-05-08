@@ -552,11 +552,14 @@ function modelForAxiomTopic(sessionKey: string): string {
   const meta = axiomTopicMeta(sessionKey);
   if (meta.role === 'ceo') return process.env.WATCH_AXIOM_CEO_MODEL || 'gpt-5.5';
   if (meta.role === 'manager') return process.env.WATCH_AXIOM_MANAGER_MODEL || 'gpt-5.5';
-  // coder rotation deterministic by team+index
-  // Coders default to haiku for cost — opus is 20× more expensive, sonnet
-  // 4×, and haiku handles routine implementation tasks fine. Override per
-  // coder via WATCH_AXIOM_CODER_MODEL or the rotation env if you want
-  // pricier models for specific cycles.
+  // Codex on a ChatGPT account only accepts gpt-5.x — passing 'haiku' to
+  // codex returns "model not supported" and the call fails. Any coder routed
+  // to the codex engine (today: c3 QA reviewer, or any coder with
+  // WATCH_AXIOM_CODER_ENGINE=codex) must use a codex-compatible model.
+  if (meta.role === 'coder' && engineForAxiomTopic(sessionKey) === 'codex') {
+    return process.env.WATCH_AXIOM_CODER_CODEX_MODEL || 'gpt-5.5';
+  }
+  // claude haiku for forward-builder coders — single-step allocations, cheap.
   const rotationEnv = (process.env.WATCH_AXIOM_CODER_MODELS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const rotation = rotationEnv.length > 0 ? rotationEnv : ['haiku', 'haiku', 'haiku', 'haiku', 'haiku'];
   const seed = ((meta.team || 0) * 7 + (meta.coderIndex || 0) * 3) % rotation.length;
