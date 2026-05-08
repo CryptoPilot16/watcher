@@ -63,12 +63,6 @@ async function readSpendToday() {
   return 0;
 }
 
-async function isManagerRunning(team) {
-  const f = join(MAILBOX_DIR, `axiom:axiom-mgr-${team}.state.json`);
-  const s = await readJson(f);
-  return s?.status === 'running';
-}
-
 async function tg(method, body) {
   if (!TG_TOKEN || !TG_CHAT_ID) return;
   try {
@@ -82,7 +76,7 @@ async function tg(method, body) {
   }
 }
 
-function buildBrief(team) {
+function buildManagerBrief(team) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
   return [
     `[AXIOM AUTOPILOT — round driven by the operator's autopilot, not a CEO chat turn.]`,
@@ -93,7 +87,7 @@ function buildBrief(team) {
     `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md — full Phase 0 spec`,
     `3. Anything you've already shipped under ${PROJECT_DIR}/ for your domain`,
     ``,
-    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick the one that unblocks the most downstream teams. Ship real artifacts on disk — schema, code, contract, test, ETL, whatever your domain demands. No plans, no markdown reports unless the artifact itself is a spec.`,
+    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic — and leave the implementation grunt-work for your 4 coders to pick up in the same cycle. Ship real artifacts on disk.`,
     ``,
     `When done, reply with: (1) what you built/wrote in 1-3 lines, (2) exact file paths created or modified, (3) what is now the next blocker for your D${team} goal so the next round can pick up.`,
     ``,
@@ -101,16 +95,32 @@ function buildBrief(team) {
   ].join('\n');
 }
 
-async function callManager(team) {
+function buildCoderBrief(team, coderIndex) {
+  const dept = DEPARTMENTS[team - 1] || 'unknown';
+  return [
+    `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
+    `You are coder c${coderIndex} on the ${dept} team (m${team}, team ${team}).`,
+    ``,
+    `Read these in this order:`,
+    `1. ${PROJECT_DIR}/departments/D${team}_GOAL.md — your team's binding goal`,
+    `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md`,
+    `3. Anything your team has already shipped under ${PROJECT_DIR}/ — focus especially on whatever your manager scaffolded most recently (look at file mtimes)`,
+    ``,
+    `Then do ONE concrete IMPLEMENTATION step in your team's domain. You are the hands, not the brain — write code, tests, fixtures, ETL, migration, integration glue, fakes, validators that exercise your manager's contracts. Don't redo what the manager just did; build ON TOP of it.`,
+    ``,
+    `Pick something OTHER coders on your team are unlikely to also pick this round (different file, different feature, different layer). When in doubt, hash your coderIndex (c${coderIndex}) into your choice: c1=tests, c2=integration glue, c3=fixtures/seeds, c4=tooling/scripts.`,
+    ``,
+    `When done, reply with: (1) what you built/wrote in 1-2 lines, (2) exact file paths created or modified.`,
+    ``,
+    `Reply ends with a signed status: "c${coderIndex}/m${team} ${dept}: <one-line summary>"`,
+  ].join('\n');
+}
+
+async function callAgent(sessionKey, message) {
   const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
   const headers = { 'Content-Type': 'application/json' };
   if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
-  const body = JSON.stringify({
-    agentId: 'claude-code',
-    sessionKey: `axiom:axiom-mgr-${team}`,
-    groupId: 'axiom',
-    message: buildBrief(team),
-  });
+  const body = JSON.stringify({ agentId: 'claude-code', sessionKey, groupId: 'axiom', message });
   const t0 = Date.now();
   try {
     const r = await fetch(url, { method: 'POST', headers, body });
@@ -118,39 +128,92 @@ async function callManager(team) {
     const dur = Math.round((Date.now() - t0) / 1000);
     const reply = String(j?.reply || '');
     const ok = r.ok && reply && !reply.startsWith('(empty');
-    return { team, ok, dur, reply: reply.slice(0, 200), engine: j?.engine };
+    return { ok, dur, reply: reply.slice(0, 200), engine: j?.engine };
   } catch (err) {
-    return { team, ok: false, dur: Math.round((Date.now() - t0) / 1000), reply: `(fetch failed: ${err.message})` };
+    return { ok: false, dur: Math.round((Date.now() - t0) / 1000), reply: `(fetch failed: ${err.message})` };
   }
+}
+
+async function isAgentRunning(sessionKey) {
+  const safe = sessionKey.replace(/[^a-z0-9_.\-:]/gi, '_').slice(0, 200) || 'unknown';
+  const f = join(MAILBOX_DIR, `${safe}.state.json`);
+  const s = await readJson(f);
+  return s?.status === 'running';
+}
+
+async function callManager(team) {
+  const r = await callAgent(`axiom:axiom-mgr-${team}`, buildManagerBrief(team));
+  return { ...r, role: 'manager', team, coderIndex: null };
+}
+
+async function callCoder(team, coderIndex) {
+  const r = await callAgent(`axiom:axiom-coder-${team}-${coderIndex}`, buildCoderBrief(team, coderIndex));
+  return { ...r, role: 'coder', team, coderIndex };
 }
 
 async function runCycle(cycleNum) {
   const startedAt = new Date().toISOString();
-  const targets = [];
+  const tasks = [];
+  let skipped = 0;
+  // 10 managers
   for (let n = 1; n <= 10; n++) {
-    if (await isManagerRunning(n)) {
+    if (await isAgentRunning(`axiom:axiom-mgr-${n}`)) {
       process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip m${n} (already running)\n`);
+      skipped++;
       continue;
     }
-    targets.push(n);
+    tasks.push(callManager(n));
   }
-  if (!targets.length) {
-    return { startedAt, cycleNum, dispatched: 0, completed: 0, skipped: 10 };
+  // 40 coders (4 per team)
+  for (let n = 1; n <= 10; n++) {
+    for (let c = 1; c <= 4; c++) {
+      if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
+        process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
+        skipped++;
+        continue;
+      }
+      tasks.push(callCoder(n, c));
+    }
   }
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching m${targets.join(',m')} (${targets.length} managers)\n`);
-  const results = await Promise.all(targets.map(callManager));
+  if (!tasks.length) {
+    return { startedAt, cycleNum, dispatched: 0, completed: 0, skipped };
+  }
+  const dispatched = tasks.length;
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${dispatched} agents (${dispatched - (40 - skipped)} managers + ${dispatched - (10 - Math.min(10, skipped))} coders, approx)\n`);
+  const results = await Promise.all(tasks);
   const ok = results.filter((r) => r.ok).length;
   const fail = results.length - ok;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} done: ${ok} ok, ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s\n`);
-  return { startedAt, cycleNum, dispatched: targets.length, completed: ok, failed: fail, skipped: 10 - targets.length, results };
+  const mgrOk = results.filter((r) => r.role === 'manager' && r.ok).length;
+  const codOk = results.filter((r) => r.role === 'coder' && r.ok).length;
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} done: ${ok}/${dispatched} ok (${mgrOk} mgr, ${codOk} cod), ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s\n`);
+  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped, results };
 }
 
 async function summarizeCycle(cycle) {
   const lines = [`🤖 *Autopilot cycle ${cycle.cycleNum}* — ${cycle.completed}/${cycle.dispatched} ok${cycle.failed ? `, ${cycle.failed} failed` : ''}${cycle.skipped ? `, ${cycle.skipped} skipped` : ''}`];
-  for (const r of cycle.results || []) {
-    const dept = DEPARTMENTS[r.team - 1] || '';
-    const icon = r.ok ? '✅' : '❌';
-    lines.push(`${icon} m${r.team} ${dept} (${r.dur}s) — ${r.reply.replace(/\s+/g, ' ').slice(0, 110)}`);
+  // Managers first, then coders, both grouped by team for readability.
+  const mgrs = (cycle.results || []).filter((r) => r.role === 'manager').sort((a, b) => a.team - b.team);
+  const cods = (cycle.results || []).filter((r) => r.role === 'coder').sort((a, b) => a.team - b.team || a.coderIndex - b.coderIndex);
+  if (mgrs.length) {
+    lines.push('', '*Managers*');
+    for (const r of mgrs) {
+      const dept = DEPARTMENTS[r.team - 1] || '';
+      lines.push(`${r.ok ? '✅' : '❌'} m${r.team} ${dept} (${r.dur}s) — ${r.reply.replace(/\s+/g, ' ').slice(0, 90)}`);
+    }
+  }
+  if (cods.length) {
+    lines.push('', `*Coders* (${cods.filter((c) => c.ok).length}/${cods.length} ok)`);
+    // For coders, condense to one line per team showing how many delivered.
+    const byTeam = new Map();
+    for (const r of cods) {
+      if (!byTeam.has(r.team)) byTeam.set(r.team, []);
+      byTeam.get(r.team).push(r);
+    }
+    for (const [team, list] of [...byTeam.entries()].sort((a, b) => a[0] - b[0])) {
+      const dept = DEPARTMENTS[team - 1] || '';
+      const okCount = list.filter((r) => r.ok).length;
+      lines.push(`m${team} ${dept}: ${okCount}/${list.length} coders shipped`);
+    }
   }
   await tg('sendMessage', { text: lines.join('\n').slice(0, 4000), parse_mode: 'Markdown' });
 }
