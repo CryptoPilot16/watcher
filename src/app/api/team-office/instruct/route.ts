@@ -579,8 +579,6 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
 
   const t0 = Date.now();
   let stdout: string;
-  let _debugStderr = '';
-  let _debugCode: any = null;
   const startFreshSession = () => {
     const fresh = crypto.randomUUID();
     try { fs.writeFileSync(axiomSessionFile(sessionKey), fresh + '\n'); } catch {}
@@ -590,27 +588,22 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
   try {
     const result = await spawnClaude(!isNew, sessionId);
     stdout = result.stdout;
-    _debugStderr = (result as any).stderr || '';
   } catch (error: any) {
-    _debugStderr = error?.stderr || '';
-    _debugCode = error?.code;
     // If --resume failed (stale session, deleted history, etc.), fall back to a fresh session.
     if (!isNew) {
       startFreshSession();
       const result = await spawnClaude(false, sessionId);
       stdout = result.stdout;
-      _debugStderr += '\n--retry stderr--\n' + ((result as any).stderr || '');
     } else {
-      console.error('[axiom-ceo] spawnClaude threw on fresh session:', error?.message, 'stderr:', _debugStderr.slice(0, 500));
       throw error;
     }
   }
+  // Some CLI hiccups exit 0 but emit empty stdout — most commonly when --resume
+  // points at a UUID with no session jsonl on disk (orphan after a restart that
+  // killed the spawn before the session was written). Retry with a fresh
+  // session. We retry even when isNew was true, because a fresh-session call
+  // can also drop empty if a concurrent watcher-web restart killed the spawn.
   if (!stdout.trim()) {
-    console.error('[axiom-ceo] empty stdout from claude. isNew=', isNew, 'code=', _debugCode, 'stderr=', _debugStderr.slice(0, 800));
-  }
-  // Some CLI hiccups exit 0 but emit empty stdout on a stale resume. Retry once
-  // with a fresh session so the operator doesn't see a silent "(empty reply)".
-  if (!stdout.trim() && !isNew) {
     startFreshSession();
     const result = await spawnClaude(false, sessionId);
     stdout = result.stdout;
