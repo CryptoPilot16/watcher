@@ -87,16 +87,72 @@ function buildManagerBrief(team) {
     `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md — full Phase 0 spec`,
     `3. Anything you've already shipped under ${PROJECT_DIR}/ for your domain`,
     ``,
-    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic — and leave the implementation grunt-work for your 4 coders to pick up in the same cycle. Ship real artifacts on disk.`,
+    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic. Ship real artifacts on disk.`,
     ``,
-    `When done, reply with: (1) what you built/wrote in 1-3 lines, (2) exact file paths created or modified, (3) what is now the next blocker for your D${team} goal so the next round can pick up.`,
+    `THEN — and this is critical — allocate concrete work to each of your 4 coders for this round. They will be dispatched by the autopilot with the briefs you write below. Pick tasks that build directly on what you just shipped (or on prior contracts). Coder roles:`,
+    `   c1 = tests / fixtures that exercise your contracts`,
+    `   c2 = integration glue that wires your contracts to neighbouring services`,
+    `   c3 = fixtures / seed data / sample payloads`,
+    `   c4 = QA reviewer (audits the team's recent output, finds gaps, fixes one)`,
     ``,
-    `Reply ends with a signed status: "m${team} ${dept}: <one-line summary>"`,
+    `Reply MUST end with this exact block (one task per coder, one line each, ≤180 chars per task, no blank lines between):`,
+    `<<CODERS>>`,
+    `c1: <one-line concrete task for c1, including file paths to touch>`,
+    `c2: <one-line concrete task for c2, including file paths to touch>`,
+    `c3: <one-line concrete task for c3, including file paths to touch>`,
+    `c4: <one-line concrete task for c4 — what to audit / fix>`,
+    `<<END>>`,
+    ``,
+    `Before that block, give a 2-3 line summary of what YOU shipped this round + the next blocker.`,
+    `Reply starts with a signed status: "m${team} ${dept}: <one-line summary>"`,
   ].join('\n');
 }
 
-function buildCoderBrief(team, coderIndex) {
+// Parse a manager's reply for a <<CODERS>> ... <<END>> block. Returns
+// { c1, c2, c3, c4 } with whatever briefs the manager assigned, or null
+// per-coder if the line was missing.
+function parseCoderAllocations(reply) {
+  const out = { 1: null, 2: null, 3: null, 4: null };
+  if (!reply) return out;
+  const blockMatch = reply.match(/<<\s*CODERS\s*>>([\s\S]*?)<<\s*END\s*>>/i);
+  const block = blockMatch ? blockMatch[1] : reply; // fall back to full reply if no block
+  const lines = block.split('\n').map((l) => l.trim());
+  for (const line of lines) {
+    const m = line.match(/^c([1-4])\s*[:\-]\s*(.+)$/i);
+    if (m) {
+      const idx = Number(m[1]);
+      const task = m[2].trim().slice(0, 600);
+      if (task && task.length >= 10) out[idx] = task;
+    }
+  }
+  return out;
+}
+
+function buildCoderBrief(team, coderIndex, managerAssignedTask) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
+  // If the manager allocated a specific task this round, use that — the
+  // coder works on what their manager told them to work on. Otherwise fall
+  // back to the role-default brief (manager didn't allocate, so coder
+  // self-picks).
+  if (managerAssignedTask) {
+    return [
+      `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
+      `You are coder c${coderIndex} on the ${dept} team (m${team}, team ${team}).`,
+      `Your manager (m${team} ${dept}) has allocated this concrete task to you for this round:`,
+      ``,
+      `  ${managerAssignedTask}`,
+      ``,
+      `Context to read first:`,
+      `1. ${PROJECT_DIR}/departments/D${team}_GOAL.md`,
+      `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md`,
+      `3. Anything your team has shipped recently under ${PROJECT_DIR}/`,
+      ``,
+      `Do exactly the task your manager allocated — no broader scope. If the task is impossible (file doesn't exist, contract is broken, etc), make minimal progress AND report the blocker so the manager can re-plan next round.`,
+      ``,
+      `Reply: (1) what you built/wrote in 1-2 lines, (2) exact file paths created or modified, (3) anything that blocked you.`,
+      `Reply ends with: "c${coderIndex}/m${team} ${dept}: <one-line summary>"`,
+    ].join('\n');
+  }
   // c4 is the team's QA/reviewer — audits what the rest of the team just
   // shipped, runs tests, finds gaps, fixes bugs, adds missing coverage.
   // c1-c3 are forward-builders.
@@ -196,57 +252,74 @@ async function callManager(team) {
   return { ...r, role: 'manager', team, coderIndex: null };
 }
 
-async function callCoder(team, coderIndex) {
-  const r = await callAgent(`axiom:axiom-coder-${team}-${coderIndex}`, buildCoderBrief(team, coderIndex));
-  return { ...r, role: 'coder', team, coderIndex };
+async function callCoder(team, coderIndex, managerAssignedTask) {
+  const r = await callAgent(`axiom:axiom-coder-${team}-${coderIndex}`, buildCoderBrief(team, coderIndex, managerAssignedTask));
+  return { ...r, role: 'coder', team, coderIndex, managerAssignedTask };
 }
 
+// Two-phase cycle: managers run first and allocate one task per coder via a
+// <<CODERS>>...<<END>> block in their reply. Driver parses each manager's
+// reply for those allocations, then dispatches the 4 coders for that team
+// with the manager-assigned task. If a manager skips the allocation block,
+// the coder falls back to its role-default brief.
 async function runCycle(cycleNum) {
   const startedAt = new Date().toISOString();
-  const tasks = [];
-  let skipped = 0;
-  // Stagger dispatches by ~150ms each so progress bars visibly diverge in the
-  // 3D office (without staggering, all 50 agents start in the same instant
-  // and their progress fractions stay clustered, making the bars look
-  // identical). Net effect on cycle wall-time is negligible (~7.5s spread
-  // across 50 agents vs ~5 min slowest).
   const STAGGER_MS = 150;
+
+  // ── Phase 1: managers ──────────────────────────────────────────────
+  const mgrTasks = [];
+  let mgrSkipped = 0;
   let stagger = 0;
-  const enqueue = (call) => {
-    const delay = stagger;
-    stagger += STAGGER_MS;
-    tasks.push(new Promise((r) => setTimeout(() => r(call()), delay)));
-  };
-  // Interleave managers and their coders so each cubicle lights up roughly
-  // together rather than all 10 managers first then all 40 coders.
   for (let n = 1; n <= 10; n++) {
     if (await isAgentRunning(`axiom:axiom-mgr-${n}`)) {
       process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip m${n} (already running)\n`);
-      skipped++;
-    } else {
-      enqueue(() => callManager(n));
+      mgrSkipped++;
+      continue;
     }
+    const delay = stagger; stagger += STAGGER_MS;
+    mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n)), delay)));
+  }
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase1: dispatching ${mgrTasks.length} managers (${mgrSkipped} skipped)\n`);
+  const mgrResults = await Promise.all(mgrTasks);
+  const mgrOk = mgrResults.filter((r) => r.ok).length;
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase1 done: ${mgrOk}/${mgrResults.length} managers ok\n`);
+
+  // ── Phase 2: coders, with manager-allocated tasks ─────────────────
+  // Build a map of team → { 1: task, 2: task, 3: task, 4: task } from each
+  // manager's reply. Missing managers (or missing allocation blocks) fall
+  // back to null tasks so coders self-pick via their role default.
+  const allocations = new Map();
+  for (const m of mgrResults) {
+    if (m.team) allocations.set(m.team, parseCoderAllocations(m.reply || ''));
+  }
+
+  const codTasks = [];
+  let codSkipped = 0;
+  stagger = 0;
+  for (let n = 1; n <= 10; n++) {
+    const teamAlloc = allocations.get(n) || { 1: null, 2: null, 3: null, 4: null };
     for (let c = 1; c <= 4; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
         process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
-        skipped++;
+        codSkipped++;
         continue;
       }
-      enqueue(() => callCoder(n, c));
+      const assignedTask = teamAlloc[c];
+      const delay = stagger; stagger += STAGGER_MS;
+      codTasks.push(new Promise((r) => setTimeout(() => r(callCoder(n, c, assignedTask)), delay)));
     }
   }
-  if (!tasks.length) {
-    return { startedAt, cycleNum, dispatched: 0, completed: 0, skipped };
-  }
-  const dispatched = tasks.length;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${dispatched} agents (${dispatched - (40 - skipped)} managers + ${dispatched - (10 - Math.min(10, skipped))} coders, approx)\n`);
-  const results = await Promise.all(tasks);
-  const ok = results.filter((r) => r.ok).length;
-  const fail = results.length - ok;
-  const mgrOk = results.filter((r) => r.role === 'manager' && r.ok).length;
-  const codOk = results.filter((r) => r.role === 'coder' && r.ok).length;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} done: ${ok}/${dispatched} ok (${mgrOk} mgr, ${codOk} cod), ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s\n`);
-  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped, results };
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase2: dispatching ${codTasks.length} coders (${codSkipped} skipped)\n`);
+  const codResults = await Promise.all(codTasks);
+  const codOk = codResults.filter((r) => r.ok).length;
+
+  const allResults = [...mgrResults, ...codResults];
+  const dispatched = allResults.length;
+  const ok = mgrOk + codOk;
+  const fail = dispatched - ok;
+  const allocCount = codResults.filter((r) => r.managerAssignedTask).length;
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} done: ${ok}/${dispatched} ok (${mgrOk} mgr + ${codOk} cod, ${allocCount}/${codResults.length} coders had manager-assigned tasks), ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s\n`);
+  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount };
 }
 
 async function summarizeCycle(cycle) {
