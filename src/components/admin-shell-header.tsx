@@ -3,13 +3,15 @@
 import Link from 'next/link';
 
 type AdminShellHeaderProps = {
-  activeTab: 'axiom' | 'tasks' | 'project' | 'settings';
+  activeTab: 'axiom' | 'work' | 'tasks' | 'project' | 'roadmap' | 'settings';
 };
 
 const tabs = [
   { id: 'axiom', label: 'axiom', href: '/axiom' },
+  { id: 'work', label: 'work', href: '/axiom/work' },
   { id: 'tasks', label: 'tasks', href: '/axiom/tasks' },
   { id: 'project', label: 'project', href: '/axiom/project' },
+  { id: 'roadmap', label: 'roadmap', href: '/axiom/roadmap' },
   { id: 'settings', label: 'settings', href: '/axiom/settings' },
 ] as const;
 

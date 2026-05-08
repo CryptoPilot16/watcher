@@ -166,11 +166,29 @@ async function callAgent(sessionKey, message) {
   }
 }
 
+// Treat a "running" state as actually running only if it started within the
+// last 5 minutes. Anything older is a zombie (parent watcher-web restart
+// killed the subprocess but the state file was never updated). The driver
+// would otherwise skip these forever and the team would idle. Decaying here
+// also writes back to disk so the API stays truthful.
+const RUNNING_ZOMBIE_TTL_MS = 5 * 60 * 1000;
 async function isAgentRunning(sessionKey) {
   const safe = sessionKey.replace(/[^a-z0-9_.\-:]/gi, '_').slice(0, 200) || 'unknown';
   const f = join(MAILBOX_DIR, `${safe}.state.json`);
   const s = await readJson(f);
-  return s?.status === 'running';
+  if (s?.status !== 'running') return false;
+  const startedAt = s?.startedAt;
+  if (startedAt) {
+    const elapsed = Date.now() - new Date(startedAt).getTime();
+    if (elapsed > RUNNING_ZOMBIE_TTL_MS) {
+      // Reap: rewrite as idle so next cycle dispatches.
+      try {
+        await fs.writeFile(f, JSON.stringify({ ...s, status: 'idle', progress: null, task: null }, null, 2));
+      } catch {}
+      return false;
+    }
+  }
+  return true;
 }
 
 async function callManager(team) {

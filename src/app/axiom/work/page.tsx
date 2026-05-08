@@ -124,7 +124,7 @@ export default function AxiomWorkPage() {
 
   return (
     <div className="min-h-screen bg-[var(--watch-bg)] text-[var(--watch-text)]">
-      <AdminShellHeader />
+      <AdminShellHeader activeTab="work" />
 
       <div className="mx-auto max-w-[1600px] px-4 py-4">
         <div className="mb-4 flex items-baseline gap-4">
