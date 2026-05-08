@@ -155,20 +155,42 @@ export default function AxiomWorkPage() {
             const recentCount = coders.filter((c) => c.state?.status === 'recent').length;
             const errorCount = coders.filter((c) => c.state?.status === 'error').length;
             const idleCount = 4 - runningCount - recentCount - errorCount;
+            // A team is "active" if its manager OR any coder is running. This
+            // lights up the whole card so the operator can spot the working
+            // cubicles at a glance instead of scanning for a tiny green dot.
+            const isActive = manager?.status === 'running' || runningCount > 0;
             return (
               <div
                 key={team}
-                className="rounded-lg border bg-[var(--watch-card)] p-3"
-                style={{ borderColor: `${color}55`, boxShadow: `0 0 0 1px ${color}15 inset` }}
+                className="rounded-lg border p-3 transition-all"
+                style={{
+                  background: isActive ? `${color}1a` : 'var(--watch-card)',
+                  borderColor: isActive ? color : `${color}33`,
+                  borderWidth: isActive ? 2 : 1,
+                  boxShadow: isActive ? `0 0 18px ${color}55, 0 0 0 1px ${color}55 inset` : `0 0 0 1px ${color}10 inset`,
+                }}
               >
                 <div className="flex items-baseline justify-between gap-2 border-b pb-2" style={{ borderColor: `${color}33` }}>
                   <div className="flex items-center gap-2">
                     <span
                       className="rounded px-1.5 py-px text-[10px] font-mono uppercase tracking-wide"
-                      style={{ color, border: `1px solid ${color}66`, background: `${color}14` }}
+                      style={{
+                        color: isActive ? '#0c0a05' : color,
+                        border: `1px solid ${color}88`,
+                        background: isActive ? color : `${color}14`,
+                        fontWeight: isActive ? 700 : 500,
+                      }}
                     >
                       m{team} {dept}
                     </span>
+                    {isActive ? (
+                      <span
+                        className="rounded px-1.5 py-px text-[9px] font-mono uppercase tracking-widest"
+                        style={{ color, border: `1px solid ${color}aa`, background: `${color}22` }}
+                      >
+                        ▌ ACTIVE
+                      </span>
+                    ) : null}
                     <span className="text-xs">{statusIcon(manager?.status)} {manager?.status || 'idle'}</span>
                     {manager?.startedAt && manager?.status === 'running' ? (
                       <span className="text-[10px] text-[var(--watch-text-muted)]">{fmtAgo(manager.startedAt)}</span>

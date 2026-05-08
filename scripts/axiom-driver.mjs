@@ -294,6 +294,14 @@ async function callCoder(team, coderIndex, managerAssignedTask) {
   return { ...r, role: 'coder', team, coderIndex, managerAssignedTask };
 }
 
+// Last round's coder allocations, kept in memory so coders can run in
+// parallel with the next round's managers. Without this, the floor shows
+// "managers running, coders idle" for ~half each cycle. Now: round N
+// dispatches managers (planning round N+1) AND coders (executing
+// round N-1's allocations) concurrently — five-agent teams are always
+// active together.
+let lastRoundAllocations = new Map(); // team → { 1: task, 2: task, 3: task, 4: task }
+
 // Two-phase cycle: managers run first and allocate one task per coder via a
 // <<CODERS>>...<<END>> block in their reply. Driver parses each manager's
 // reply for those allocations, then dispatches the 4 coders for that team
@@ -312,7 +320,11 @@ async function runCycle(cycleNum) {
     process.stdout.write(`[axiom-driver] cycle=${cycleNum} roadmap: ${summary}\n`);
   }
 
-  // ── Phase 1: managers ──────────────────────────────────────────────
+  // ── Phase 1 + 2 in PARALLEL ──────────────────────────────────────
+  // Managers dispatch and plan ROUND N+1's allocations, coders dispatch
+  // and execute ROUND N-1's allocations from `lastRoundAllocations`. Both
+  // run concurrently so the five-agent team is always active together
+  // instead of alternating "managers up, coders down" each cycle.
   const mgrTasks = [];
   let mgrSkipped = 0;
   let stagger = 0;
@@ -326,26 +338,15 @@ async function runCycle(cycleNum) {
     const delay = stagger; stagger += STAGGER_MS;
     mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n, hint)), delay)));
   }
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase1: dispatching ${mgrTasks.length} managers (${mgrSkipped} skipped)\n`);
-  const mgrResults = await Promise.all(mgrTasks);
-  const mgrOk = mgrResults.filter((r) => r.ok).length;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase1 done: ${mgrOk}/${mgrResults.length} managers ok\n`);
 
-  // ── Phase 2: coders, with manager-allocated tasks ─────────────────
-  // Build a map of team → { 1: task, 2: task, 3: task, 4: task } from each
-  // manager's reply. Missing managers (or missing allocation blocks) fall
-  // back to null tasks so coders self-pick via their role default.
-  const allocations = new Map();
-  for (const m of mgrResults) {
-    if (m.team) allocations.set(m.team, parseCoderAllocations(m.reply || ''));
-  }
-
+  // Coders use last round's allocations. On the first cycle (no prior
+  // allocations), coders skip and the floor warms up after the first
+  // manager round.
   const codTasks = [];
   let codSkippedRunning = 0;
   let codSkippedNoAlloc = 0;
-  stagger = 0;
   for (let n = 1; n <= 10; n++) {
-    const teamAlloc = allocations.get(n) || { 1: null, 2: null, 3: null, 4: null };
+    const teamAlloc = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null, 4: null };
     for (let c = 1; c <= 4; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
         process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
@@ -353,11 +354,8 @@ async function runCycle(cycleNum) {
         continue;
       }
       const assignedTask = teamAlloc[c];
-      // Manager must explicitly allocate — no allocation, no dispatch. The
-      // operator's directive: managers gate coder work; the autopilot does
-      // not blindly fire coders with role-default briefs anymore.
+      // Manager must explicitly allocate — no allocation, no dispatch.
       if (!assignedTask) {
-        process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (no manager allocation)\n`);
         codSkippedNoAlloc++;
         continue;
       }
@@ -365,10 +363,29 @@ async function runCycle(cycleNum) {
       codTasks.push(new Promise((r) => setTimeout(() => r(callCoder(n, c, assignedTask)), delay)));
     }
   }
-  const codSkipped = codSkippedRunning + codSkippedNoAlloc;
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase2: dispatching ${codTasks.length} coders (${codSkippedRunning} already running, ${codSkippedNoAlloc} not allocated by manager)\n`);
-  const codResults = await Promise.all(codTasks);
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${mgrTasks.length} managers + ${codTasks.length} coders concurrently (${codSkippedNoAlloc} coders had no allocation from last round)\n`);
+
+  // Run both phases concurrently.
+  const [mgrResults, codResults] = await Promise.all([
+    Promise.all(mgrTasks),
+    Promise.all(codTasks),
+  ]);
+  const mgrOk = mgrResults.filter((r) => r.ok).length;
   const codOk = codResults.filter((r) => r.ok).length;
+
+  // Update lastRoundAllocations from this round's manager replies — these
+  // become the briefs that the NEXT cycle's coders will execute.
+  const newAllocations = new Map();
+  for (const m of mgrResults) {
+    if (m.team) newAllocations.set(m.team, parseCoderAllocations(m.reply || ''));
+  }
+  // Preserve teams whose manager didn't run this cycle (already-running
+  // skipped) — they keep the previous allocation.
+  for (const [team, alloc] of lastRoundAllocations) {
+    if (!newAllocations.has(team)) newAllocations.set(team, alloc);
+  }
+  lastRoundAllocations = newAllocations;
+  const codSkipped = codSkippedRunning + codSkippedNoAlloc;
 
   const allResults = [...mgrResults, ...codResults];
   const dispatched = allResults.length;
