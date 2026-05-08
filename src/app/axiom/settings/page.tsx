@@ -34,9 +34,22 @@ type SettingsResponse = {
   actionWindow: { days: number; entriesWithCost: number; oldestEntryTs: string | null };
 };
 
-function fmtUsd(v: number): string {
-  if (v < 0.01) return `$${v.toFixed(4)}`;
-  return `$${v.toFixed(2)}`;
+// Tokens are the user-facing unit. The underlying cost data is still USD-priced
+// (cap, spend, per-action totals — kept that way so the budget cap still
+// throttles consistently), but we present everything as the equivalent token
+// count using a blended ~$10/M output-heavy rate. So $1 ≈ 100K tok, the $10
+// default cap ≈ 1M tok.
+const USD_PER_MTOK = 10;
+function usdToTokens(usd: number): number {
+  return Math.max(0, usd) * (1_000_000 / USD_PER_MTOK);
+}
+function fmtTokens(usd: number): string {
+  const t = usdToTokens(usd);
+  if (t === 0) return '0 tok';
+  if (t < 1_000) return `${Math.round(t)} tok`;
+  if (t < 1_000_000) return `${(t / 1_000).toFixed(t < 10_000 ? 1 : 0)}K tok`;
+  if (t < 1_000_000_000) return `${(t / 1_000_000).toFixed(t < 10_000_000 ? 2 : 1)}M tok`;
+  return `${(t / 1_000_000_000).toFixed(2)}B tok`;
 }
 
 function fmtDuration(ms: number): string {
@@ -148,14 +161,14 @@ export default function SettingsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ usage &amp; allowance</div>
             <span className="rounded-full border border-[#86efac]/30 bg-[#86efac]/10 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#86efac]">
-              membership-backed · $0 billed
+              membership-backed · 0 invoiced
             </span>
           </div>
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
             Live token-usage tracker for the AXIOM 51-agent floor. Auto-refreshes every 5s.
           </div>
           <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
-            No API keys are used — Claude and Codex agents run on subscription memberships. The "$" values below are a token-usage proxy (priced as if paid via the public API) so you can see usage trends and cap progress. Nothing is actually being billed.
+            No API keys are used — Claude and Codex agents run on subscription memberships. Token counts below are derived from the same per-call usage data the public API would have charged for, blended at ~$10/M tok so you can compare task weights and watch the daily cap. Nothing is actually being billed.
           </div>
         </div>
 
@@ -179,13 +192,13 @@ export default function SettingsPage() {
               </div>
               <div className="mt-3 flex flex-wrap items-baseline gap-3">
                 <div className="text-3xl font-semibold text-[var(--watch-text-bright)]" style={{ color: barColor }}>
-                  {fmtUsd(data.today.spentUsd)}
+                  {fmtTokens(data.today.spentUsd)}
                 </div>
                 <div className="text-sm text-[var(--watch-text-muted)]">
-                  / {fmtUsd(data.cap.dailyUsd)} <span className="text-[10px] uppercase tracking-[0.16em]">token-equiv</span>
+                  / {fmtTokens(data.cap.dailyUsd)} <span className="text-[10px] uppercase tracking-[0.16em]">today</span>
                 </div>
                 <div className="ml-auto text-xs text-[var(--watch-text-muted)]">
-                  <span className="text-[var(--watch-text-bright)]">{percent.toFixed(1)}%</span> used · {fmtUsd(data.today.remainingUsd)} remaining
+                  <span className="text-[var(--watch-text-bright)]">{percent.toFixed(1)}%</span> used · {fmtTokens(data.today.remainingUsd)} remaining
                 </div>
               </div>
               <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,0.05)]">
@@ -197,15 +210,15 @@ export default function SettingsPage() {
               <div className="mt-3 grid grid-cols-2 gap-3 text-[11px] sm:grid-cols-4">
                 <div className="rounded border border-white/5 bg-[rgba(255,255,255,0.02)] p-2">
                   <div className="uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">allowance / day</div>
-                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtUsd(data.cap.dailyUsd)}</div>
+                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtTokens(data.cap.dailyUsd)}</div>
                 </div>
                 <div className="rounded border border-white/5 bg-[rgba(255,255,255,0.02)] p-2">
                   <div className="uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">used today</div>
-                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtUsd(data.today.spentUsd)}</div>
+                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtTokens(data.today.spentUsd)}</div>
                 </div>
                 <div className="rounded border border-white/5 bg-[rgba(255,255,255,0.02)] p-2">
                   <div className="uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">remaining</div>
-                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtUsd(data.today.remainingUsd)}</div>
+                  <div className="mt-1 text-[var(--watch-text-bright)]">{fmtTokens(data.today.remainingUsd)}</div>
                 </div>
                 <div className="rounded border border-white/5 bg-[rgba(255,255,255,0.02)] p-2">
                   <div className="uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">per-agent rate</div>
@@ -218,7 +231,7 @@ export default function SettingsPage() {
                 </div>
                 {data.cap.overrideActive && (
                   <div className="text-[#fbbf24]">
-                    Override active: cap raised from default ${data.cap.defaultUsd} → ${data.cap.dailyUsd}
+                    Override active: cap raised from default {fmtTokens(data.cap.defaultUsd)} → {fmtTokens(data.cap.dailyUsd)}
                     {data.cap.overrideUpdatedAt ? ` · set ${new Date(data.cap.overrideUpdatedAt).toLocaleString()}` : ''}
                     {data.cap.overrideUpdatedBy ? ` · by ${data.cap.overrideUpdatedBy}` : ''}
                   </div>
@@ -236,13 +249,13 @@ export default function SettingsPage() {
 
             <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ estimated cost per task</div>
+                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ estimated tokens per task</div>
                 <span className="rounded-full border border-[#fbbf24]/30 bg-[#fbbf24]/10 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] text-[#fbbf24]">
                   nominal · covered by membership
                 </span>
               </div>
               <div className="mt-2 text-[11px] text-[var(--watch-text-muted)]">
-                These figures are <span className="text-[var(--watch-text-bright)]">not real charges</span> — every agent call here is paid for by your Claude Pro/Max and ChatGPT memberships, so the actual invoice is <span className="text-[var(--watch-text-bright)]">$0</span>. The numbers below are what the same call <span className="text-[var(--watch-text-bright)]">would have cost via the public API</span> (Sonnet 4.6: $3/M in · $15/M out · GPT-5 Codex: ~$2/M in · ~$10/M out). Use them to compare task weights and stay under the daily token-equivalent allowance, not as a billing forecast.
+                These ranges are token-equivalents the same call would have consumed on the public API (Sonnet 4.6: $3/M in · $15/M out · GPT-5 Codex: ~$2/M in · ~$10/M out), shown here to compare task weights against the daily allowance. The actual invoice from your Claude Pro/Max + ChatGPT memberships is unaffected.
               </div>
               <div className="mt-3 overflow-hidden rounded-lg border border-white/5">
                 <table className="w-full text-left text-xs">
@@ -250,7 +263,7 @@ export default function SettingsPage() {
                     <tr className="bg-[rgba(255,255,255,0.03)] text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
                       <th className="px-3 py-2">task</th>
                       <th className="px-3 py-2">type</th>
-                      <th className="px-3 py-2 text-right">range (token-equiv)</th>
+                      <th className="px-3 py-2 text-right">range (tokens)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -267,7 +280,7 @@ export default function SettingsPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">
-                          {fmtUsd(est.lowUsd)} – {fmtUsd(est.highUsd)}
+                          {fmtTokens(est.lowUsd)} – {fmtTokens(est.highUsd)}
                         </td>
                       </tr>
                     ))}
@@ -281,7 +294,7 @@ export default function SettingsPage() {
 
             <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4 sm:p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ average spend by action type</div>
+                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ average tokens by action type</div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
                   last {data.actionWindow.days}d · {data.actionWindow.entriesWithCost} priced calls
                 </div>
@@ -297,8 +310,8 @@ export default function SettingsPage() {
                       <tr className="bg-[rgba(255,255,255,0.03)] text-[10px] uppercase tracking-[0.16em] text-[var(--watch-text-muted)]">
                         <th className="px-3 py-2">type</th>
                         <th className="px-3 py-2 text-right">calls</th>
-                        <th className="px-3 py-2 text-right">avg cost</th>
-                        <th className="px-3 py-2 text-right">total cost</th>
+                        <th className="px-3 py-2 text-right">avg tokens</th>
+                        <th className="px-3 py-2 text-right">total tokens</th>
                         <th className="px-3 py-2 text-right">avg duration</th>
                         <th className="px-3 py-2 text-right">share</th>
                       </tr>
@@ -315,8 +328,8 @@ export default function SettingsPage() {
                               </span>
                             </td>
                             <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">{a.count}</td>
-                            <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">{fmtUsd(a.avgCostUsd)}</td>
-                            <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">{fmtUsd(a.totalCostUsd)}</td>
+                            <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">{fmtTokens(a.avgCostUsd)}</td>
+                            <td className="px-3 py-2 text-right text-[var(--watch-text-bright)]">{fmtTokens(a.totalCostUsd)}</td>
                             <td className="px-3 py-2 text-right text-[var(--watch-text-muted)]">{fmtDuration(a.avgDurationMs)}</td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex items-center justify-end gap-2">
