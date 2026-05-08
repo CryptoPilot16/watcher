@@ -1369,8 +1369,36 @@ function AxiomVoxelOfficeScene({ departmentNames, activeTeams }: { departmentNam
     const rugEmissive = isActive ? 0.18 : 0;
     const trimColor = accent;
     const trimEmissive = isActive ? 0.62 : 0.18;
+    // Floor-edge outline rectangle drawn JUST INSIDE the cubicle perimeter.
+    // When active it glows hard in the dept accent — visual match for the
+    // 2px-solid-border treatment on /axiom/work cards. Hidden when idle.
+    const ringW = halfW * 2 - 0.1;
+    const ringD = sideLen - 0.2;
+    const ringT = 0.12;
     return (
       <group key={`partition-${cx.toFixed(2)}-${cz.toFixed(2)}`}>
+        {/* ACTIVE outline — four floor-edge strips forming a glowing ring
+            around the cubicle perimeter. Mirrors /axiom/work card border. */}
+        {isActive && (
+          <group position={[cx, 0.012, sideZ]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -ringD / 2]}>
+              <planeGeometry args={[ringW, ringT]} />
+              <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={1.2} roughness={0.4} />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, ringD / 2]}>
+              <planeGeometry args={[ringW, ringT]} />
+              <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={1.2} roughness={0.4} />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-ringW / 2, 0, 0]}>
+              <planeGeometry args={[ringT, ringD]} />
+              <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={1.2} roughness={0.4} />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[ringW / 2, 0, 0]}>
+              <planeGeometry args={[ringT, ringD]} />
+              <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={1.2} roughness={0.4} />
+            </mesh>
+          </group>
+        )}
         {/* Cubicle rug — dept-tinted accent under the desk cluster.
             Active teams emit a soft glow so the floor reads "lit". */}
         <mesh
