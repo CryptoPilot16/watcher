@@ -970,31 +970,46 @@ async function handleMessage(state, msg) {
       const j = await r.json().catch(() => ({}));
       const states = j?.states || {};
       const summary = j?.summary || {};
-      // Drop Markdown — too many of the task strings contain *, _, [, `, etc.
-      // and Telegram rejects the whole message if any one entity is unbalanced.
-      const lines = [`AXIOM floor — ${summary.running || 0} running · ${summary.recent || 0} recent · ${summary.error || 0} error`, ''];
+      const sanitize = (t) => String(t || '').replace(/[\r\n]+/g, ' ').replace(/[`*_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const iconFor = (s) => s === 'running' ? '🟢' : s === 'error' ? '🔴' : s === 'recent' ? '🟡' : '⚪';
+      // Match the 3D office's roster: 1 CEO + 10 managers + 40 coders = 51.
+      // Counts here equal what's rendered in /axiom — running = animated/typing,
+      // recent = just-finished, error = zombie-decayed, idle = at-desk-but-not-working.
+      const totals = { running: summary.running || 0, recent: summary.recent || 0, error: summary.error || 0 };
+      const idle = 51 - (totals.running + totals.recent + totals.error);
+      const lines = [
+        `AXIOM floor (51 agents) — ${totals.running}🟢 ${totals.recent}🟡 ${totals.error}🔴 ${idle}⚪`,
+        '(matches what you see in /axiom: 🟢=typing, ⚪=at-desk-idle)',
+        '',
+      ];
+      // CEO line
+      const ceo = states['axiom-ceo'];
+      const ceoIcon = iconFor(ceo?.status);
+      const ceoTask = ceo?.task ? sanitize(ceo.task).slice(0, 70) : '';
+      lines.push(`${ceoIcon} CEO Ace  ${ceo?.status || 'idle'}${ceoTask ? `  📋 ${ceoTask}` : ''}`);
+      lines.push('');
+      // Per-team rows
       for (let n = 1; n <= 10; n++) {
         const dept = AXIOM_DEPARTMENTS[n - 1] || 'unknown';
         const m = states[`axiom-mgr-${n}`];
-        const mIcon = m?.status === 'running' ? '🟢' : m?.status === 'error' ? '🔴' : m?.status === 'recent' ? '🟡' : '⚪';
-        const sanitize = (t) => String(t || '').replace(/[\r\n]+/g, ' ').replace(/[`*_\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
+        const mIcon = iconFor(m?.status);
         const mTask = m?.task ? sanitize(m.task).slice(0, 70) : '';
         let coderRunning = 0, coderRecent = 0, coderError = 0, coderIdle = 0;
         const coderTasks = [];
         for (let c = 1; c <= 4; c++) {
           const s = states[`axiom-coder-${n}-${c}`];
-          if (!s) { coderIdle++; continue; }
-          if (s.status === 'running') coderRunning++;
-          else if (s.status === 'recent') coderRecent++;
-          else if (s.status === 'error') coderError++;
+          const status = s?.status || 'idle';
+          if (status === 'running') coderRunning++;
+          else if (status === 'recent') coderRecent++;
+          else if (status === 'error') coderError++;
           else coderIdle++;
-          if (s.status === 'running' && s.task) {
+          if (status === 'running' && s?.task) {
             const t = sanitize(s.task).slice(0, 50);
-            if (t) coderTasks.push(`  c${c}${c === 4 ? ' QA' : ''}: ${t}…`);
+            if (t) coderTasks.push(`     c${c}${c === 4 ? ' QA' : ''}: ${t}…`);
           }
         }
         lines.push(`${mIcon} m${n} ${dept}  mgr=${m?.status || 'idle'}  coders ${coderRunning}🟢 ${coderRecent}🟡 ${coderError}🔴 ${coderIdle}⚪`);
-        if (mTask) lines.push(`  📋 ${mTask}…`);
+        if (mTask) lines.push(`     📋 ${mTask}`);
         if (coderTasks.length) lines.push(...coderTasks.slice(0, 2));
       }
       await tg('sendMessage', { chat_id: chatId, text: lines.join('\n').slice(0, 4000) });
