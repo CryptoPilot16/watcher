@@ -119,6 +119,92 @@ async function callCeo(message) {
   };
 }
 
+// Departments must mirror NEXT_PUBLIC_AXIOM_DEPARTMENTS in the API. We avoid
+// importing the route by re-deriving from the env, falling back to the same
+// generic-startup default the API uses.
+const DEFAULT_DEPARTMENTS = ['Platform', 'Frontend', 'Backend', 'Data', 'Infra', 'Security', 'ML', 'Mobile', 'Growth', 'Research'];
+const _envDepartments = (process.env.NEXT_PUBLIC_AXIOM_DEPARTMENTS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const AXIOM_DEPARTMENTS = _envDepartments.length === 10 ? _envDepartments : DEFAULT_DEPARTMENTS;
+const managerLabel = (n) => `m${n} (${AXIOM_DEPARTMENTS[n - 1] || 'unknown'})`;
+
+async function callManager(team, message) {
+  const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
+  const headers = { 'Content-Type': 'application/json' };
+  if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      agentId: AGENT_ID,
+      sessionKey: `axiom:axiom-mgr-${team}`,
+      groupId: GROUP_ID,
+      message,
+    }),
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const detail = json && (json.detail || json.error) ? (json.detail || json.error) : `HTTP ${r.status}`;
+    return { ok: false, team, reply: String(detail).slice(0, 1500), durationMs: 0 };
+  }
+  return {
+    ok: true,
+    team,
+    reply: String(json.reply || '(empty reply)'),
+    engine: json.engine,
+    durationMs: json.durationMs,
+  };
+}
+
+// Fan out to selected managers in parallel and collect their replies. Posts a
+// per-manager status line to the operator chat as each finishes so the operator
+// can see the floor moving.
+async function delegateToManagers(managers, brief, chatId) {
+  await tg('sendMessage', {
+    chat_id: chatId,
+    text: `🛰️ delegating to ${managers.length} manager${managers.length === 1 ? '' : 's'}: ${managers.map(managerLabel).join(', ')}\n\nbrief: ${brief.slice(0, 280)}${brief.length > 280 ? '…' : ''}`,
+  });
+  const startedAt = Date.now();
+  const tasks = managers.map(async (team) => {
+    const dept = AXIOM_DEPARTMENTS[team - 1] || 'unknown';
+    const taggedBrief = [
+      `[CEO DELEGATION — you are the ${dept} manager (m${team}, team ${team}).]`,
+      `Read /opt/axiom/departments/D${team}_GOAL.md before acting.`,
+      ``,
+      brief,
+      ``,
+      `When done, reply with: (1) what you did concretely (files touched, commands run), (2) what's still blocked or needs another team, (3) a short signed status line "m${team} ${dept}: <one-line summary>".`,
+    ].join('\n');
+    const t0 = Date.now();
+    const res = await callManager(team, taggedBrief);
+    const dur = ((Date.now() - t0) / 1000).toFixed(0);
+    const head = res.ok
+      ? `✅ ${managerLabel(team)} reported (${dur}s)`
+      : `❌ ${managerLabel(team)} failed (${dur}s)`;
+    const preview = String(res.reply || '').replace(/\s+/g, ' ').slice(0, 240);
+    try {
+      await tg('sendMessage', { chat_id: chatId, text: `${head}\n${preview}${preview.length >= 240 ? '…' : ''}` });
+    } catch {}
+    return { ...res, dept };
+  });
+  const results = await Promise.all(tasks);
+  const totalSec = ((Date.now() - startedAt) / 1000).toFixed(0);
+  return { results, totalSec };
+}
+
+// Build the SYSTEM message that re-invokes the CEO with manager outputs.
+function buildManagerReportPayload(results) {
+  const lines = ['MANAGER REPORTS — incoming from the floor. Re-assess and either DELEGATE follow-ups or finalize a tight rollup to the operator.', ''];
+  for (const r of results) {
+    const head = `--- ${managerLabel(r.team)} ${r.ok ? 'OK' : 'ERROR'} ${r.durationMs ? `(${(r.durationMs / 1000).toFixed(0)}s)` : ''} ---`;
+    const body = String(r.reply || '').slice(0, 4000);
+    lines.push(head, body, '');
+  }
+  return lines.join('\n');
+}
+
+const MAX_DELEGATION_ROUNDS = 5;
+
 async function downloadTelegramFile(fileId, suffix) {
   // Step 1: ask Telegram for the file_path (valid for ~1h).
   const meta = await tg('getFile', { file_id: fileId });
@@ -247,6 +333,8 @@ async function transcribeMessageMedia(chatId, msg) {
 
 const DISPATCH_RE = /<<\s*DISPATCH\s*:\s*([\s\S]*?)\s*>>/;
 const REPORT_RE = /<<\s*REPORT_FILE\s*:\s*([^\s>][^>]*?)\s*>>/;
+const DELEGATE_RE = /<<\s*DELEGATE\s*:\s*([^:]+?)\s*::\s*([\s\S]*?)\s*>>/;
+const DELEGATE_ALL_RE = /<<\s*DELEGATE-ALL\s*:\s*([\s\S]*?)\s*>>/;
 
 function parseDispatch(reply) {
   if (!reply) return { cleaned: '', brief: null };
@@ -255,6 +343,31 @@ function parseDispatch(reply) {
   const brief = match[1].trim().replace(/\s+/g, ' ').slice(0, 1500);
   const cleaned = reply.replace(DISPATCH_RE, '').trim();
   return { cleaned, brief };
+}
+
+// <<DELEGATE: m1,m4 :: brief>>  →  { managers: [1,4], brief }
+// <<DELEGATE-ALL: brief>>       →  { managers: [1..10], brief }
+function parseDelegate(reply) {
+  if (!reply) return { cleaned: '', delegation: null };
+  const allMatch = DELEGATE_ALL_RE.exec(reply);
+  if (allMatch) {
+    const brief = allMatch[1].trim().replace(/\s+/g, ' ').slice(0, 1500);
+    const cleaned = reply.replace(DELEGATE_ALL_RE, '').trim();
+    return { cleaned, delegation: { managers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], brief } };
+  }
+  const match = DELEGATE_RE.exec(reply);
+  if (!match) return { cleaned: reply.trim(), delegation: null };
+  const ids = match[1]
+    .split(/[,\s]+/)
+    .map((tok) => tok.trim().match(/^m(\d+)$/i))
+    .filter(Boolean)
+    .map((m) => Number(m[1]))
+    .filter((n) => n >= 1 && n <= 10);
+  const unique = Array.from(new Set(ids)).sort((a, b) => a - b);
+  if (!unique.length) return { cleaned: reply.replace(DELEGATE_RE, '').trim(), delegation: null };
+  const brief = match[2].trim().replace(/\s+/g, ' ').slice(0, 1500);
+  const cleaned = reply.replace(DELEGATE_RE, '').trim();
+  return { cleaned, delegation: { managers: unique, brief } };
 }
 
 // Parse <<REPORT_FILE: relative/path.md>> — Ace writes long-form output to a
@@ -691,6 +804,7 @@ async function handleMessage(state, msg) {
       '',
       '*Status*',
       '`/status`   — CEO state + floor running/recent/error counts',
+      '`/floor`    — per-manager (m1..m10) status snapshot',
       '`/who`      — show pairing info',
       '`/missions` — list recent codex missions',
       '',
@@ -767,6 +881,31 @@ async function handleMessage(state, msg) {
     return;
   }
 
+  if (text === '/floor') {
+    try {
+      const r = await fetch(new URL('/api/axiom/state', WATCH_URL).toString(), { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      const states = j?.states || {};
+      const lines = ['*AXIOM floor — managers*', ''];
+      for (let n = 1; n <= 10; n++) {
+        const dept = AXIOM_DEPARTMENTS[n - 1] || 'unknown';
+        const s = states[`axiom-mgr-${n}`];
+        if (!s) {
+          lines.push(`m${n} ${dept}: idle`);
+          continue;
+        }
+        const icon = s.status === 'running' ? '🟢' : s.status === 'error' ? '🔴' : s.status === 'recent' ? '🟡' : '⚪';
+        const task = s.task ? ` — ${String(s.task).slice(0, 60)}` : '';
+        const dur = s.durationMs ? ` (${(s.durationMs / 1000).toFixed(0)}s)` : '';
+        lines.push(`${icon} m${n} ${dept}: ${s.status}${dur}${task}`);
+      }
+      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n'), parse_mode: 'Markdown' });
+    } catch (err) {
+      await tg('sendMessage', { chat_id: chatId, text: `floor error: ${err.message}` });
+    }
+    return;
+  }
+
   if (text === '/reset') {
     try {
       await fs.unlink('/var/lib/watcher/axiom-mailbox/axiom:axiom-ceo.session').catch(() => {});
@@ -803,62 +942,94 @@ async function handleMessage(state, msg) {
     return;
   }
 
-  const result = await withTyping(chatId, () => callCeo(text));
+  // Operator turn enters the orchestration loop. Each round either:
+  //   - finalises (no DELEGATE/DISPATCH/REPORT_FILE tag)            → reply to operator
+  //   - delegates to managers                                       → fan out, feed reports back, loop
+  //   - dispatches one codex /goal mission                          → background, ack to operator
+  //   - emits a report file                                         → attach to operator chat
+  // Cap at MAX_DELEGATION_ROUNDS to prevent runaway.
+  let nextInput = text;
+  let lastResult = null;
+  for (let round = 0; round < MAX_DELEGATION_ROUNDS + 1; round++) {
+    const result = await withTyping(chatId, () => callCeo(nextInput));
+    lastResult = result;
 
-  if (typeof result.inputTokens === 'number') {
-    lastSeenInputTokens = result.inputTokens;
-    process.stdout.write(`[axiom-ceo-bot] tokens in=${result.inputTokens} out=${result.outputTokens || '?'} cost=$${(result.costUsd || 0).toFixed(4)}\n`);
-  }
-
-  const dispatchParse = parseDispatch(result.reply || '');
-  const reportParse = parseReportFile(dispatchParse.cleaned);
-  const cleaned = reportParse.cleaned;
-  const brief = dispatchParse.brief;
-  const reportPath = reportParse.reportPath;
-
-  const engineTag = result.ok && result.engine
-    ? `\n\n— ${result.engine}/${result.model || '?'}${typeof result.durationMs === 'number' ? ` · ${(result.durationMs / 1000).toFixed(1)}s` : ''}${
-        typeof result.inputTokens === 'number' ? ` · ${result.inputTokens} tok` : ''
-      }`
-    : '';
-
-  const maybeAutoCompact = () => {
-    if (
-      !compactionInFlight &&
-      typeof result.inputTokens === 'number' &&
-      result.inputTokens >= CONTEXT_COMPACT_THRESHOLD
-    ) {
-      process.stdout.write(`[axiom-ceo-bot] context ${result.inputTokens} >= ${CONTEXT_COMPACT_THRESHOLD}, auto-compacting\n`);
-      performCompaction(chatId).catch((err) => {
-        process.stderr.write(`[axiom-ceo-bot] auto-compact: ${err.message}\n`);
-      });
+    if (typeof result.inputTokens === 'number') {
+      lastSeenInputTokens = result.inputTokens;
+      process.stdout.write(`[axiom-ceo-bot] tokens in=${result.inputTokens} out=${result.outputTokens || '?'} cost=$${(result.costUsd || 0).toFixed(4)}\n`);
     }
-  };
 
-  if (brief && result.ok) {
-    let mission;
-    try {
-      mission = await dispatchMission(brief, chatId);
-    } catch (err) {
-      await sendChunked(chatId, `${cleaned || '(empty)'}\n\n❌ dispatch failed: ${err.message}` + engineTag, msg.message_id);
-      maybeAutoCompact();
-      return;
+    const delegateParse = parseDelegate(result.reply || '');
+    const dispatchParse = parseDispatch(delegateParse.cleaned);
+    const reportParse = parseReportFile(dispatchParse.cleaned);
+    const cleaned = reportParse.cleaned;
+
+    const engineTag = result.ok && result.engine
+      ? `\n\n— ${result.engine}/${result.model || '?'}${typeof result.durationMs === 'number' ? ` · ${(result.durationMs / 1000).toFixed(1)}s` : ''}${
+          typeof result.inputTokens === 'number' ? ` · ${result.inputTokens} tok` : ''
+        }`
+      : '';
+
+    // Round-trip: CEO chose to delegate. Post the chat preface (so operator
+    // sees the plan), fan out, then loop back into the CEO with the reports.
+    if (delegateParse.delegation && result.ok && round < MAX_DELEGATION_ROUNDS) {
+      const preface = (cleaned || `On it — round ${round + 1}.`) + engineTag;
+      await sendChunked(chatId, preface, round === 0 ? msg.message_id : undefined);
+      const { results } = await delegateToManagers(
+        delegateParse.delegation.managers,
+        delegateParse.delegation.brief,
+        chatId,
+      );
+      nextInput = buildManagerReportPayload(results);
+      continue; // re-invoke CEO with reports
     }
-    const dispatchNote = `\n\n🚀 codex /goal · mission ${mission.id} dispatched — I'll DM the result back.`;
-    await sendChunked(chatId, (cleaned || 'On it.') + dispatchNote + engineTag, msg.message_id);
-    maybeAutoCompact();
-    return;
+
+    // CEO emitted a delegation but we've already hit the cap — force-finalise.
+    if (delegateParse.delegation && round >= MAX_DELEGATION_ROUNDS) {
+      await sendChunked(
+        chatId,
+        `${cleaned || '(empty)'}\n\n⚠️ delegation cap (${MAX_DELEGATION_ROUNDS}) reached — finalised here. Send a new directive to keep going.${engineTag}`,
+        round === 0 ? msg.message_id : undefined,
+      );
+      break;
+    }
+
+    // Single codex /goal handoff (legacy path — for one-shot work outside any manager's domain).
+    if (dispatchParse.brief && result.ok) {
+      let mission;
+      try {
+        mission = await dispatchMission(dispatchParse.brief, chatId);
+      } catch (err) {
+        await sendChunked(chatId, `${cleaned || '(empty)'}\n\n❌ dispatch failed: ${err.message}` + engineTag, round === 0 ? msg.message_id : undefined);
+        break;
+      }
+      const dispatchNote = `\n\n🚀 codex /goal · mission ${mission.id} dispatched — I'll DM the result back.`;
+      await sendChunked(chatId, (cleaned || 'On it.') + dispatchNote + engineTag, round === 0 ? msg.message_id : undefined);
+      break;
+    }
+
+    if (reportParse.reportPath && result.ok) {
+      const caption = (cleaned || '(see attached)') + engineTag;
+      await sendReportDocument(chatId, reportParse.reportPath, caption);
+      break;
+    }
+
+    // Final operator-facing reply.
+    await sendChunked(chatId, (cleaned || '(empty)') + engineTag, round === 0 ? msg.message_id : undefined);
+    break;
   }
 
-  if (reportPath && result.ok) {
-    const caption = (cleaned || '(see attached)') + engineTag;
-    await sendReportDocument(chatId, reportPath, caption);
-    maybeAutoCompact();
-    return;
+  if (
+    lastResult &&
+    !compactionInFlight &&
+    typeof lastResult.inputTokens === 'number' &&
+    lastResult.inputTokens >= CONTEXT_COMPACT_THRESHOLD
+  ) {
+    process.stdout.write(`[axiom-ceo-bot] context ${lastResult.inputTokens} >= ${CONTEXT_COMPACT_THRESHOLD}, auto-compacting\n`);
+    performCompaction(chatId).catch((err) => {
+      process.stderr.write(`[axiom-ceo-bot] auto-compact: ${err.message}\n`);
+    });
   }
-
-  await sendChunked(chatId, (cleaned || '(empty)') + engineTag, msg.message_id);
-  maybeAutoCompact();
 }
 
 async function bootstrap() {
@@ -869,6 +1040,7 @@ async function bootstrap() {
         { command: 'start',    description: 'Pair with the CEO' },
         { command: 'help',     description: 'Show all commands' },
         { command: 'status',   description: 'Show CEO and floor status' },
+        { command: 'floor',    description: 'Per-manager (m1..m10) status' },
         { command: 'budget',   description: 'View / change daily allowance' },
         { command: 'missions', description: 'List recent codex missions' },
         { command: 'memory',   description: 'Show CEO_MEMORY.md' },

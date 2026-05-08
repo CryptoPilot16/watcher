@@ -105,9 +105,21 @@ A dedicated Telegram bot pairs the operator 1:1 with the AXIOM CEO so you can ru
 - Decision split is enforced architecturally: the CEO's claude call has narrow Write/Edit access (only for memory + reports — see below) so substantive code work must dispatch to codex
 - **Voice messages** are transcribed locally via a long-running `faster-whisper` Python sidecar (CTranslate2, `small.en` int8 model kept warm in process). First transcription pays a ~3s model-load cost; subsequent voice notes transcribe in <1s. No cloud API, no key, no per-clip charge
 - Bot pairing: `WATCH_AXIOM_CEO_OPERATOR_ID` locks the bot to one Telegram user ID. If unset, the first user to `/start` is auto-paired and persisted to `/var/lib/watcher/axiom-ceo-bot-state.json`
-- Commands: `/start` (pair), `/status` (CEO + floor health), `/missions` (recent dispatches), `/memory` (show CEO_MEMORY.md), `/compact` (force a memory flush + session reset now), `/forget` (clear memory file), `/who`, `/reset`
+- Commands: `/start` (pair), `/status` (CEO + floor health), `/floor` (per-manager m1..m10 status), `/missions` (recent dispatches), `/memory` (show CEO_MEMORY.md), `/compact` (force a memory flush + session reset now), `/forget` (clear memory file), `/who`, `/reset`
 - Engine override: set `WATCH_AXIOM_CEO_ENGINE=claude` (default `codex` in code) to keep the CEO on Claude even if the route's role-default would pick something else; same for managers via `WATCH_AXIOM_MANAGER_ENGINE`
 - Run as a pm2 service: `npm run axiom-ceo:bot` (entry registered in `ecosystem.config.cjs` as `clawnux-axiom-ceo-bot`)
+- **Subprocess env hygiene**: when watcher-web is launched from a Claude-Code-aware shell (PM2 inherits the launching shell's env), `CLAUDECODE=1` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_CODE_EXECPATH` would leak into the spawned `claude -p` subprocess and the CLI silently exits thinking it is nested inside another Claude Code session. The instruct route strips all `CLAUDE_CODE_*`, `CLAUDECODE`, `AI_AGENT`, and `CLAUDE_AGENT_SDK_VERSION` from the child env before spawn, so `(empty reply from claude)` does not surface for that reason
+
+#### Manager delegation — keeping the floor busy
+
+The CEO is your single interface to the project. When you give Ace a directive, he decides whether it's chat, a one-shot mission, or work that should be split across the manager floor — and routes accordingly.
+
+- **`<<DELEGATE: m1,m4,m7 :: brief>>`** — fan out to a subset of managers (m1..m10). The bot dispatches each in parallel via `/api/team-office/instruct` with their session key (`axiom:axiom-mgr-{N}`), each manager receives the brief plus their department context and the path to their `D{N}_GOAL.md`, and runs autonomously
+- **`<<DELEGATE-ALL: brief>>`** — same fan-out but to every manager. This is the CEO's default heartbeat when the operator says something open-ended like "go" or "make progress" with no specific target
+- **Round-trip orchestration** — when all managers in a round have replied, the bot bundles their outputs into a single `MANAGER REPORTS` SYSTEM message and re-invokes the CEO. He then either (a) emits another `<<DELEGATE:>>` with sharper follow-up briefs (e.g., to fix a blocker one team flagged), or (b) finalises a tight rollup to the operator. Cap = 5 rounds per operator turn to prevent runaway delegation
+- **Per-manager progress in chat** — as each manager finishes their slice, the bot DMs a one-line status with a 240-char preview, so the operator sees the floor moving in real time instead of waiting in silence for the rollup
+- **`<<DISPATCH:>>` is now the fallback**, not the default. Use it only for one-shot work that doesn't fit any manager's domain (e.g. infra tweaks outside the project, repo-wide migrations). For anything that touches department surfaces, the CEO uses DELEGATE
+- **Each manager's binding goal lives at `${WATCH_AXIOM_PROJECT_DIR}/departments/D{1..10}_GOAL.md`**. The CEO references these when shaping briefs; the manager re-reads its own before acting
 
 #### Persistent CEO memory + auto-compaction
 

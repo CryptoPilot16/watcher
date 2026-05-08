@@ -402,6 +402,38 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       `WRITE TOOL CONSTRAINTS:`,
       `Your Write/Edit access is for CEO_MEMORY.md and reports/ ONLY. Never use Write/Edit on code files, configs, package.json, README.md, or anything outside those two targets — those go through <<DISPATCH:>> to codex /goal. Violating this defeats the whole architecture.`,
       ``,
+      `MANAGER DELEGATION — your real lever for keeping the floor busy:`,
+      `You are the orchestrator. Your floor has 10 managers, indexed m1..m10:`,
+      `   m1=${AXIOM_DEPARTMENTS_FRONT[0]}  m2=${AXIOM_DEPARTMENTS_FRONT[1]}  m3=${AXIOM_DEPARTMENTS_FRONT[2]}  m4=${AXIOM_DEPARTMENTS_FRONT[3]}  m5=${AXIOM_DEPARTMENTS_FRONT[4]}`,
+      `   m6=${AXIOM_DEPARTMENTS_BACK[0]}  m7=${AXIOM_DEPARTMENTS_BACK[1]}  m8=${AXIOM_DEPARTMENTS_BACK[2]}  m9=${AXIOM_DEPARTMENTS_BACK[3]}  m10=${AXIOM_DEPARTMENTS_BACK[4]}`,
+      `Each manager has a binding goal already written at ${AXIOM_PROJECT_DIR}/departments/D{N}_GOAL.md (D1..D10). Each manager runs autonomously when you delegate to them and replies with what they did + what they need.`,
+      ``,
+      `When the operator asks you to advance the project, build something across the floor, or "keep the managers busy" — do NOT use <<DISPATCH:>> (that's a single codex mission). Instead, fan out to the relevant managers using:`,
+      `   <<DELEGATE: m1,m4,m7 :: brief that applies to each, ≤1500 chars total>>`,
+      `or to hit every manager:`,
+      `   <<DELEGATE-ALL: brief that applies to every department, ≤1500 chars>>`,
+      `The brief is sent to each chosen manager with their department context appended. Each manager runs in parallel; their replies will be fed back to you in your NEXT turn as a SYSTEM message tagged "MANAGER REPORTS".`,
+      ``,
+      `DELEGATE LOOP (this is how orchestration works):`,
+      `1. Operator gives you a goal.`,
+      `2. You decide which managers to engage and emit a <<DELEGATE: ...>> tag with a chat preface (1-3 sentences telling the operator who you're tasking and why).`,
+      `3. Bot fans out, waits for all manager replies, then re-invokes you with a "MANAGER REPORTS" SYSTEM message containing each manager's output.`,
+      `4. You read the reports, decide what's next: re-delegate (with sharper / follow-up briefs), test something via Read/Glob/Grep, or finalize. If finalizing, reply WITHOUT a DELEGATE tag — that triggers the operator-facing summary.`,
+      `5. The bot caps the delegation loop at 5 rounds to avoid runaway. After that, you must finalize.`,
+      ``,
+      `Example flow:`,
+      `   Operator: "build the AXIOM auth flow."`,
+      `   You: "Tasking Platform + Security to draft the auth contract; Frontend will wire UI once the contract lands. <<DELEGATE: m1,m6 :: Draft the AXIOM auth contract per departments/D{N}_GOAL.md. Platform owns identity + session model; Security owns threat model and key rotation. Output: a single shared contract markdown at contracts/auth-v1.md plus your team's checklist.>>"`,
+      `   [bot dispatches; managers reply; you receive MANAGER REPORTS]`,
+      `   You (next turn): "Auth contract is in. Pulling Frontend in to wire the UI. <<DELEGATE: m2 :: Read contracts/auth-v1.md and ship the login + session-refresh UI. Match the spec exactly; tests required.>>"`,
+      `   [...]`,
+      `   You (final turn): "Auth flow is live. Platform shipped contract, Security signed off, Frontend has UI + tests passing. Files: contracts/auth-v1.md, web/login/*.tsx. Ready for review."`,
+      ``,
+      `KEEP MANAGERS BUSY — when operator says "go" / "get started" / "make progress" with no specific target, your default is: <<DELEGATE-ALL: Read your departments/D{N}_GOAL.md, pick the next concrete unfinished step, do it on disk in ${AXIOM_PROJECT_DIR}, and report back what you did + what's now the bottleneck.>> — that's the heartbeat that turns the floor on.`,
+      `When you get a "MANAGER REPORTS" SYSTEM message, treat it like an inbox of signed status updates. Do NOT just summarise verbatim — re-assess: are there blockers? Conflicts between teams? Missing tests? Then either chain another DELEGATE for follow-ups or finalize a tight rollup to the operator (3-8 lines max + REPORT_FILE for the long version).`,
+      ``,
+      `Use <<DISPATCH:>> only for one-shot work that doesn't fit any manager's domain (e.g. infra tweaks outside the project, repo-wide migrations). Default to DELEGATE.`,
+      ``,
       styleRules,
     ].join('\n');
   }
@@ -510,10 +542,23 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
 
   const spawnClaude = async (resumeMode: boolean, sid: string) => {
     const claudeArgs = buildArgs(resumeMode, sid);
+    // Strip parent-process Claude Code identity vars. If watcher-web was launched
+    // from a VSCode/Claude-Code shell (PM2 inherits the launching shell's env),
+    // CLAUDECODE=1 / CLAUDE_CODE_SESSION_ID / CLAUDE_CODE_EXECPATH leak into the
+    // spawned `claude -p` subprocess. The CLI then thinks it's nested inside an
+    // existing Claude Code session and exits silently with empty stdout —
+    // surfacing as "(empty reply from claude)" to the operator. Scrub them.
+    const childEnv = { ...process.env };
+    for (const key of Object.keys(childEnv)) {
+      if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key === 'AI_AGENT' || key === 'CLAUDE_AGENT_SDK_VERSION') {
+        delete childEnv[key];
+      }
+    }
     const opts = {
       timeout: AXIOM_CLAUDE_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
       cwd: AXIOM_PROJECT_DIR,
+      env: childEnv,
     };
     const sdPrefix = buildSystemdRunPrefix();
     if (AXIOM_SANDBOX_ENABLED) {
@@ -534,21 +579,31 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
 
   const t0 = Date.now();
   let stdout: string;
+  const startFreshSession = () => {
+    const fresh = crypto.randomUUID();
+    try { fs.writeFileSync(axiomSessionFile(sessionKey), fresh + '\n'); } catch {}
+    sessionId = fresh;
+    isNew = true;
+  };
   try {
     const result = await spawnClaude(!isNew, sessionId);
     stdout = result.stdout;
   } catch (error: any) {
     // If --resume failed (stale session, deleted history, etc.), fall back to a fresh session.
     if (!isNew) {
-      const fresh = crypto.randomUUID();
-      try { fs.writeFileSync(axiomSessionFile(sessionKey), fresh + '\n'); } catch {}
-      sessionId = fresh;
-      isNew = true;
-      const result = await spawnClaude(false, fresh);
+      startFreshSession();
+      const result = await spawnClaude(false, sessionId);
       stdout = result.stdout;
     } else {
       throw error;
     }
+  }
+  // Some CLI hiccups exit 0 but emit empty stdout on a stale resume. Retry once
+  // with a fresh session so the operator doesn't see a silent "(empty reply)".
+  if (!stdout.trim() && !isNew) {
+    startFreshSession();
+    const result = await spawnClaude(false, sessionId);
+    stdout = result.stdout;
   }
   const durationMs = Date.now() - t0;
 
