@@ -601,7 +601,7 @@ function DepartmentBanner({ name, color, position, visible = true }: { name: str
   const texture = useMemo(() => buildDepartmentBannerTexture(name, color), [name, color]);
   if (!texture || !visible) return null;
   return (
-    <sprite position={position} scale={[3.6, 0.9, 1]} renderOrder={21}>
+    <sprite position={position} scale={[2.6, 0.65, 1]} renderOrder={21}>
       <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
     </sprite>
   );
