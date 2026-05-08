@@ -130,10 +130,10 @@ function parseCoderAllocations(reply) {
 
 function buildCoderBrief(team, coderIndex, managerAssignedTask) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
-  // If the manager allocated a specific task this round, use that — the
-  // coder works on what their manager told them to work on. Otherwise fall
-  // back to the role-default brief (manager didn't allocate, so coder
-  // self-picks).
+  // Coders only run with an explicit manager-allocated task. The operator's
+  // rule: no allocation = no dispatch. runCycle enforces that contract; this
+  // function should never be called without a task. The fallback role-
+  // default brief below is retained ONLY as a last-resort safety net.
   if (managerAssignedTask) {
     return [
       `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
@@ -153,9 +153,10 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
       `Reply ends with: "c${coderIndex}/m${team} ${dept}: <one-line summary>"`,
     ].join('\n');
   }
-  // c4 is the team's QA/reviewer — audits what the rest of the team just
-  // shipped, runs tests, finds gaps, fixes bugs, adds missing coverage.
-  // c1-c3 are forward-builders.
+  // SAFETY NET — runCycle won't dispatch a coder without a manager
+  // allocation, so this branch shouldn't be reached. If something does
+  // dispatch without a task, we fall back to the role-default brief
+  // rather than crashing.
   if (coderIndex === 4) {
     return [
       `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
@@ -294,22 +295,32 @@ async function runCycle(cycleNum) {
   }
 
   const codTasks = [];
-  let codSkipped = 0;
+  let codSkippedRunning = 0;
+  let codSkippedNoAlloc = 0;
   stagger = 0;
   for (let n = 1; n <= 10; n++) {
     const teamAlloc = allocations.get(n) || { 1: null, 2: null, 3: null, 4: null };
     for (let c = 1; c <= 4; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
         process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (already running)\n`);
-        codSkipped++;
+        codSkippedRunning++;
         continue;
       }
       const assignedTask = teamAlloc[c];
+      // Manager must explicitly allocate — no allocation, no dispatch. The
+      // operator's directive: managers gate coder work; the autopilot does
+      // not blindly fire coders with role-default briefs anymore.
+      if (!assignedTask) {
+        process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip c${c}/m${n} (no manager allocation)\n`);
+        codSkippedNoAlloc++;
+        continue;
+      }
       const delay = stagger; stagger += STAGGER_MS;
       codTasks.push(new Promise((r) => setTimeout(() => r(callCoder(n, c, assignedTask)), delay)));
     }
   }
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase2: dispatching ${codTasks.length} coders (${codSkipped} skipped)\n`);
+  const codSkipped = codSkippedRunning + codSkippedNoAlloc;
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase2: dispatching ${codTasks.length} coders (${codSkippedRunning} already running, ${codSkippedNoAlloc} not allocated by manager)\n`);
   const codResults = await Promise.all(codTasks);
   const codOk = codResults.filter((r) => r.ok).length;
 
