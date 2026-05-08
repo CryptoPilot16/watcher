@@ -118,8 +118,8 @@ const PHASE0: Deliverable[] = [
   { id: 'X-replay-junior',label: 'Acceptance: any past flight cycle reproducible <10min',       team: 0, evidence: ['reports/audit-replay-acceptance', 'contracts/reliability/replay-acceptance'] },
   { id: 'X-zero-manual',  label: 'Acceptance: zero manual data entry on regulator submission',  team: 0, evidence: ['reports/regulator-zero-manual', 'tools/validate-regulator-pack'] },
   { id: 'X-ssot',         label: 'Acceptance: zero side-spreadsheets in active ops',            team: 0, evidence: ['reports/ssot-attestation', 'contracts/reliability/ssot'] },
-  { id: 'X-config-not-code',label:'Acceptance: new jurisdiction onboarded <4 weeks',            team: 0, evidence: ['reports/jurisdiction-onboarding', 'contracts/rules/jurisdiction-template'] },
-  { id: 'X-tem',          label: 'Acceptance: TEM register completeness, oldest review <12mo',  team: 0, evidence: ['contracts/rules/tem', 'reports/tem-register'] },
+  { id: 'X-config-not-code',label:'Acceptance: new jurisdiction onboarded <4 weeks',            team: 0, evidence: ['reports/jurisdiction-onboarding', 'contracts/rules/jurisdiction-template', 'contracts/rules/jurisdiction/', 'contracts/rules/jurisdiction_go_live_gate.schema.json', 'contracts/validators/governance/p06_jurisdiction_go_live_semantic_invariants.v1.yaml'] },
+  { id: 'X-tem',          label: 'Acceptance: TEM register completeness, oldest review <12mo',  team: 0, evidence: ['contracts/rules/tem', 'reports/tem-register', 'contracts/tem/'] },
   { id: 'X-chaos',        label: 'Acceptance: subsystem independence proven by chaos tests',    team: 0, evidence: ['contracts/reliability/chaos', 'tools/chaos-test'] },
 ];
 
