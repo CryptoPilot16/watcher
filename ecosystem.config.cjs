@@ -44,5 +44,16 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'clawnux-axiom-driver',
+      cwd: '/opt/watcher',
+      env_file: '/opt/watcher/.env.local',
+      script: 'npm',
+      args: 'run axiom-driver',
+      env: {
+        NODE_ENV: 'production',
+        WATCH_URL: 'http://127.0.0.1:3012',
+      },
+    },
   ],
 };

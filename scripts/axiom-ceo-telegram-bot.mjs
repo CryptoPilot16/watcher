@@ -843,10 +843,11 @@ async function handleMessage(state, msg) {
       'Talk to me like a chief: ask anything for a fast Claude reply, or hand me a real task and I will dispatch it to codex /goal autonomous mode in the background. I will DM you when the mission lands.',
       '',
       '*Status*',
-      '`/status`   — CEO state + floor running/recent/error counts',
-      '`/floor`    — per-manager (m1..m10) status snapshot',
-      '`/who`      — show pairing info',
-      '`/missions` — list recent codex missions',
+      '`/status`    — CEO state + floor running/recent/error counts',
+      '`/floor`     — per-manager (m1..m10) status snapshot',
+      '`/autopilot` — autopilot status / on / off',
+      '`/who`       — show pairing info',
+      '`/missions`  — list recent codex missions',
       '',
       '*Allowance*',
       '`/budget`         — show today\'s spend, cap, remaining, override status',
@@ -917,6 +918,46 @@ async function handleMessage(state, msg) {
       await tg('sendMessage', { chat_id: chatId, text: lines.join('\n') });
     } catch (err) {
       await tg('sendMessage', { chat_id: chatId, text: `status error: ${err.message}` });
+    }
+    return;
+  }
+
+  if (text === '/autopilot' || text.startsWith('/autopilot ')) {
+    const PAUSE_FILE = process.env.WATCH_AXIOM_DRIVER_PAUSE_FILE || '/var/lib/watcher/axiom-autopilot.paused';
+    const STATE_FILE = process.env.WATCH_AXIOM_DRIVER_STATE_FILE || '/var/lib/watcher/axiom-driver.state.json';
+    const arg = text.replace(/^\/autopilot\s*/i, '').trim().toLowerCase();
+    try {
+      if (arg === 'on' || arg === 'start' || arg === 'resume') {
+        try { await fs.unlink(PAUSE_FILE); } catch {}
+        await tg('sendMessage', { chat_id: chatId, text: '🤖 autopilot ON — driver will start the next cycle within 30s.' });
+        return;
+      }
+      if (arg === 'off' || arg === 'stop' || arg === 'pause') {
+        await fs.writeFile(PAUSE_FILE, new Date().toISOString() + '\n', 'utf8');
+        await tg('sendMessage', { chat_id: chatId, text: '🤖 autopilot OFF — current cycle finishes, then driver will idle until you say `/autopilot on`.', parse_mode: 'Markdown' });
+        return;
+      }
+      // Default: show status
+      let state = null;
+      try { state = JSON.parse(await fs.readFile(STATE_FILE, 'utf8')); } catch {}
+      let paused = false;
+      try { await fs.access(PAUSE_FILE); paused = true; } catch {}
+      const lines = [
+        `🤖 *AXIOM autopilot*`,
+        '',
+        paused ? '*Status*: paused' : (state?.status ? `*Status*: ${state.status}` : '*Status*: unknown (driver may not be running)'),
+        state?.interval ? `*Interval*: every ${Math.round(state.interval / 60000)} min` : '',
+        state?.cycleNum != null ? `*Cycles run*: ${state.cycleNum}` : '',
+        state?.lastCycleAt ? `*Last cycle*: ${state.lastCycleAt}` : '',
+        state?.lastCycle ? `*Last result*: ${state.lastCycle.completed}/${state.lastCycle.dispatched} ok${state.lastCycle.failed ? `, ${state.lastCycle.failed} failed` : ''}` : '',
+        '',
+        'Commands:',
+        '`/autopilot on`  — start the loop',
+        '`/autopilot off` — pause the loop',
+      ].filter(Boolean);
+      await tg('sendMessage', { chat_id: chatId, text: lines.join('\n'), parse_mode: 'Markdown' });
+    } catch (err) {
+      await tg('sendMessage', { chat_id: chatId, text: `autopilot error: ${err.message}` });
     }
     return;
   }
@@ -1081,6 +1122,7 @@ async function bootstrap() {
         { command: 'help',     description: 'Show all commands' },
         { command: 'status',   description: 'Show CEO and floor status' },
         { command: 'floor',    description: 'Per-manager (m1..m10) status' },
+        { command: 'autopilot',description: 'Autopilot status / on / off' },
         { command: 'budget',   description: 'View / change daily allowance' },
         { command: 'missions', description: 'List recent codex missions' },
         { command: 'memory',   description: 'Show CEO_MEMORY.md' },

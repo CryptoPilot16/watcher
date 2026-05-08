@@ -10,7 +10,8 @@
     "lint": "next lint",
     "telegram:loop": "node --env-file=.env.local scripts/watch-telegram-loop.mjs",
     "axiom-ceo:bot": "node --env-file=.env.local scripts/axiom-ceo-telegram-bot.mjs",
-    "axiom-project:watcher": "node --env-file=.env.local scripts/axiom-project-watcher.mjs"
+    "axiom-project:watcher": "node --env-file=.env.local scripts/axiom-project-watcher.mjs",
+    "axiom-driver": "node --env-file=.env.local scripts/axiom-driver.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
