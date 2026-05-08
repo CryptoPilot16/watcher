@@ -371,6 +371,11 @@ function parseDispatch(reply) {
   return { cleaned, brief };
 }
 
+// Minimum brief length for a real delegation. Below this we treat the tag as
+// referential text (e.g. Ace explaining the protocol) rather than an
+// invocation. Short briefs would also produce useless manager work.
+const MIN_DELEGATION_BRIEF_CHARS = 30;
+
 // <<DELEGATE: m1,m4 :: brief>>  →  { managers: [1,4], brief }
 // <<DELEGATE-ALL: brief>>       →  { managers: [1..10], brief }
 function parseDelegate(reply) {
@@ -378,6 +383,12 @@ function parseDelegate(reply) {
   const allMatch = DELEGATE_ALL_RE.exec(reply);
   if (allMatch) {
     const brief = allMatch[1].trim().replace(/\s+/g, ' ').slice(0, 1500);
+    if (brief.length < MIN_DELEGATION_BRIEF_CHARS) {
+      // Empty / placeholder / referential tag — leave it inline so Ace's text
+      // stays intact and no fan-out happens. Operator will see the raw tag
+      // and can prompt Ace for an actual brief.
+      return { cleaned: reply.trim(), delegation: null };
+    }
     const cleaned = reply.replace(DELEGATE_ALL_RE, '').trim();
     return { cleaned, delegation: { managers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], brief } };
   }
@@ -392,6 +403,9 @@ function parseDelegate(reply) {
   const unique = Array.from(new Set(ids)).sort((a, b) => a - b);
   if (!unique.length) return { cleaned: reply.replace(DELEGATE_RE, '').trim(), delegation: null };
   const brief = match[2].trim().replace(/\s+/g, ' ').slice(0, 1500);
+  if (brief.length < MIN_DELEGATION_BRIEF_CHARS) {
+    return { cleaned: reply.trim(), delegation: null };
+  }
   const cleaned = reply.replace(DELEGATE_RE, '').trim();
   return { cleaned, delegation: { managers: unique, brief } };
 }

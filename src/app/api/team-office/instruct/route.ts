@@ -11,6 +11,72 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // claude opus replies can take 30–60s
 
 const run = promisify(execFile);
+
+// runDetached spawns a child with stdin closed, mirroring execFile's
+// promisified resolve/reject contract but routing via spawn so we can control
+// stdio. Necessary because claude -p / codex exec wait up to 3s on an unclosed
+// stdin pipe (the default for execFile), then warn and exit 1 with empty
+// stdout — surfacing as "(empty reply)" to the operator. With stdin set to
+// 'ignore', the CLI reads the prompt from -p / argv immediately.
+type RunDetachedOpts = {
+  timeout?: number;
+  maxBuffer?: number;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+};
+function runDetached(file: string, args: string[], opts: RunDetachedOpts = {}): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const maxBuffer = opts.maxBuffer ?? 16 * 1024 * 1024;
+    // stdin is a pipe we close immediately. Two reasons:
+    //   1) `'ignore'` (which redirects to /dev/null) makes claude hang for some
+    //      reason — even though its own warning suggests "< /dev/null" works.
+    //   2) An open-but-unclosed pipe (the default for the lower-level spawn)
+    //      makes claude wait 3s on stdin then exit with empty stdout.
+    // Closing the pipe from the parent side mimics what execFile does and
+    // gives claude an immediate EOF on stdin, so it proceeds with -p prompt.
+    const child = spawn(file, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    try { child.stdin?.end(); } catch {}
+    let stdout = '';
+    let stderr = '';
+    let killedForBuffer = false;
+    let killedForTimeout = false;
+    let timer: NodeJS.Timeout | null = null;
+    if (opts.timeout && opts.timeout > 0) {
+      timer = setTimeout(() => { killedForTimeout = true; try { child.kill('SIGTERM'); } catch {} }, opts.timeout);
+    }
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+      if (stdout.length > maxBuffer) { killedForBuffer = true; try { child.kill('SIGTERM'); } catch {} }
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+      if (stderr.length > maxBuffer) { killedForBuffer = true; try { child.kill('SIGTERM'); } catch {} }
+    });
+    child.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code, signal) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        const reason = killedForTimeout ? `timeout` : killedForBuffer ? `buffer-overflow` : `exit ${code}${signal ? ` signal ${signal}` : ''}`;
+        const err: any = new Error(`Command failed (${reason}): ${file} ${args.slice(0, 4).join(' ')}…`);
+        err.code = code;
+        err.signal = signal;
+        err.stdout = stdout;
+        err.stderr = stderr;
+        err.timedOut = killedForTimeout;
+        reject(err);
+      }
+    });
+  });
+}
 const INJECT_TIMEOUT_MS = 90_000;
 const MIRROR_TIMEOUT_MS = 20_000;
 
@@ -403,6 +469,8 @@ You are filesystem-sandboxed: writes are kernel-level restricted to ${AXIOM_PROJ
       `Your Write/Edit access is for CEO_MEMORY.md and reports/ ONLY. Never use Write/Edit on code files, configs, package.json, README.md, or anything outside those two targets — those go through <<DISPATCH:>> to codex /goal. Violating this defeats the whole architecture.`,
       ``,
       `MANAGER DELEGATION — your real lever for keeping the floor busy:`,
+      `THE BOT IS RUNNING. Every reply you send is parsed by an AXIOM Telegram bot middleware that ALWAYS processes <<DELEGATE: ...>> and <<DELEGATE-ALL: ...>> tags. There is no scenario where "the bot might not be running" — if you're being invoked, the bot is invoking you. Never say things like "the tag is just text" or "the manager loop only works if the bot stack is running" — the stack IS running, and your job is to use it.`,
+      `IMPORTANT: only emit a DELEGATE tag when you actually want managers to start work. If you are EXPLAINING the protocol or DESCRIBING the tag, do NOT include the literal "<<DELEGATE-ALL: ...>>" syntax in your prose — the bot will see it and fan out a useless empty-brief delegation. Talk about it descriptively instead ("I can fan out to all 10 managers via the delegation protocol when you say go").`,
       `You are the orchestrator. Your floor has 10 managers, indexed m1..m10:`,
       `   m1=${AXIOM_DEPARTMENTS_FRONT[0]}  m2=${AXIOM_DEPARTMENTS_FRONT[1]}  m3=${AXIOM_DEPARTMENTS_FRONT[2]}  m4=${AXIOM_DEPARTMENTS_FRONT[3]}  m5=${AXIOM_DEPARTMENTS_FRONT[4]}`,
       `   m6=${AXIOM_DEPARTMENTS_BACK[0]}  m7=${AXIOM_DEPARTMENTS_BACK[1]}  m8=${AXIOM_DEPARTMENTS_BACK[2]}  m9=${AXIOM_DEPARTMENTS_BACK[3]}  m10=${AXIOM_DEPARTMENTS_BACK[4]}`,
@@ -571,17 +639,17 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
     if (AXIOM_SANDBOX_ENABLED) {
       const bwrapArgs = [...buildBwrapArgs(), '--', '/usr/bin/claude', ...claudeArgs];
       if (sdPrefix) {
-        return run(sdPrefix[0], [...sdPrefix.slice(1), AXIOM_BWRAP_BIN, ...bwrapArgs], opts);
+        return runDetached(sdPrefix[0], [...sdPrefix.slice(1), AXIOM_BWRAP_BIN, ...bwrapArgs], opts);
       }
-      return run(AXIOM_BWRAP_BIN, bwrapArgs, opts);
+      return runDetached(AXIOM_BWRAP_BIN, bwrapArgs, opts);
     }
     // Sandbox off (no bwrap): still wrap in systemd-run so the IP filter +
     // resource limits stay active. Without this, an agent with internet access
     // could hit cloud metadata or RFC1918 ranges unrestricted.
     if (sdPrefix) {
-      return run(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/claude', ...claudeArgs], opts);
+      return runDetached(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/claude', ...claudeArgs], opts);
     }
-    return run('claude', claudeArgs, opts);
+    return runDetached('claude', claudeArgs, opts);
   };
 
   const t0 = Date.now();
@@ -694,9 +762,9 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
     };
     const sdPrefix = buildSystemdRunPrefix();
     if (sdPrefix) {
-      return run(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/codex', ...codexArgs], opts);
+      return runDetached(sdPrefix[0], [...sdPrefix.slice(1), '/usr/bin/codex', ...codexArgs], opts);
     }
-    return run('codex', codexArgs, opts);
+    return runDetached('codex', codexArgs, opts);
   };
 
   const t0 = Date.now();
