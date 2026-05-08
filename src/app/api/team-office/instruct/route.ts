@@ -799,12 +799,31 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
     reply = fs.readFileSync(lastMessageFile, 'utf8').trim();
     fs.unlinkSync(lastMessageFile);
   } catch {}
+  // Codex emits token usage in the `turn.completed` JSONL event. Pull it so we
+  // can estimate cost — codex doesn't expose total_cost_usd directly the way
+  // the claude CLI does, but we know the gpt-5.5 rates and can multiply.
+  let inputTokens: number | undefined;
+  let cachedInputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  let reasoningOutputTokens: number | undefined;
+  const stdoutLines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = stdoutLines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(stdoutLines[i]);
+      if (parsed?.type === 'turn.completed' && parsed?.usage) {
+        inputTokens = parsed.usage.input_tokens;
+        cachedInputTokens = parsed.usage.cached_input_tokens;
+        outputTokens = parsed.usage.output_tokens;
+        reasoningOutputTokens = parsed.usage.reasoning_output_tokens;
+        break;
+      }
+    } catch {}
+  }
   if (!reply) {
     // Fallback: scan stdout JSONL for last agent_message
-    const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
+    for (let i = stdoutLines.length - 1; i >= 0; i--) {
       try {
-        const parsed = JSON.parse(lines[i]);
+        const parsed = JSON.parse(stdoutLines[i]);
         if (parsed?.item?.type === 'agent_message' && typeof parsed.item.text === 'string') {
           reply = parsed.item.text;
           break;
@@ -814,12 +833,26 @@ async function callAxiomCodex(sessionKey: string, message: string): Promise<{ re
   }
   if (!reply) reply = '(empty reply from codex)';
 
+  // Estimate cost from token usage. gpt-5.5 rates (approximate; configurable
+  // via WATCH_AXIOM_CODEX_*_RATE env vars if pricing changes). Cached input
+  // is ~10× cheaper than fresh input. Reasoning tokens billed at output rate.
+  const ratePerMInput = Number(process.env.WATCH_AXIOM_CODEX_INPUT_RATE_PER_M || 1.25);   // $/M input tokens
+  const ratePerMCached = Number(process.env.WATCH_AXIOM_CODEX_CACHED_RATE_PER_M || 0.125); // $/M cached input
+  const ratePerMOutput = Number(process.env.WATCH_AXIOM_CODEX_OUTPUT_RATE_PER_M || 10);    // $/M output tokens
+  let cost: number | undefined;
+  if (typeof outputTokens === 'number') {
+    const freshIn = Math.max(0, (inputTokens || 0) - (cachedInputTokens || 0));
+    const cached = cachedInputTokens || 0;
+    const out = (outputTokens || 0) + (reasoningOutputTokens || 0);
+    cost = (freshIn * ratePerMInput + cached * ratePerMCached + out * ratePerMOutput) / 1_000_000;
+  }
+
   // Persist the session id on first run so subsequent messages resume the same conversation.
   if (actuallyNew && resolvedSessionId) {
     try { fs.writeFileSync(codexSessionFile, resolvedSessionId + '\n'); } catch {}
   }
 
-  return { reply, sessionId: resolvedSessionId, isNew: actuallyNew, durationMs };
+  return { reply, sessionId: resolvedSessionId, isNew: actuallyNew, durationMs, cost, inputTokens, outputTokens, cacheReadTokens: cachedInputTokens };
 }
 
 async function callAxiomAgent(sessionKey: string, message: string) {
