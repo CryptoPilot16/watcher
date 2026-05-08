@@ -572,8 +572,16 @@ function engineForAxiomTopic(sessionKey: string): 'claude' | 'codex' {
     ? (process.env.WATCH_AXIOM_CEO_ENGINE || '').trim().toLowerCase()
     : meta.role === 'manager'
       ? (process.env.WATCH_AXIOM_MANAGER_ENGINE || '').trim().toLowerCase()
-      : '';
+      : meta.role === 'coder'
+        ? (process.env.WATCH_AXIOM_CODER_ENGINE || '').trim().toLowerCase()
+        : '';
   if (override === 'claude' || override === 'codex') return override as 'claude' | 'codex';
+  // c4 (the team's QA reviewer) defaults to codex /goal because the audit
+  // role is genuinely multi-step (read recent output → run validators →
+  // find gaps → fix one → add regression test → verify). c1/c2/c3 stay on
+  // claude haiku because their tasks are narrow single-step allocations.
+  // Override the c4-default by setting WATCH_AXIOM_CODER_ENGINE=claude.
+  if (meta.role === 'coder' && meta.coderIndex === 4) return 'codex';
   return meta.role === 'ceo' || meta.role === 'manager' ? 'codex' : 'claude';
 }
 
