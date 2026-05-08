@@ -342,7 +342,7 @@ function recordCallCost(_sessionKey: string, costUsd: number | undefined) {
       '`/budget set 20` — raise allowance to $20',
       '`/budget reset` — restore default',
       '',
-      'Otherwise all 51 agents pause when the cap is hit (resets at UTC midnight). Membership-backed — no real billing.',
+      'Otherwise all 41 agents pause when the cap is hit (resets at UTC midnight). Membership-backed — no real billing.',
     ].join('\n');
     void sendTelegramAlert(msg);
   }

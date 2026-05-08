@@ -165,7 +165,7 @@ export default function SettingsPage() {
             </span>
           </div>
           <div className="mt-2 text-sm text-[var(--watch-text-bright)] sm:text-base">
-            Live token-usage tracker for the AXIOM 51-agent floor. Auto-refreshes every 5s.
+            Live token-usage tracker for the AXIOM 41-agent floor. Auto-refreshes every 5s.
           </div>
           <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
             No API keys are used — Claude and Codex agents run on subscription memberships. Token counts below are derived from the same per-call usage data the public API would have charged for, blended at ~$10/M tok so you can compare task weights and watch the daily cap. Nothing is actually being billed.
@@ -187,7 +187,7 @@ export default function SettingsPage() {
           <>
             <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4 sm:p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ daily allowance — across all 51 agents</div>
+                <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ daily allowance — across all 41 agents</div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">resets at UTC midnight · {data.today.dayKey}</div>
               </div>
               <div className="mt-3 flex flex-wrap items-baseline gap-3">
@@ -242,7 +242,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <div>
-                  Once the allowance is hit, all 51 agents pause until UTC midnight — protects you from runaway membership token burn.
+                  Once the allowance is hit, all 41 agents pause until UTC midnight — protects you from runaway membership token burn.
                 </div>
               </div>
             </div>
@@ -352,7 +352,7 @@ export default function SettingsPage() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ active agents — last hour</div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
-                  {data.agents.length} of 51 active · cap {data.cap.callsPerHourPerAgent}/hr each
+                  {data.agents.length} of 41 active · cap {data.cap.callsPerHourPerAgent}/hr each
                 </div>
               </div>
               {data.agents.length === 0 ? (

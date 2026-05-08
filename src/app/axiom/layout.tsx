@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     default: 'AXIOM Office',
     template: '%s · AXIOM',
   },
-  description: 'AXIOM operations floor — 51 AI agents in a 10×5 team grid.',
+  description: 'AXIOM operations floor — 41 AI agents across 10 teams of 4.',
   applicationName: 'AXIOM',
   manifest: '/axiom.webmanifest',
   appleWebApp: {
