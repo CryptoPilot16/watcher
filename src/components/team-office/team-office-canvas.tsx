@@ -555,6 +555,94 @@ function FloatingNameTag({ name, color, position, visible = true }: { name: stri
   );
 }
 
+// Bigger, color-bleed department banner — used above each team cubicle so the
+// 10 departments are unmistakable at a glance and match the roadmap palette.
+function buildDepartmentBannerTexture(name: string, accent: string) {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const w = canvas.width;
+  const h = canvas.height;
+  const r = 18;
+  ctx.clearRect(0, 0, w, h);
+  // Solid colored background with rounded corners.
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(w - r, 0);
+  ctx.quadraticCurveTo(w, 0, w, r);
+  ctx.lineTo(w, h - r);
+  ctx.quadraticCurveTo(w, h, w - r, h);
+  ctx.lineTo(r, h);
+  ctx.quadraticCurveTo(0, h, 0, h - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+  // Inner darker bar across top + bottom for chrome.
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(0, 0, w, 8);
+  ctx.fillRect(0, h - 8, w, 8);
+  // Department name centered, dark text on the colored background.
+  ctx.font = '700 56px Inter, JetBrains Mono, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillText(name.toUpperCase(), w / 2, h / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function DepartmentBanner({ name, color, position, visible = true }: { name: string; color: string; position: [number, number, number]; visible?: boolean }) {
+  const texture = useMemo(() => buildDepartmentBannerTexture(name, color), [name, color]);
+  if (!texture || !visible) return null;
+  return (
+    <sprite position={position} scale={[3.6, 0.9, 1]} renderOrder={21}>
+      <spriteMaterial map={texture} transparent depthWrite={false} depthTest={false} />
+    </sprite>
+  );
+}
+
+// Roadmap-palette mirror — must match DEPT_COLORS in /axiom/work and
+// /axiom/roadmap so the same department reads the same color across the
+// 3D scene, the file-event badges, and the progress board.
+const DEPT_COLORS_3D: Record<number, string> = {
+  1:  '#7ee787', // Foundation
+  2:  '#f7c763', // Governance
+  3:  '#58d9ff', // Reliability
+  4:  '#ff9d6a', // Substrate
+  5:  '#ffd166', // Flight Ops
+  6:  '#f08585', // Crew
+  7:  '#9ddafb', // Engineering
+  8:  '#f97676', // Safety
+  9:  '#c084fc', // Commercial
+  10: '#34d399', // ATC / IQ
+};
+
+function colorForTeam(team: number): string {
+  return DEPT_COLORS_3D[team] || '#7a8088';
+}
+
+// Tint a hex color toward black or white by mix factor in [-1,1].
+// negative = darker, positive = lighter. Used to derive rug + trim shades
+// from the department accent without picking a separate palette per dept.
+function tintHex(hex: string, mix: number): string {
+  const m = hex.match(/^#?([0-9a-f]{6})$/i);
+  if (!m) return hex;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  const towards = mix < 0 ? 0 : 255;
+  const f = Math.abs(mix);
+  const blend = (c: number) => Math.round(c * (1 - f) + towards * f);
+  const toHex = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+  return `#${toHex(blend(r))}${toHex(blend(g))}${toHex(blend(b))}`;
+}
+
 function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -1246,11 +1334,11 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
   const PARTITION_COLOR = '#7a8088';
   const PARTITION_TRIM = '#d6bd6f'; // warm gold trim — Watcher accent
 
-  // One U-shaped cubicle partition per team cluster, with optional department label above the far wall.
-  const renderPartition = (cx: number, cz: number, teamRow: 0 | 1, label?: string) => {
-    // Cluster occupies x ∈ [cx-3.0, cx+3.0]; depth ≈ 4.6m.
-    // Cubicle opens TOWARD CEO so the manager presents to the aisle:
-    // front-row teams open toward -z, back-row toward +z.
+  // One U-shaped cubicle partition per team cluster, with department label
+  // above the far wall. Each team's rug + trim is tinted with the
+  // department's roadmap color so the floor reads as 10 distinct,
+  // identifiable team zones (matches /axiom/roadmap and /axiom/work).
+  const renderPartition = (cx: number, cz: number, teamRow: 0 | 1, team: number, label?: string) => {
     const halfW = 3.0;
     const farOffset = 2.9;
     const back = teamRow === 0 ? cz + farOffset : cz - farOffset; // far side, away from CEO
@@ -1261,15 +1349,14 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
     const thickness = 0.08;
     const sideLen = 5.0;
     const sideZ = teamRow === 0 ? cz + 0.55 : cz - 0.55;
-    const labelY = wallH + 0.7;
+    const labelY = wallH + 1.0;
     const labelZ = teamRow === 0 ? back + 0.05 : back - 0.05;
-    // Accent rug colour rotates per column so the floor reads as ten
-    // distinct cubicles, not one repeated pattern.
-    const rugPalette = ['#3a4a3a', '#3a3a4a', '#4a3a3a', '#3a4a4a', '#4a4a3a'];
-    const rugColor = rugPalette[(Math.round((cx - COL_X_OFFSET) / COL_SPACING) + (teamRow === 0 ? 0 : 2)) % rugPalette.length];
+    const accent = colorForTeam(team);
+    const rugColor = tintHex(accent, -0.55); // dark-tinted dept color for floor
+    const trimColor = accent; // bright dept color for the wall caps
     return (
       <group key={`partition-${cx.toFixed(2)}-${cz.toFixed(2)}`}>
-        {/* Cubicle rug — colored accent under the desk cluster */}
+        {/* Cubicle rug — dept-tinted accent under the desk cluster */}
         <mesh
           rotation={[-Math.PI / 2, 0, 0]}
           position={[cx, 0.003, sideZ]}
@@ -1283,10 +1370,10 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
           <boxGeometry args={[halfW * 2, wallH, thickness]} />
           <meshStandardMaterial color={PARTITION_COLOR} roughness={0.9} />
         </mesh>
-        {/* trim cap on far wall */}
+        {/* trim cap on far wall — uses dept color */}
         <mesh position={[cx, wallH + 0.04, back]}>
           <boxGeometry args={[halfW * 2 + 0.04, 0.06, thickness + 0.04]} />
-          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
         </mesh>
         {/* left side wall */}
         <mesh position={[left, wallY, sideZ]} castShadow receiveShadow>
@@ -1295,7 +1382,7 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
         </mesh>
         <mesh position={[left, wallH + 0.04, sideZ]}>
           <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
-          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
         </mesh>
         {/* right side wall */}
         <mesh position={[right, wallY, sideZ]} castShadow receiveShadow>
@@ -1304,13 +1391,13 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
         </mesh>
         <mesh position={[right, wallH + 0.04, sideZ]}>
           <boxGeometry args={[thickness + 0.04, 0.06, sideLen + 0.04]} />
-          <meshStandardMaterial color={PARTITION_TRIM} roughness={0.85} />
+          <meshStandardMaterial color={trimColor} roughness={0.6} emissive={trimColor} emissiveIntensity={0.18} />
         </mesh>
-        {/* Department name banner above the far wall (visible from the open side) */}
+        {/* Big department banner — uses the dept color as background */}
         {label && (
-          <FloatingNameTag
+          <DepartmentBanner
             name={label}
-            color="#f6c87a"
+            color={accent}
             position={[cx, labelY, labelZ]}
             visible
           />
@@ -1366,15 +1453,18 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
         <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
       </mesh>
 
-      {/* 10 cubicle partitions — one per team. Department names: front row 0..4, back row 5..9. */}
+      {/* 10 cubicle partitions — one per team. Department names: front row 0..4, back row 5..9.
+          Team numbers: front row col=0..4 → m1..m5, back row col=0..4 → m6..m10. */}
       {Array.from({ length: 5 }).map((_, col) => {
         const cx = COL_X_OFFSET + col * COL_SPACING;
         const frontLabel = departmentNames?.[col];
         const backLabel = departmentNames?.[col + 5];
+        const frontTeam = col + 1;       // m1..m5
+        const backTeam = col + 6;        // m6..m10
         return (
           <Fragment key={`team-row-${col}`}>
-            {renderPartition(cx, FRONT_ROW_Z, 0, frontLabel)}
-            {renderPartition(cx, BACK_ROW_Z, 1, backLabel)}
+            {renderPartition(cx, FRONT_ROW_Z, 0, frontTeam, frontLabel)}
+            {renderPartition(cx, BACK_ROW_Z, 1, backTeam, backLabel)}
           </Fragment>
         );
       })}
