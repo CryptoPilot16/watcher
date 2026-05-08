@@ -78,44 +78,27 @@ async function tg(method, body) {
 
 function buildManagerBrief(team, roadmapHint) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
-  const hintBlock = roadmapHint
-    ? [
-        ``,
-        `ROADMAP STATUS for your team (${roadmapHint.built}/${roadmapHint.total} tracked deliverables on disk):`,
-        roadmapHint.remaining.length > 0
-          ? `Remaining tracked items:\n${roadmapHint.remaining.map((r) => `  - ${r}`).join('\n')}`
-          : `All TRACKED Phase-0 items for your team are on disk. Look at D${team}_GOAL.md for the full scope (the tracked list is a subset). If your full goal is genuinely complete, reply with: "m${team} ${dept}: PHASE-0 SCOPE COMPLETE — nothing concrete to ship this round" and emit an empty <<CODERS>> block (no c1/c2/c3/c4 lines). DO NOT invent makework.`,
-        ``,
-      ].join('\n')
+  // Compressed brief — same instructions, fewer tokens. The full system
+  // prompt is appended separately and already covers role context.
+  const remainingLine = roadmapHint
+    ? roadmapHint.remaining.length > 0
+      ? `Remaining (${roadmapHint.built}/${roadmapHint.total}): ${roadmapHint.remaining.slice(0, 6).join(' · ')}`
+      : `Tracked roadmap is COMPLETE. If D${team}_GOAL.md scope is also done, declare "PHASE-0 SCOPE COMPLETE" and emit empty <<CODERS>> block. No makework.`
     : '';
   return [
-    `[AXIOM AUTOPILOT — round driven by the operator's autopilot, not a CEO chat turn.]`,
-    `You are the ${dept} manager (m${team}, team ${team}).`,
-    ``,
-    `Read these in this order:`,
-    `1. ${PROJECT_DIR}/departments/D${team}_GOAL.md — your binding goal`,
-    `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md — full Phase 0 spec`,
-    `3. Anything you've already shipped under ${PROJECT_DIR}/ for your domain`,
-    hintBlock,
-    `Then do EXACTLY ONE concrete unfinished Phase 0 step for your department. Pick STRATEGIC scoping work — schemas, contracts, validators, specs, gating logic. Ship real artifacts on disk. If everything tracked AND in your D${team}_GOAL.md is genuinely shipped, declare done and skip — do NOT generate makework.`,
-    ``,
-    `THEN allocate work to your coders ONLY where it's genuinely useful this round. Don't fill all 4 slots for the sake of it — sending 1 coder with a sharp task beats sending 4 coders with vague filler. Skip a c{N} line if you have no concrete work for that coder right now. Coder roles (just hints — use them when relevant, ignore them when they don't fit):`,
-    `   c1 = tests / fixtures that exercise your contracts`,
-    `   c2 = integration glue that wires your contracts to neighbouring services`,
-    `   c3 = fixtures / seed data / sample payloads`,
-    `   c4 = QA reviewer (audits the team's recent output, finds gaps, fixes one)`,
-    ``,
-    `Reply MUST end with the block below. Include a line ONLY for coders who have real work this round; omit lines for coders you're not deploying. Empty block (no c-lines) is valid and means "team rests this round". Better one good line than four padded ones.`,
+    `[AUTOPILOT — m${team} ${dept}]`,
+    remainingLine,
+    `Do ONE concrete Phase-0 step for D${team} (schema/contract/validator/spec). Ship to disk. No makework.`,
+    `Reply ≤400 chars + <<CODERS>>...<<END>> block. Allocate ONLY coders with real work. Hints: c1=tests c2=glue c3=fixtures c4=QA. Skip a c-line if useless. Empty block = team rests.`,
+    `Format:`,
+    `m${team} ${dept}: <≤200ch summary>`,
     `<<CODERS>>`,
-    `c1: <only if useful — one-line concrete task with file paths>`,
-    `c2: <only if useful — one-line concrete task with file paths>`,
-    `c3: <only if useful — one-line concrete task with file paths>`,
-    `c4: <only if useful — one-line audit/fix task>`,
+    `c1: <only if useful>`,
+    `c2: <only if useful>`,
+    `c3: <only if useful>`,
+    `c4: <only if useful>`,
     `<<END>>`,
-    ``,
-    `Before that block, give a 2-3 line summary of what YOU shipped this round + the next blocker.`,
-    `Reply starts with a signed status: "m${team} ${dept}: <one-line summary>"`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 // Parse a manager's reply for a <<CODERS>> ... <<END>> block. Returns
@@ -146,21 +129,9 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
   // default brief below is retained ONLY as a last-resort safety net.
   if (managerAssignedTask) {
     return [
-      `[AXIOM AUTOPILOT — round driven by the operator's autopilot.]`,
-      `You are coder c${coderIndex} on the ${dept} team (m${team}, team ${team}).`,
-      `Your manager (m${team} ${dept}) has allocated this concrete task to you for this round:`,
-      ``,
-      `  ${managerAssignedTask}`,
-      ``,
-      `Context to read first:`,
-      `1. ${PROJECT_DIR}/departments/D${team}_GOAL.md`,
-      `2. ${PROJECT_DIR}/AXIOM_MASTERPLAN.md and ${PROJECT_DIR}/AXIOM_TECHSTACK.md`,
-      `3. Anything your team has shipped recently under ${PROJECT_DIR}/`,
-      ``,
-      `Do exactly the task your manager allocated — no broader scope. If the task is impossible (file doesn't exist, contract is broken, etc), make minimal progress AND report the blocker so the manager can re-plan next round.`,
-      ``,
-      `Reply: (1) what you built/wrote in 1-2 lines, (2) exact file paths created or modified, (3) anything that blocked you.`,
-      `Reply ends with: "c${coderIndex}/m${team} ${dept}: <one-line summary>"`,
+      `[AUTOPILOT — c${coderIndex}/m${team} ${dept}]`,
+      `Manager allocated: ${managerAssignedTask}`,
+      `Do EXACTLY this task. Reference D${team}_GOAL.md if needed. Reply ≤200 chars: what you built + file paths. End with "c${coderIndex}/m${team} ${dept}: <summary>". Report blocker if impossible.`,
     ].join('\n');
   }
   // SAFETY NET — runCycle won't dispatch a coder without a manager

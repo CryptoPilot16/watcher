@@ -553,7 +553,12 @@ function modelForAxiomTopic(sessionKey: string): string {
   if (meta.role === 'ceo') return process.env.WATCH_AXIOM_CEO_MODEL || 'gpt-5.5';
   if (meta.role === 'manager') return process.env.WATCH_AXIOM_MANAGER_MODEL || 'gpt-5.5';
   // coder rotation deterministic by team+index
-  const rotation = ['sonnet', 'haiku', 'sonnet', 'haiku', 'opus'];
+  // Coders default to haiku for cost — opus is 20× more expensive, sonnet
+  // 4×, and haiku handles routine implementation tasks fine. Override per
+  // coder via WATCH_AXIOM_CODER_MODEL or the rotation env if you want
+  // pricier models for specific cycles.
+  const rotationEnv = (process.env.WATCH_AXIOM_CODER_MODELS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const rotation = rotationEnv.length > 0 ? rotationEnv : ['haiku', 'haiku', 'haiku', 'haiku', 'haiku'];
   const seed = ((meta.team || 0) * 7 + (meta.coderIndex || 0) * 3) % rotation.length;
   return rotation[seed];
 }

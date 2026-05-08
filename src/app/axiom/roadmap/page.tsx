@@ -15,12 +15,23 @@ type Item = {
 
 type ByTeam = { team: number; dept: string; built: number; total: number };
 
+type Phase = {
+  num: number;
+  name: string;
+  months: string;
+  deliverable: string;
+  cost: string;
+  rationale: string;
+};
+
 type Resp = {
   ok: true;
   generatedAt: string;
   overall: { built: number; total: number; percent: number };
   byTeam: ByTeam[];
   items: Item[];
+  phases?: Phase[];
+  currentPhase?: number;
 };
 
 const DEPT_COLOR: Record<number, string> = {
@@ -75,7 +86,7 @@ export default function RoadmapPage() {
             <div className="mt-2">
               <div className="flex items-baseline gap-3">
                 <span className="text-2xl font-semibold text-[var(--watch-text-bright)]">{data.overall.percent}%</span>
-                <span className="text-sm text-[var(--watch-text-muted)]">{data.overall.built} of {data.overall.total} deliverables on disk</span>
+                <span className="text-sm text-[var(--watch-text-muted)]">{data.overall.built} of {data.overall.total} Phase-0 deliverables on disk</span>
               </div>
               <div className="mt-2 h-2 w-full overflow-hidden rounded bg-black/40">
                 <div
@@ -90,6 +101,60 @@ export default function RoadmapPage() {
             <div className="mt-2 text-xs text-[var(--watch-text-muted)]">loading…</div>
           )}
         </div>
+
+        {/* Multi-phase platform timeline — Phase 0 in detail below; future
+            phases show high-level scope from AXIOM_MASTERPLAN.md §15.1 so the
+            operator sees the trajectory until full platform. */}
+        {data?.phases ? (
+          <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ 6-phase platform plan (Phase 0 → 5)</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {data.phases.map((p) => {
+                const isCurrent = p.num === (data.currentPhase ?? 0);
+                const isFuture = p.num > (data.currentPhase ?? 0);
+                const isDone = p.num < (data.currentPhase ?? 0);
+                const accent = isCurrent ? '#7ee787' : isDone ? '#94a3b8' : '#5b6478';
+                return (
+                  <div
+                    key={p.num}
+                    className="rounded-lg border p-2 transition-all"
+                    style={{
+                      borderColor: isCurrent ? accent : `${accent}55`,
+                      borderWidth: isCurrent ? 2 : 1,
+                      background: isCurrent ? `${accent}14` : 'transparent',
+                      opacity: isFuture ? 0.7 : 1,
+                    }}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className="rounded px-1.5 py-px text-[10px] font-mono uppercase tracking-wide"
+                        style={{ color: accent, border: `1px solid ${accent}88`, background: `${accent}1a` }}
+                      >
+                        Phase {p.num} · {p.name}
+                      </span>
+                      <span className="text-[10px] text-[var(--watch-text-muted)]">{p.months} mo</span>
+                      <span className="ml-auto text-[10px] text-[var(--watch-text-muted)]">{p.cost}</span>
+                    </div>
+                    {isCurrent ? (
+                      <div className="mt-1 flex items-center gap-2 text-[10px]">
+                        <span className="text-emerald-400">▲ in progress · {data.overall.percent}%</span>
+                      </div>
+                    ) : isDone ? (
+                      <div className="mt-1 text-[10px] text-emerald-400">✓ complete</div>
+                    ) : (
+                      <div className="mt-1 text-[10px] text-[var(--watch-text-muted)]">— upcoming</div>
+                    )}
+                    <div className="mt-1 text-[11px] leading-snug text-[var(--watch-text)]">{p.deliverable}</div>
+                    <div className="mt-1 text-[10px] italic text-[var(--watch-text-muted)]">{p.rationale}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2 text-[10px] text-[var(--watch-text-muted)]">
+              Total platform: $20–36M over 4 years (planning ±35%). Per AXIOM_MASTERPLAN.md §15.1.
+            </div>
+          </div>
+        ) : null}
 
         {data ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

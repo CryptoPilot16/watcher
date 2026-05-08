@@ -125,6 +125,18 @@ const PHASE0: Deliverable[] = [
 
 const DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
 
+// Multi-phase platform plan from AXIOM_MASTERPLAN.md §15.1.
+// Phase 0 has detailed deliverables tracked above; future phases shown as
+// high-level scope so the operator sees the trajectory beyond Phase 0.
+const PHASES = [
+  { num: 0, name: 'Foundation',         months: '0–6',   deliverable: 'AXIOM-CORE, ID, LOG, RULE, UI, DOC, OBS, LINK, KMS, reference data', cost: '$2.5–4M',  rationale: 'Nothing else builds honestly without this.' },
+  { num: 1, name: 'Operate',             months: '6–18',  deliverable: 'AXIOM-DISPATCH, CREW, TECH, SMS. Weather, NOTAM, ATC slots, ACARS, FDM connectors',     cost: '$6–10M',   rationale: 'AOC-critical.' },
+  { num: 2, name: 'Sell & Serve',        months: '12–24', deliverable: 'AXIOM-COMM, CUST, OPS, CABIN. NDC/GDS, DCS, BSP/CASS, baggage',                          cost: '$4–7M',    rationale: 'Revenue + customer experience.' },
+  { num: 3, name: 'Run Business',        months: '18–30', deliverable: 'AXIOM-FIN, HR, PROC, LEGAL, QA. Tax engine, IFRS 16, payroll connectors',                cost: '$3–5M',    rationale: 'Internal back office.' },
+  { num: 4, name: 'Harden & Extend',     months: '24–42', deliverable: 'AXIOM-SEC, CYBER, ENV, TRAIN, ERP',                                                       cost: '$3–6M',    rationale: 'Hardening & regulatory expansion.' },
+  { num: 5, name: 'Saleability & Scale', months: '36–48', deliverable: 'Multi-tenant maturity, ≥1 third-party AOC running AXIOM, onboarding playbook',           cost: '$1.5–4M',  rationale: 'Externally validated.' },
+];
+
 function evidenceMatches(rel: string): { built: boolean; matchedPath: string | null; size: number } {
   const abs = path.join(PROJECT_DIR, rel);
   // Trailing slash = directory existence (recursive: at least one file inside)
@@ -193,6 +205,8 @@ export async function GET() {
     overall: { built, total, percent: total ? Math.round((built / total) * 100) : 0 },
     byTeam: Object.values(byTeam).filter((b) => b.total > 0),
     items,
+    phases: PHASES,
+    currentPhase: 0,
   };
   cache = { ts: now, payload };
   return NextResponse.json(payload);
