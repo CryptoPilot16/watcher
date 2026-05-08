@@ -76,12 +76,19 @@ export default function AxiomWorkPage() {
     let cancelled = false;
     const poll = async () => {
       try {
+        // credentials:'same-origin' forces the admin session cookie to be sent
+        // — without it the AXIOM admin middleware returns 401 and the page
+        // shows zero agents even when the floor is busy.
         const [stateR, eventsR] = await Promise.all([
-          fetch('/api/axiom/state', { cache: 'no-store' }),
-          fetch('/api/axiom/project/events?limit=120', { cache: 'no-store' }),
+          fetch('/api/axiom/state', { cache: 'no-store', credentials: 'same-origin' }),
+          fetch('/api/axiom/project/events?limit=120', { cache: 'no-store', credentials: 'same-origin' }),
         ]);
         if (cancelled) return;
-        if (stateR.ok) setData(await stateR.json());
+        if (!stateR.ok) {
+          setError(`state ${stateR.status}${stateR.status === 401 ? ' — try a hard refresh' : ''}`);
+          return;
+        }
+        setData(await stateR.json());
         if (eventsR.ok) {
           const j = await eventsR.json();
           setEvents(Array.isArray(j?.events) ? j.events : []);
