@@ -68,7 +68,7 @@ const PHASE0: Deliverable[] = [
 
   // ── D5 Flight Ops — gated on D1+D2 ──────────────────────────────────
   { id: 'D5-act-gate',    label: 'D5 activation pre-req: D1 spine + D2 dispatch rules ready',   team: 5, evidence: ['departments/D5_AGENT_HEALTH.md'] },
-  { id: 'D5-dispatch-rel',label: 'Dispatch release contract (proto)',                            team: 5, evidence: ['contracts/protos/axiom/dispatch/v1/dispatch_release.proto'] },
+  { id: 'D5-dispatch-rel',label: 'Dispatch release contract (proto)',                            team: 5, evidence: ['contracts/protos/axiom/dispatch/v1/dispatch_release.proto', 'tools/validate-dispatch-release-rpc-contract.js'] },
   { id: 'D5-flight-cycle',label: 'Dispatch flight-cycle workflow contract',                      team: 5, evidence: ['contracts/workflows/dispatch_flight_cycle.v1.yaml'] },
   { id: 'D5-latency',     label: 'Dispatch latency-budget published contract',                   team: 5, evidence: ['contracts/asyncapi/dispatch-release.v1.yaml', 'contracts/entities/dispatch/latency_budget'] },
   { id: 'D5-captain',     label: 'Captain-acceptance gate schema (EFB offline reconcile)',       team: 5, evidence: ['contracts/entities/flight_ops_phase0.yaml', 'contracts/entities/dispatch/captain_acceptance'] },
@@ -177,32 +177,89 @@ function evidenceMatches(rel: string): { built: boolean; matchedPath: string | n
 let cache: { ts: number; payload: any } | null = null;
 const CACHE_TTL_MS = 10_000;
 
+// Read the validator pass-matrix produced by `tools/run-all-validators.js`.
+// File-existence is the cheap signal; this turns it into "validator-passes"
+// — the missing third leg of "is Phase-0 actually green". An item with a
+// validator path in its evidence list whose validator FAILED gets a
+// qualityFailed flag and is excluded from the qualityBuilt rollup.
+type ValidatorResult = { validator: string; passed: boolean; exitCode: number | null; signal: string | null; durationMs: number };
+type ValidatorMatrix = { generatedAt: string; total: number; passed: number; failed: number; passRate: number; results: ValidatorResult[] };
+
+function loadValidatorMatrix(): ValidatorMatrix | null {
+  const f = path.join(PROJECT_DIR, 'reports/phase0-validator-pass-matrix.json');
+  try {
+    const txt = fs.readFileSync(f, 'utf8');
+    return JSON.parse(txt) as ValidatorMatrix;
+  } catch {
+    return null;
+  }
+}
+
+function validatorsForItem(evidence: string[]): string[] {
+  return evidence.filter((e) => /(^|\/)tools\/validate-[^/]+\.js$/.test(e));
+}
+
 export async function GET() {
   const now = Date.now();
   if (cache && now - cache.ts < CACHE_TTL_MS) {
     return NextResponse.json({ ...cache.payload, cached: true });
   }
+  const matrix = loadValidatorMatrix();
+  const passByValidator = new Map<string, boolean>();
+  if (matrix) for (const r of matrix.results) passByValidator.set(r.validator, r.passed);
+
   const items = PHASE0.map((d) => {
     let hit: { built: boolean; matchedPath: string | null; size: number } = { built: false, matchedPath: null, size: 0 };
     for (const ev of d.evidence) {
       hit = evidenceMatches(ev);
       if (hit.built) break;
     }
-    return { ...d, ...hit };
+    // Quality flag: if any validator named in this item's evidence is in the
+    // matrix and FAILED, mark qualityFailed. Items without a validator in
+    // their evidence list inherit qualityFailed=null (no signal).
+    const itemValidators = validatorsForItem(d.evidence);
+    let qualityFailed: boolean | null = null;
+    let failedValidators: string[] = [];
+    if (itemValidators.length && matrix) {
+      const known = itemValidators.filter((v) => passByValidator.has(v));
+      if (known.length) {
+        failedValidators = known.filter((v) => !passByValidator.get(v));
+        qualityFailed = failedValidators.length > 0;
+      }
+    }
+    return { ...d, ...hit, qualityFailed, failedValidators };
   });
-  // Per-team rollup
-  const byTeam: Record<number, { built: number; total: number; team: number; dept: string }> = {};
-  for (let n = 0; n <= 10; n++) byTeam[n] = { built: 0, total: 0, team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1] };
+
+  const byTeam: Record<number, { built: number; total: number; qualityHealthy: number; team: number; dept: string }> = {};
+  for (let n = 0; n <= 10; n++) byTeam[n] = { built: 0, total: 0, qualityHealthy: 0, team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1] };
   for (const it of items) {
     byTeam[it.team].total += 1;
     if (it.built) byTeam[it.team].built += 1;
+    // qualityHealthy = built AND no associated validator failed
+    if (it.built && it.qualityFailed !== true) byTeam[it.team].qualityHealthy += 1;
   }
   const built = items.filter((i) => i.built).length;
+  const qualityHealthy = items.filter((i) => i.built && i.qualityFailed !== true).length;
   const total = items.length;
   const payload = {
     ok: true,
     generatedAt: new Date().toISOString(),
-    overall: { built, total, percent: total ? Math.round((built / total) * 100) : 0 },
+    overall: {
+      built,
+      total,
+      percent: total ? Math.round((built / total) * 100) : 0,
+      qualityHealthy,
+      qualityPercent: total ? Math.round((qualityHealthy / total) * 100) : 0,
+    },
+    validatorMatrix: matrix
+      ? {
+          generatedAt: matrix.generatedAt,
+          total: matrix.total,
+          passed: matrix.passed,
+          failed: matrix.failed,
+          passRate: matrix.passRate,
+        }
+      : null,
     byTeam: Object.values(byTeam).filter((b) => b.total > 0),
     items,
     phases: PHASES,
