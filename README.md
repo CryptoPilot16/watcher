@@ -153,7 +153,7 @@ Configurable via `WATCH_AXIOM_PROJECT_EVENT_LOG`, `WATCH_AXIOM_PROJECT_SNAPSHOT_
 
 ### `/axiom/settings` — daily allowance + usage telemetry
 
-Live view of the AXIOM office's daily spend (computed from each claude turn's `total_cost_usd`), per-agent call rate over the last hour, and a breakdown of recent agent actions by category (image / pdf / document / voice / code / text) with average cost and duration. Override the default daily cap (`WATCH_AXIOM_MAX_DAILY_USD`, default $5) at runtime without restarting.
+Live view of the AXIOM office's daily spend (computed from each claude turn's `total_cost_usd`), per-agent call rate over the last hour, and a breakdown of recent agent actions by category (image / pdf / document / voice / code / text) with average cost and duration. Override the default daily cap (`WATCH_AXIOM_MAX_DAILY_USD`, default $10) at runtime via the page or the `/budget` Telegram command — no restart required.
 
 ## Main surfaces
 
