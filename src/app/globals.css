@@ -47,6 +47,10 @@
 
 html {
   scroll-behavior: smooth;
+  /* Keep the safe-area regions (notch / clock / home-indicator) dark when
+     the app is launched as an installed PWA so iOS doesn't show a white
+     bar around the body. */
+  background-color: var(--watch-bg);
 }
 
 body {
@@ -229,3 +233,31 @@ pre {
 
 /* Always allow long file paths in mono panes to wrap rather than overflow */
 pre { word-break: break-word; overflow-wrap: anywhere; }
+
+/* /axiom — installed-PWA safe-area handling. The manifest sets
+   apple-mobile-web-app-status-bar-style: black-translucent, which makes the
+   iOS status bar overlay the page. Without these insets the AdminShellHeader
+   slides under the clock. Scoped to display-mode: standalone so a regular
+   browser tab keeps the page's original padding. The .axiom-app wrapper
+   raises specificity so we beat Tailwind's `p-3 / sm:p-5` on the
+   page-level <main>. */
+.axiom-app {
+  background-color: var(--watch-bg);
+  min-height: 100dvh;
+}
+@media (display-mode: standalone) {
+  .axiom-app main {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+    padding-right: max(env(safe-area-inset-right), 0.75rem);
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+    padding-left: max(env(safe-area-inset-left), 0.75rem);
+  }
+}
+@media (display-mode: standalone) and (min-width: 640px) {
+  .axiom-app main {
+    padding-top: max(env(safe-area-inset-top), 1.25rem);
+    padding-right: max(env(safe-area-inset-right), 1.25rem);
+    padding-bottom: max(env(safe-area-inset-bottom), 1.25rem);
+    padding-left: max(env(safe-area-inset-left), 1.25rem);
+  }
+}

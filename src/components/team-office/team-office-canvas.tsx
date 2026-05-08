@@ -468,6 +468,10 @@ type DeskLayout = {
   focusPoint: [number, number, number];
   deskSeatPosition: [number, number, number];
   deskStandPosition: [number, number, number];
+  // Optional: when present, the avatar's at-desk facing snaps to this angle
+  // instead of the default `rotationY + π`. Used in the AXIOM layout to
+  // point every worker at the CEO desk in the middle of the room.
+  atDeskFacing?: number;
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
@@ -1112,7 +1116,9 @@ const ENV_ASSETS = [
   '/models/env/chair.glb',
   '/models/env/table_medium.glb',
 ];
-ENV_ASSETS.forEach((p) => (useGLTF as unknown as { preload: (p: string) => void }).preload(p));
+// Medieval/dungeon GLBs only get used when sceneStyle === 'dungeon'. We skip the
+// eager preload so the AXIOM office page doesn't block on 14 unused .glb files.
+// They still load on demand if the user switches to the dungeon scene style.
 
 function GLBTile({ url, position, rotationY = 0 }: { url: string; position: [number, number, number]; rotationY?: number }) {
   const gltf = useGLTF(url);
@@ -1120,11 +1126,20 @@ function GLBTile({ url, position, rotationY = 0 }: { url: string; position: [num
   return <primitive object={cloned} position={position} rotation={[0, rotationY, 0]} />;
 }
 
-function GLTFFloorGrid() {
+function GLTFFloorGrid({ layoutVariant = 'default' }: { layoutVariant?: LayoutVariant }) {
   const tiles: Array<[number, number, number]> = [];
-  for (let x = -10; x < 10; x += 4) {
-    for (let z = -8; z < 8; z += 4) {
-      tiles.push([x + 2, 0, z + 2]);
+  if (layoutVariant === 'axiom') {
+    // Cover the 40×24 axiom floor centered at z=4.5 with a 10×6 tile grid.
+    for (let x = -20; x < 20; x += 4) {
+      for (let z = -12; z < 12; z += 4) {
+        tiles.push([x + 2, 0, 4.5 + z + 2]);
+      }
+    }
+  } else {
+    for (let x = -10; x < 10; x += 4) {
+      for (let z = -8; z < 8; z += 4) {
+        tiles.push([x + 2, 0, z + 2]);
+      }
     }
   }
   return <group>{tiles.map((p, i) => <GLBTile key={i} url="/models/env/floor_tile.glb" position={p} />)}</group>;
@@ -1214,16 +1229,16 @@ function VoxelOfficeScene({ layoutVariant = 'default', departmentNames }: { layo
 }
 
 /**
- * AXIOM Office scene — bigger room (38m × 32m) with 10 visible team compartments.
+ * AXIOM Office scene — room sized to fit just the 10 team compartments + CEO podium.
  * Geometry mirrors buildAxiomDeskLayouts: 5 teams in a front row at z=+9.5, 5 in a back row
  * at z=-0.5, with the CEO centered between them. Each team gets a U-shaped low partition
  * (cubicle wall) that frames the manager + 2×2 coder block on three sides.
  */
 function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[] }) {
   const S = 0.95;
-  const FLOOR_W = 42;
-  const FLOOR_D = 34;
-  const FLOOR_OFFSET_Z = 4.5; // center floor between back row (-3) and front edge (+12)
+  const FLOOR_W = 40;
+  const FLOOR_D = 24;
+  const FLOOR_OFFSET_Z = 4.5; // teams span z=[-3.55, 12.55]; centered on 4.5 with ~3m buffer each side
   const COL_SPACING = 6.4;
   const COL_X_OFFSET = -((5 - 1) * COL_SPACING) / 2;
   const FRONT_ROW_Z = 9.5;
@@ -1234,10 +1249,11 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
   // One U-shaped cubicle partition per team cluster, with optional department label above the far wall.
   const renderPartition = (cx: number, cz: number, teamRow: 0 | 1, label?: string) => {
     // Cluster occupies x ∈ [cx-3.0, cx+3.0]; depth ≈ 4.6m.
-    // Front-row teams have the open side facing the CEO (toward -z); back-row open toward +z.
+    // Cubicle opens TOWARD CEO so the manager presents to the aisle:
+    // front-row teams open toward -z, back-row toward +z.
     const halfW = 3.0;
     const farOffset = 2.9;
-    const back = teamRow === 0 ? cz + farOffset : cz - farOffset; // far side from CEO
+    const back = teamRow === 0 ? cz + farOffset : cz - farOffset; // far side, away from CEO
     const left = cx - halfW;
     const right = cx + halfW;
     const wallH = 1.1;
@@ -1334,12 +1350,10 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
         <meshStandardMaterial color="#5d6168" roughness={0.92} />
       </mesh>
 
-      {/* Walls — back, left, right, front */}
+      {/* Walls — back + left + right only. The front wall is omitted so the
+          camera looking from the +z side has an open view straight into the
+          office (no glass-plane fixture row blocking the foreground). */}
       <mesh position={[0, 2, FLOOR_OFFSET_Z - FLOOR_D / 2]}>
-        <boxGeometry args={[FLOOR_W, 4, 0.1]} />
-        <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
-      </mesh>
-      <mesh position={[0, 2, FLOOR_OFFSET_Z + FLOOR_D / 2]}>
         <boxGeometry args={[FLOOR_W, 4, 0.1]} />
         <meshStandardMaterial color="#b4b8bd" roughness={0.92} />
       </mesh>
@@ -1365,183 +1379,175 @@ function AxiomVoxelOfficeScene({ departmentNames }: { departmentNames?: string[]
         );
       })}
 
-      {/* Back wall fixtures — 4 frames spread evenly, mounted on the INSIDE face,
-          rotated 180° so the painted/cork side faces the room. */}
+      {/* Back wall fixtures — only 2, rendered as flat panels glued to the
+          interior face of the back wall. Replaces the voxel-OBJ models, which
+          had unknown anchor offsets and floated in front of the wall. */}
       {(() => {
-        const wallInsideZ = FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.08;
-        const fixtures: Array<{ base: string; x: number }> = [
-          { base: 'Office_Misc_Wall_Corkboard_02', x: -10.5 },
-          { base: 'Office_Misc_Whiteboard_02', x: -3.5 },
-          { base: 'Office_Misc_Whiteboard_02', x: 3.5 },
-          { base: 'Office_Misc_Wall_Corkboard_02', x: 10.5 },
+        // Inner face of the back wall (mesh thickness is 0.1, centered on the
+        // plane). +0.052 puts the panel a hair into the room so there's no
+        // z-fighting with the wall surface.
+        const panelZ = FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.052;
+        const panels: Array<{ kind: 'corkboard' | 'whiteboard'; x: number }> = [
+          { kind: 'corkboard', x: -8 },
+          { kind: 'whiteboard', x: 8 },
         ];
-        return fixtures.map((f, i) => (
-          <group
-            key={`back-wall-fixture-${i}`}
-            position={[f.x, 2.0, wallInsideZ]}
-            rotation={[0, Math.PI, 0]}
-            scale={[S * 1.25, S * 1.25, S * 1.25]}
-          >
-            <VoxelObj base={f.base} />
-          </group>
-        ));
+        return panels.map((p, i) => {
+          const isWhiteboard = p.kind === 'whiteboard';
+          const frameColor = isWhiteboard ? '#d8d4c8' : '#9c7c52';
+          const surfaceColor = isWhiteboard ? '#f4f2eb' : '#c5a878';
+          return (
+            <group key={`back-wall-fixture-${i}`} position={[p.x, 2.0, panelZ]}>
+              {/* Frame */}
+              <mesh>
+                <boxGeometry args={[2.6, 1.7, 0.05]} />
+                <meshStandardMaterial color={frameColor} roughness={0.7} />
+              </mesh>
+              {/* Surface (slightly forward from the frame) */}
+              <mesh position={[0, 0, 0.03]}>
+                <planeGeometry args={[2.4, 1.5]} />
+                <meshStandardMaterial color={surfaceColor} roughness={isWhiteboard ? 0.3 : 0.95} />
+              </mesh>
+            </group>
+          );
+        });
       })()}
 
-      {/* Front wall art — corkboards facing the room (inside face of front wall) */}
-      <group
-        position={[-8, 2.0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 0.08]}
-        rotation={[0, 0, 0]}
-        scale={[S * 1.2, S * 1.2, S * 1.2]}
-      >
-        <VoxelObj base="Office_Misc_Wall_Corkboard_02" />
-      </group>
-      <group
-        position={[8, 2.0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 0.08]}
-        rotation={[0, 0, 0]}
-        scale={[S * 1.2, S * 1.2, S * 1.2]}
-      >
-        <VoxelObj base="Office_Misc_Whiteboard_02" />
-      </group>
-
-      {/* CEO lounge — two couches flanking a coffee table, near the back wall behind the podium.
-          Couches face inward toward the aisle so it reads as a meeting nook. */}
-      <VoxelObj
-        base="Office_Couch_Black_01"
-        position={[-3.2, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        rotationY={Math.PI / 2}
-        scale={S * 1.1}
-      />
-      <VoxelObj
-        base="Office_Couch_White_01"
-        position={[3.2, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        rotationY={-Math.PI / 2}
-        scale={S * 1.1}
-      />
-      <VoxelObj
-        base="Office_Table_Coffee_01_Black"
-        position={[0, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        scale={S * 1.0}
-      />
-      <VoxelObj
-        base="Office_Misc_Coffee_Mug"
-        position={[-0.3, 0.5, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        scale={S * 0.9}
-      />
-      <VoxelObj
-        base="Office_Misc_Coffee_Mug"
-        position={[0.3, 0.5, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        scale={S * 0.9}
-      />
-
-      {/* Lounge accent rug under the coffee table */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.004, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        receiveShadow
-      >
-        <planeGeometry args={[8.5, 4.8]} />
-        <meshStandardMaterial color="#3a2f22" roughness={0.95} />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.005, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]}
-        receiveShadow
-      >
-        <planeGeometry args={[8.0, 4.3]} />
-        <meshStandardMaterial color="#5a4a30" roughness={0.92} />
-      </mesh>
+      {/* Front wall art removed along with the front wall itself — the office
+          opens onto the camera so nothing should be mounted on a non-existent wall. */}
 
       {/* Plants in corners — taller varieties to feel like a real floor */}
-      <VoxelObj base="Office_Misc_Plant_03" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.4} />
-      <VoxelObj base="Office_Misc_Plant_03" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.4} />
-      <VoxelObj base="Office_Misc_Plant_02" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.3} />
-      <VoxelObj base="Office_Misc_Plant_01" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.3} />
-
-      {/* Aisle plants — flank the central carpet so the CEO axis feels framed */}
-      <VoxelObj base="Office_Misc_Plant_02" position={[-FLOOR_W / 2 + 1.8, 0, ceoZ - 3.6]} scale={S * 1.1} />
-      <VoxelObj base="Office_Misc_Plant_02" position={[FLOOR_W / 2 - 1.8, 0, ceoZ - 3.6]} scale={S * 1.1} />
-      <VoxelObj base="Office_Misc_Plant_01" position={[-FLOOR_W / 2 + 1.8, 0, ceoZ + 3.6]} scale={S * 1.1} />
-      <VoxelObj base="Office_Misc_Plant_01" position={[FLOOR_W / 2 - 1.8, 0, ceoZ + 3.6]} scale={S * 1.1} />
-
-      {/* Filing cabinets along the back wall, between the wall fixtures */}
-      <VoxelObj
-        base="Office_Misc_Cabinet_01"
-        position={[-7, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
-        scale={S * 1.1}
-      />
-      <VoxelObj
-        base="Office_Misc_Cabinet_01"
-        position={[0, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
-        scale={S * 1.1}
-      />
-      <VoxelObj
-        base="Office_Misc_Cabinet_01"
-        position={[7, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 0.6]}
-        scale={S * 1.1}
-      />
+      <VoxelObj base="Office_Misc_Plant_03" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.2} />
+      <VoxelObj base="Office_Misc_Plant_03" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z - FLOOR_D / 2 + 1]} scale={S * 1.2} />
+      <VoxelObj base="Office_Misc_Plant_02" position={[-FLOOR_W / 2 + 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Plant_01" position={[FLOOR_W / 2 - 1, 0, FLOOR_OFFSET_Z + FLOOR_D / 2 - 1]} scale={S * 1.1} />
 
       {/* Side doors */}
-      <VoxelObj base="Office_Misc_Door_01" position={[-FLOOR_W / 2 + 0.3, 0, ceoZ]} rotationY={Math.PI / 2} scale={S * 1.2} />
-      <VoxelObj base="Office_Misc_Door_01" position={[FLOOR_W / 2 - 0.3, 0, ceoZ]} rotationY={-Math.PI / 2} scale={S * 1.2} />
+      <VoxelObj base="Office_Misc_Door_01" position={[-FLOOR_W / 2 + 0.3, 0, ceoZ]} rotationY={Math.PI / 2} scale={S * 1.1} />
+      <VoxelObj base="Office_Misc_Door_01" position={[FLOOR_W / 2 - 0.3, 0, ceoZ]} rotationY={-Math.PI / 2} scale={S * 1.1} />
 
-      {/* Warm accent lights — gold pin-spots on the CEO podium and lounge */}
+      {/* Warm accent light on the CEO podium */}
       <pointLight position={[0, 4.2, ceoZ]} intensity={0.55} distance={9} decay={1.6} color="#f6c87a" />
-      <pointLight position={[0, 3.6, FLOOR_OFFSET_Z - FLOOR_D / 2 + 2.2]} intensity={0.45} distance={7} decay={1.6} color="#f6c87a" />
       {/* Cool fill lights along the aisle so the floor reads end-to-end */}
-      <pointLight position={[-FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
-      <pointLight position={[FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
-      <pointLight position={[-FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
-      <pointLight position={[FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.32} distance={11} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[-FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.3} distance={9} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[FLOOR_W / 4, 4.0, FRONT_ROW_Z]} intensity={0.3} distance={9} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[-FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.3} distance={9} decay={1.8} color="#cfd9e6" />
+      <pointLight position={[FLOOR_W / 4, 4.0, BACK_ROW_Z]} intensity={0.3} distance={9} decay={1.8} color="#cfd9e6" />
     </>
   );
 }
 
-function MedievalDecorations() {
-  const props: Array<{ url: string; pos: [number, number, number]; ry?: number; scale?: number }> = [
-    // Wall-mounted torches on back wall (flush at z=-8.0)
-    { url: '/models/env/torch_lit.glb', pos: [-6, 2.5, -8.0], ry: 0 },
-    { url: '/models/env/torch_lit.glb', pos: [-2, 2.5, -8.0], ry: 0 },
-    { url: '/models/env/torch_lit.glb', pos: [2, 2.5, -8.0], ry: 0 },
-    { url: '/models/env/torch_lit.glb', pos: [6, 2.5, -8.0], ry: 0 },
-    // Side walls (left wall face at x=-10, right at x=+10)
-    { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, -4], ry: Math.PI / 2 },
-    { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, 4], ry: Math.PI / 2 },
-    { url: '/models/env/torch_lit.glb', pos: [10, 2.5, -4], ry: -Math.PI / 2 },
-    { url: '/models/env/torch_lit.glb', pos: [10, 2.5, 4], ry: -Math.PI / 2 },
-    // Banners on back wall between torches
-    { url: '/models/env/banner_green.glb', pos: [-4, 0, -8.3], ry: 0 },
-    { url: '/models/env/banner_red.glb', pos: [0, 0, -8.3], ry: 0 },
-    { url: '/models/env/banner_blue.glb', pos: [4, 0, -8.3], ry: 0 },
-    // Back corners — barrels + crates on the floor
-    { url: '/models/env/barrel_large.glb', pos: [-9, 0, -7], ry: 0 },
-    { url: '/models/env/barrel_small.glb', pos: [-8, 0, -7.5], ry: 0.3 },
-    { url: '/models/env/crates.glb', pos: [9, 0, -7], ry: -0.4 },
-    // Shelves along side walls
-    { url: '/models/env/shelf_large.glb', pos: [-10, 1.4, 0], ry: Math.PI / 2 },
-    { url: '/models/env/shelf_large.glb', pos: [10, 1.4, 0], ry: -Math.PI / 2 },
-    // Decorative pillars — back in corners, rotated to face each other
-    { url: '/models/env/pillar_decorated.glb', pos: [-9.2, 0, 7], ry: Math.PI / 2 },
-    { url: '/models/env/pillar_decorated.glb', pos: [9.2, 0, 7], ry: -Math.PI / 2 },
-    // Golden chest centered along back wall
-    { url: '/models/env/chest_gold.glb', pos: [0, 0, -7.2], ry: 0 },
-    // Candles near pillars
-    { url: '/models/env/candle_triple.glb', pos: [-9.2, 0, 6], ry: 0.2 },
-    { url: '/models/env/candle_triple.glb', pos: [9.2, 0, 6], ry: -0.2 },
-  ];
+function MedievalDecorations({ layoutVariant = 'default' }: { layoutVariant?: LayoutVariant }) {
+  const props: Array<{ url: string; pos: [number, number, number]; ry?: number; scale?: number }> = layoutVariant === 'axiom'
+    ? (() => {
+        // Axiom dungeon: 40×24 floor centered at z=4.5.
+        // Back wall plane at z=-8; side wall planes at x=±20.5 (floor side edge ±20).
+        const backInside = -7.5;    // place flush props just inside back floor edge
+        const frontInside = 16.5;
+        const leftInside = -20;
+        const rightInside = 20;
+        return [
+          // Wall-mounted torches on back wall — 5 evenly spaced
+          { url: '/models/env/torch_lit.glb', pos: [-14, 2.5, backInside + 0.5], ry: 0 },
+          { url: '/models/env/torch_lit.glb', pos: [-7, 2.5, backInside + 0.5], ry: 0 },
+          { url: '/models/env/torch_lit.glb', pos: [0, 2.5, backInside + 0.5], ry: 0 },
+          { url: '/models/env/torch_lit.glb', pos: [7, 2.5, backInside + 0.5], ry: 0 },
+          { url: '/models/env/torch_lit.glb', pos: [14, 2.5, backInside + 0.5], ry: 0 },
+          // Side walls — 4 torches per side
+          { url: '/models/env/torch_lit.glb', pos: [leftInside, 2.5, -3], ry: Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [leftInside, 2.5, 4], ry: Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [leftInside, 2.5, 11], ry: Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [leftInside, 2.5, 15], ry: Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [rightInside, 2.5, -3], ry: -Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [rightInside, 2.5, 4], ry: -Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [rightInside, 2.5, 11], ry: -Math.PI / 2 },
+          { url: '/models/env/torch_lit.glb', pos: [rightInside, 2.5, 15], ry: -Math.PI / 2 },
+          // Banners on back wall between torches
+          { url: '/models/env/banner_green.glb', pos: [-10.5, 0, backInside + 0.2], ry: 0 },
+          { url: '/models/env/banner_red.glb', pos: [-3.5, 0, backInside + 0.2], ry: 0 },
+          { url: '/models/env/banner_blue.glb', pos: [3.5, 0, backInside + 0.2], ry: 0 },
+          { url: '/models/env/banner_red.glb', pos: [10.5, 0, backInside + 0.2], ry: 0 },
+          // Back corners — barrels and crates
+          { url: '/models/env/barrel_large.glb', pos: [leftInside + 1.5, 0, backInside + 1], ry: 0 },
+          { url: '/models/env/barrel_small.glb', pos: [leftInside + 2.8, 0, backInside + 0.6], ry: 0.3 },
+          { url: '/models/env/crates.glb', pos: [rightInside - 1.5, 0, backInside + 1], ry: -0.4 },
+          // Shelves along side walls — 2 per side
+          { url: '/models/env/shelf_large.glb', pos: [leftInside, 1.4, 0.5], ry: Math.PI / 2 },
+          { url: '/models/env/shelf_large.glb', pos: [leftInside, 1.4, 8.5], ry: Math.PI / 2 },
+          { url: '/models/env/shelf_large.glb', pos: [rightInside, 1.4, 0.5], ry: -Math.PI / 2 },
+          { url: '/models/env/shelf_large.glb', pos: [rightInside, 1.4, 8.5], ry: -Math.PI / 2 },
+          // Decorative pillars in front corners
+          { url: '/models/env/pillar_decorated.glb', pos: [leftInside + 1.2, 0, frontInside - 1.2], ry: Math.PI / 2 },
+          { url: '/models/env/pillar_decorated.glb', pos: [rightInside - 1.2, 0, frontInside - 1.2], ry: -Math.PI / 2 },
+          // Golden chest centered along back wall
+          { url: '/models/env/chest_gold.glb', pos: [0, 0, backInside + 1.2], ry: 0 },
+          // Candles near pillars
+          { url: '/models/env/candle_triple.glb', pos: [leftInside + 1.2, 0, frontInside - 2.6], ry: 0.2 },
+          { url: '/models/env/candle_triple.glb', pos: [rightInside - 1.2, 0, frontInside - 2.6], ry: -0.2 },
+        ];
+      })()
+    : [
+        // Wall-mounted torches on back wall (flush at z=-8.0)
+        { url: '/models/env/torch_lit.glb', pos: [-6, 2.5, -8.0], ry: 0 },
+        { url: '/models/env/torch_lit.glb', pos: [-2, 2.5, -8.0], ry: 0 },
+        { url: '/models/env/torch_lit.glb', pos: [2, 2.5, -8.0], ry: 0 },
+        { url: '/models/env/torch_lit.glb', pos: [6, 2.5, -8.0], ry: 0 },
+        // Side walls (left wall face at x=-10, right at x=+10)
+        { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, -4], ry: Math.PI / 2 },
+        { url: '/models/env/torch_lit.glb', pos: [-10, 2.5, 4], ry: Math.PI / 2 },
+        { url: '/models/env/torch_lit.glb', pos: [10, 2.5, -4], ry: -Math.PI / 2 },
+        { url: '/models/env/torch_lit.glb', pos: [10, 2.5, 4], ry: -Math.PI / 2 },
+        // Banners on back wall between torches
+        { url: '/models/env/banner_green.glb', pos: [-4, 0, -8.3], ry: 0 },
+        { url: '/models/env/banner_red.glb', pos: [0, 0, -8.3], ry: 0 },
+        { url: '/models/env/banner_blue.glb', pos: [4, 0, -8.3], ry: 0 },
+        // Back corners — barrels + crates on the floor
+        { url: '/models/env/barrel_large.glb', pos: [-9, 0, -7], ry: 0 },
+        { url: '/models/env/barrel_small.glb', pos: [-8, 0, -7.5], ry: 0.3 },
+        { url: '/models/env/crates.glb', pos: [9, 0, -7], ry: -0.4 },
+        // Shelves along side walls
+        { url: '/models/env/shelf_large.glb', pos: [-10, 1.4, 0], ry: Math.PI / 2 },
+        { url: '/models/env/shelf_large.glb', pos: [10, 1.4, 0], ry: -Math.PI / 2 },
+        // Decorative pillars — back in corners, rotated to face each other
+        { url: '/models/env/pillar_decorated.glb', pos: [-9.2, 0, 7], ry: Math.PI / 2 },
+        { url: '/models/env/pillar_decorated.glb', pos: [9.2, 0, 7], ry: -Math.PI / 2 },
+        // Golden chest centered along back wall
+        { url: '/models/env/chest_gold.glb', pos: [0, 0, -7.2], ry: 0 },
+        // Candles near pillars
+        { url: '/models/env/candle_triple.glb', pos: [-9.2, 0, 6], ry: 0.2 },
+        { url: '/models/env/candle_triple.glb', pos: [9.2, 0, 6], ry: -0.2 },
+      ];
   return <group>{props.map((p, i) => <GLBTile key={i} url={p.url} position={p.pos} rotationY={p.ry ?? 0} />)}</group>;
 }
 
-function GLTFWalls() {
+function GLTFWalls({ layoutVariant = 'default' }: { layoutVariant?: LayoutVariant }) {
   const walls: Array<{ pos: [number, number, number]; ry: number; url: string }> = [];
-  // Back wall (z=-8.5, flush with floor back edge at z=-8)
-  for (const x of [-8, -4, 0, 4, 8]) walls.push({ pos: [x, 0, -8.5], ry: 0, url: '/models/env/wall.glb' });
-  // Left wall (x=-10.5, flush with floor left edge at x=-10)
-  for (const z of [-6, -2, 2, 6]) walls.push({ pos: [-10.5, 0, z], ry: Math.PI / 2, url: '/models/env/wall.glb' });
-  // Right wall (x=+10.5)
-  for (const z of [-6, -2, 2, 6]) walls.push({ pos: [10.5, 0, z], ry: -Math.PI / 2, url: '/models/env/wall.glb' });
-  // Back corners
-  walls.push({ pos: [-10.5, 0, -8.5], ry: 0, url: '/models/env/wall_corner.glb' });
-  walls.push({ pos: [10.5, 0, -8.5], ry: -Math.PI / 2, url: '/models/env/wall_corner.glb' });
+  if (layoutVariant === 'axiom') {
+    // Axiom dungeon: walls along the perimeter of a 40×24 floor centered at z=4.5.
+    // Each wall.glb is 4 wide; place them on a 4-unit grid along each edge.
+    const backZ = -8;      // z = floorBackEdge(-7.5) - 0.5
+    const leftX = -20.5;
+    const rightX = 20.5;
+    // Back wall — 11 walls at x = -20..20 step 4 covering [-22, +22]
+    for (let x = -20; x <= 20; x += 4) walls.push({ pos: [x, 0, backZ], ry: 0, url: '/models/env/wall.glb' });
+    // Side walls — 7 walls per side at z = -6..18 step 4 covering [-8, +20]
+    for (let z = -6; z <= 18; z += 4) {
+      walls.push({ pos: [leftX, 0, z], ry: Math.PI / 2, url: '/models/env/wall.glb' });
+      walls.push({ pos: [rightX, 0, z], ry: -Math.PI / 2, url: '/models/env/wall.glb' });
+    }
+    // Back corners
+    walls.push({ pos: [leftX, 0, backZ], ry: 0, url: '/models/env/wall_corner.glb' });
+    walls.push({ pos: [rightX, 0, backZ], ry: -Math.PI / 2, url: '/models/env/wall_corner.glb' });
+  } else {
+    // Back wall (z=-8.5, flush with floor back edge at z=-8)
+    for (const x of [-8, -4, 0, 4, 8]) walls.push({ pos: [x, 0, -8.5], ry: 0, url: '/models/env/wall.glb' });
+    // Left wall (x=-10.5, flush with floor left edge at x=-10)
+    for (const z of [-6, -2, 2, 6]) walls.push({ pos: [-10.5, 0, z], ry: Math.PI / 2, url: '/models/env/wall.glb' });
+    // Right wall (x=+10.5)
+    for (const z of [-6, -2, 2, 6]) walls.push({ pos: [10.5, 0, z], ry: -Math.PI / 2, url: '/models/env/wall.glb' });
+    // Back corners
+    walls.push({ pos: [-10.5, 0, -8.5], ry: 0, url: '/models/env/wall_corner.glb' });
+    walls.push({ pos: [10.5, 0, -8.5], ry: -Math.PI / 2, url: '/models/env/wall_corner.glb' });
+  }
   return <group>{walls.map((w, i) => <GLBTile key={i} url={w.url} position={w.pos} rotationY={w.ry} />)}</group>;
 }
 
@@ -1576,6 +1582,7 @@ function WorkerAvatar({
   avatarPositionsRef,
   debugRef,
   deskFacing,
+  idleFacing,
   reducedMotion,
   seed,
   emphasized,
@@ -1603,6 +1610,10 @@ function WorkerAvatar({
   avatarPositionsRef?: { current: Map<string, THREE.Vector3> };
   debugRef?: { current: Map<string, TopicDebugSnapshot> };
   deskFacing: number;
+  // Idle/standby facing angle. The default-layout pages keep the legacy
+  // hardcoded 0 (face -z); the AXIOM layout passes a per-worker angle that
+  // points at the CEO desk so workers don't pivot away when not at desk.
+  idleFacing?: number;
   reducedMotion: boolean;
   seed: number;
   emphasized: boolean;
@@ -1691,7 +1702,7 @@ function WorkerAvatar({
         ? deskFacing
         : atFront
           ? taskTableFacing
-          : 0;
+          : (idleFacing ?? 0);
     const baseY = atDesk ? 0.05 : atFront ? 0.06 : 0.07;
     const bob = atFront
       ? (!reducedMotion ? Math.sin(t * 1.7) * 0.004 : 0)
@@ -2534,9 +2545,9 @@ function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'defaul
     <>
       {sceneStyle === 'dungeon' && (
         <>
-          <GLTFFloorGrid />
-          <GLTFWalls />
-          <MedievalDecorations />
+          <GLTFFloorGrid layoutVariant={layoutVariant} />
+          <GLTFWalls layoutVariant={layoutVariant} />
+          <MedievalDecorations layoutVariant={layoutVariant} />
         </>
       )}
       {sceneStyle === 'office' && <VoxelOfficeScene layoutVariant={layoutVariant} departmentNames={departmentNames} />}
@@ -2612,8 +2623,9 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
   const layouts: DeskLayout[] = [];
 
   // CEO desk in the center between team rows, slightly forward
+  const ceoZ = (FRONT_ROW_Z + BACK_ROW_Z) / 2 + 0.2; // ~ +4.6
+
   if (ceo) {
-    const ceoZ = (FRONT_ROW_Z + BACK_ROW_Z) / 2 + 0.2; // ~ +4.6
     const ceoPos: [number, number, number] = [0, 0, ceoZ];
     layouts.push({
       topic: ceo,
@@ -2630,26 +2642,30 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
     });
   }
 
-  // Place one team cluster: manager at the FRONT of the cluster (closer to CEO),
-  // facing the CEO; 4 coders sit BEHIND the manager (away from CEO) in a 2×2 block,
-  // facing the manager (toward CEO).
-  // teamRow = 0 → front row of teams (closer to camera, larger z);  1 → back row of teams
+  // Place one team cluster: manager at the FRONT (toward CEO), facing the CEO.
+  // 4 coders sit BEHIND the manager in two columns (left + right), facing each
+  // other across the cluster's centerline so their desks meet in the middle.
+  // teamRow = 0 → front row of teams (z=+9.5);  1 → back row (z=-0.5)
   const placeTeam = (teamIndex: number, manager: TeamTopic | undefined, teamCoders: TeamTopic[]) => {
     const colIndex = teamIndex % FRONT_TEAMS; // 0..4
     const teamRow = Math.floor(teamIndex / FRONT_TEAMS); // 0 = front, 1 = back
     const teamCenterX = COL_X_OFFSET + colIndex * COL_SPACING;
     const teamCenterZ = teamRow === 0 ? FRONT_ROW_Z : BACK_ROW_Z;
 
-    // Front-row manager (z>CEO_Z) faces CEO → looking toward -z → rotationY = 0.
-    // Back-row manager (z<CEO_Z) faces CEO → looking toward +z → rotationY = π.
-    const managerRotation = teamRow === 0 ? 0 : Math.PI;
-    // Coders sit behind manager (away from CEO) and face the manager (toward CEO).
-    const coderRotation = teamRow === 0 ? Math.PI : 0;
+    // CEO sits between the two rows (z ≈ +4.6). Front-row teams reach the CEO by
+    // going -z; back-row teams by going +z. towardCEO is that unit direction.
+    const towardCEO = teamRow === 0 ? -1 : 1;
 
-    // Manager at the side of the cluster closest to CEO.
-    const managerZ = teamRow === 0 ? teamCenterZ - 1.0 : teamCenterZ + 1.0;
+    // Manager faces the CEO across the aisle. In this codebase the avatar models
+    // have their default forward along +z, so rotation 0 = face +z and π = face -z
+    // (verified by buildDeskLayouts using atan2(dx, dz) with rotation=π for face-z).
+    // Front row sits at +z and reaches the CEO by going -z → rotation π.
+    // Back row sits at -z and reaches the CEO by going +z → rotation 0.
+    const managerRotation = towardCEO === -1 ? Math.PI : 0;
+    // Manager sits at the cluster's CEO-side edge (near the cubicle opening).
+    const managerZ = teamCenterZ + 1.0 * towardCEO;
     if (manager) {
-      const facingDz = teamRow === 0 ? -0.6 : 0.6; // direction manager is facing (toward CEO)
+      const facingDz = 0.6 * towardCEO; // step from manager toward where they're looking
       layouts.push({
         topic: manager,
         position: [teamCenterX, 0, managerZ],
@@ -2662,23 +2678,33 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
         focusPoint: [teamCenterX, 0.92, managerZ + 0.12],
         deskSeatPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 0.8],
         deskStandPosition: [teamCenterX + 0.08, 0, managerZ - facingDz * 1.46],
+        // Avatar's facing matches the desk's rotation, so they end up looking
+        // OPPOSITE of where the monitor's screen faces (back to the screen,
+        // looking out the cubicle opening / aisle).
+        atDeskFacing: managerRotation,
       });
     }
 
-    // 4 coders in a 2×2 block BEHIND the manager (away from CEO).
-    const coderBaseZ = teamRow === 0 ? teamCenterZ + 0.7 : teamCenterZ - 0.7;
-    const coderDz = teamRow === 0 ? 1.5 : -1.5; // step further away from CEO
-    const coderOffsets: Array<[number, number]> = [
-      [-1.5, 0],     // closer-to-manager left
-      [+1.5, 0],     // closer-to-manager right
-      [-1.5, coderDz],  // back row left
-      [+1.5, coderDz],  // back row right
+    // Coders: 2×2 grid behind manager (away from CEO). All face the CEO too,
+    // so the team reads as one unified line presenting to the aisle.
+    // Back-pair sits at awayDz=1.7 (was 2.2) so the chair behind each coder
+    // doesn't poke through the cubicle's far wall at farOffset=2.9.
+    const coderRotation = managerRotation;
+    const coderOffsets: Array<{ dx: number; awayDz: number }> = [
+      { dx: -1.5, awayDz: 0.5 }, // left near-manager
+      { dx: +1.5, awayDz: 0.5 }, // right near-manager
+      { dx: -1.5, awayDz: 1.7 }, // left back
+      { dx: +1.5, awayDz: 1.7 }, // right back
     ];
     teamCoders.slice(0, 4).forEach((coder, i) => {
-      const [dx, dz] = coderOffsets[i];
-      const x = teamCenterX + dx;
-      const z = coderBaseZ + dz;
+      const o = coderOffsets[i];
+      const x = teamCenterX + o.dx;
+      // awayDz is the (positive) step away from the CEO; -towardCEO points away.
+      const z = teamCenterZ + o.awayDz * -towardCEO;
       const rotationY = coderRotation;
+      // Desk in front of the coder (toward back wall, opposite of the facing direction).
+      // The existing formula keeps stand/seat geometry in the same convention used
+      // in the default layout.
       layouts.push({
         topic: coder,
         position: [x, 0, z],
@@ -2691,6 +2717,9 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
         focusPoint: [x, 0.92, z + 0.12],
         deskSeatPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.48 : -0.48)],
         deskStandPosition: [x + 0.08, 0, z + (rotationY === Math.PI ? 0.88 : -0.88)],
+        // Match the desk rotation — avatar faces opposite of the monitor screen
+        // (back to the screen) just like the manager.
+        atDeskFacing: rotationY,
       });
     });
   };
@@ -2967,7 +2996,8 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
               debugRef={debugRef}
-              deskFacing={desk.rotationY === 0 ? Math.PI : 0}
+              deskFacing={desk.atDeskFacing ?? (desk.rotationY + Math.PI)}
+              idleFacing={desk.atDeskFacing}
               reducedMotion={reducedMotion}
               seed={index + 1}
               emphasized={emphasized}

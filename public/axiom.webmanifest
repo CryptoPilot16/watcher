@@ -1,0 +1,66 @@
+{
+  "name": "AXIOM Office",
+  "short_name": "AXIOM",
+  "description": "AXIOM operations floor — 51 AI agents in a 10×5 team grid.",
+  "start_url": "/axiom",
+  "scope": "/axiom",
+  "id": "/axiom",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#0f0d09",
+  "background_color": "#0f0d09",
+  "categories": ["productivity", "developer"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/watch-icon-v4.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tasks",
+      "short_name": "Tasks",
+      "url": "/axiom/tasks",
+      "description": "Open the task queue"
+    },
+    {
+      "name": "Project",
+      "short_name": "Project",
+      "url": "/axiom/project",
+      "description": "Open the project workspace"
+    },
+    {
+      "name": "Settings",
+      "short_name": "Settings",
+      "url": "/axiom/settings",
+      "description": "Open AXIOM settings"
+    }
+  ]
+}
