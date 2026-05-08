@@ -87,11 +87,37 @@ async function sendChunked(chatId, text, replyTo) {
   }
 }
 
+// Wraps fetch with retry-on-connection-error. Watcher-web sometimes restarts
+// (e.g. user-driven `pm2 restart`) mid-call; node's fetch throws a TypeError
+// "fetch failed" with a UND_ERR_SOCKET / ECONNREFUSED cause. We sleep and retry
+// for up to ~12s so a single restart does not surface as "bot error: fetch
+// failed" to the operator. Server-side errors (4xx/5xx) are NOT retried — only
+// transport-level failures.
+async function fetchWithRetry(url, init, { maxRetries = 4, baseDelayMs = 500 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      lastErr = err;
+      const cause = err?.cause?.code || '';
+      const transient = /ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|EAI_AGAIN|ETIMEDOUT|fetch failed/i.test(
+        `${cause} ${err?.message || ''}`,
+      );
+      if (!transient || attempt === maxRetries) throw err;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      process.stderr.write(`[axiom-ceo-bot] fetch retry ${attempt + 1}/${maxRetries} after ${delay}ms (${err.message || cause})\n`);
+      await new Promise((res) => setTimeout(res, delay));
+    }
+  }
+  throw lastErr;
+}
+
 async function callCeo(message) {
   const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
   const headers = { 'Content-Type': 'application/json' };
   if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
-  const r = await fetch(url, {
+  const r = await fetchWithRetry(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -132,7 +158,7 @@ async function callManager(team, message) {
   const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
   const headers = { 'Content-Type': 'application/json' };
   if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
-  const r = await fetch(url, {
+  const r = await fetchWithRetry(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
