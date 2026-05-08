@@ -535,9 +535,16 @@ async function callAxiomClaude(sessionKey: string, message: string): Promise<{ r
       '--permission-mode', 'acceptEdits',
       '--output-format', 'json',
     ];
+    // The system prompt MUST be passed on every invocation. Claude --resume
+    // rehydrates the message history from disk but the original --system-prompt
+    // is not persisted in the session jsonl — without re-sending it on resume,
+    // the CEO replies as generic Claude with no AXIOM identity / DELEGATE
+    // protocol / department knowledge. Use --append-system-prompt so it stacks
+    // additively if claude ever re-introduces a default system prompt path.
+    const systemPrompt = buildAxiomSystemPrompt(sessionKey);
     return resumeMode
-      ? [...base, '--resume', sid, message]
-      : [...base, '--session-id', sid, '--system-prompt', buildAxiomSystemPrompt(sessionKey), message];
+      ? [...base, '--resume', sid, '--append-system-prompt', systemPrompt, message]
+      : [...base, '--session-id', sid, '--system-prompt', systemPrompt, message];
   };
 
   const spawnClaude = async (resumeMode: boolean, sid: string) => {
