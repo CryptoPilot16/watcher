@@ -525,7 +525,8 @@ async function readMemoryFile() {
 const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watcher/axiom-mailbox';
 const AXIOM_GLOBAL_COST_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-global.cost.json');
 const AXIOM_ALLOWANCE_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-allowance.json');
-const AXIOM_DEFAULT_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10);
+const AXIOM_MAX_DAILY_USD_CEILING = 50;
+const AXIOM_DEFAULT_DAILY_USD = Math.min(Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10), AXIOM_MAX_DAILY_USD_CEILING);
 
 async function readJsonFile(file) {
   try {
@@ -537,8 +538,8 @@ async function readJsonFile(file) {
 
 async function readEffectiveAllowance() {
   const override = await readJsonFile(AXIOM_ALLOWANCE_FILE);
-  if (override && typeof override.dailyUsdOverride === 'number' && override.dailyUsdOverride > 0) {
-    return { cap: override.dailyUsdOverride, override };
+  if (override && typeof override.dailyUsdOverride === 'number' && Number.isFinite(override.dailyUsdOverride) && override.dailyUsdOverride >= 0) {
+    return { cap: Math.min(Math.max(0, override.dailyUsdOverride), AXIOM_MAX_DAILY_USD_CEILING), override };
   }
   return { cap: AXIOM_DEFAULT_DAILY_USD, override: null };
 }
@@ -548,7 +549,8 @@ async function writeAllowanceOverride(cap, updatedBy) {
   await fs.writeFile(
     AXIOM_ALLOWANCE_FILE,
     JSON.stringify({
-      dailyUsdOverride: cap,
+      dailyUsdOverride: Math.min(Math.max(0, cap), AXIOM_MAX_DAILY_USD_CEILING),
+      maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING,
       updatedAt: new Date().toISOString(),
       updatedBy,
     }, null, 2),
@@ -633,12 +635,12 @@ async function handleBudgetCommand(chatId, userId, text) {
     });
     return;
   }
-  if (newCap < 0.5) {
-    await tg('sendMessage', { chat_id: chatId, text: 'minimum allowance is $0.50.' });
+  if (newCap < 0) {
+    await tg('sendMessage', { chat_id: chatId, text: 'minimum allowance is $0. Use $0 to hard-stop AXIOM token calls.' });
     return;
   }
-  if (newCap > 500) {
-    await tg('sendMessage', { chat_id: chatId, text: 'sanity-check: cap is limited to $500/day.' });
+  if (newCap > AXIOM_MAX_DAILY_USD_CEILING) {
+    await tg('sendMessage', { chat_id: chatId, text: `sanity-check: cap is limited to $${AXIOM_MAX_DAILY_USD_CEILING}/day.` });
     return;
   }
 
@@ -650,7 +652,7 @@ async function handleBudgetCommand(chatId, userId, text) {
     text: [
       `✅ Allowance updated to *$${newCap.toFixed(2)}* (was $${cap.toFixed(2)}).`,
       `Spent today: $${spent.toFixed(2)} (${pct.toFixed(1)}%).`,
-      'Agents resume immediately if they were paused.',
+      newCap === 0 ? 'AXIOM token calls are disabled until you raise the cap.' : 'Agents resume immediately if they were paused.',
     ].join('\n'),
     parse_mode: 'Markdown',
   });

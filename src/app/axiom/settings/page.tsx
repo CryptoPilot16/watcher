@@ -23,6 +23,7 @@ type SettingsResponse = {
   cap: {
     dailyUsd: number;
     defaultUsd: number;
+    maxDailyUsd: number;
     overrideActive: boolean;
     overrideUpdatedAt: string | null;
     overrideUpdatedBy: string | null;
@@ -32,6 +33,7 @@ type SettingsResponse = {
   agents: AgentUsage[];
   actions: ActionStat[];
   actionWindow: { days: number; entriesWithCost: number; oldestEntryTs: string | null };
+  killSwitch: { enabled: boolean; alertsEnabled: boolean; reason: string | null; updatedAt: string | null; updatedBy: string | null };
 };
 
 // Tokens are the user-facing unit. The underlying cost data is still USD-priced
@@ -123,6 +125,8 @@ export default function SettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +155,54 @@ export default function SettingsPage() {
   const percent = data?.today.percentUsed ?? 0;
   const barColor = progressBarColor(percent);
   const totalActionCost = (data?.actions || []).reduce((s, a) => s + a.totalCostUsd, 0);
+
+  async function refreshSettings() {
+    const res = await fetch('/api/axiom/settings', { cache: 'no-store' });
+    const json = (await res.json()) as SettingsResponse;
+    setData(json);
+    setError(null);
+  }
+
+  async function killAllTokenConsumers() {
+    if (!window.confirm('Emergency stop AXIOM token consumers? This sets allowance to 0, pauses autopilot, kills visible agent state, disables alerts, and stops the PM2 driver.')) return;
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'kill-all', updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'kill switch failed');
+      setActionMessage(`Emergency stop armed · allowance $0 · max $${json.maxDailyUsd} · ${json.killedAgents || 0} agent states cleared`);
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Emergency stop failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function setAllowance(capUsd: number) {
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-allowance', capUsd, updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'allowance update failed');
+      setActionMessage(`Allowance set to $${capUsd}/day · hard max $${json.maxDailyUsd}`);
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Allowance update failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[var(--watch-bg)] p-3 sm:p-5">
@@ -185,6 +237,49 @@ export default function SettingsPage() {
 
         {data && (
           <>
+            <div className="rounded-xl border border-[#ef4444]/40 bg-[#450a0a]/20 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.24em] text-[#fca5a5]">▌ emergency token controls</div>
+                  <div className="mt-2 text-sm text-[var(--watch-text-bright)]">
+                    Kill switch: {data.killSwitch.enabled ? <span className="text-[#f87171]">ON — token calls blocked</span> : <span className="text-[#86efac]">off</span>}
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
+                    Current allowance {fmtTokens(data.cap.dailyUsd)} · hard max {fmtTokens(data.cap.maxDailyUsd)} / day. Emergency stop sets allowance to 0, pauses autopilot, disables AXIOM usage alerts, and stops the PM2 driver.
+                    {data.killSwitch.updatedAt ? ` Last changed ${new Date(data.killSwitch.updatedAt).toLocaleString()}` : ''}
+                  </div>
+                  {data.killSwitch.reason && <div className="mt-1 text-[10px] text-[#fca5a5]">{data.killSwitch.reason}</div>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={killAllTokenConsumers}
+                    className="rounded-lg border border-[#ef4444]/60 bg-[#ef4444]/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fecaca] transition hover:bg-[#ef4444]/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    kill all token consumers
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => setAllowance(0)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    allowance $0
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => setAllowance(50)}
+                    className="rounded-lg border border-[#86efac]/40 bg-[#86efac]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    cap $50 max
+                  </button>
+                </div>
+              </div>
+              {actionMessage && <div className="mt-3 text-[11px] text-[#fbbf24]">{actionMessage}</div>}
+            </div>
+
             <div className="rounded-xl border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4 sm:p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--watch-text-muted)]">▌ daily allowance — across all 41 agents</div>
@@ -231,7 +326,7 @@ export default function SettingsPage() {
                 </div>
                 {data.cap.overrideActive && (
                   <div className="text-[#fbbf24]">
-                    Override active: cap raised from default {fmtTokens(data.cap.defaultUsd)} → {fmtTokens(data.cap.dailyUsd)}
+                    Override active: cap set from default {fmtTokens(data.cap.defaultUsd)} → {fmtTokens(data.cap.dailyUsd)}
                     {data.cap.overrideUpdatedAt ? ` · set ${new Date(data.cap.overrideUpdatedAt).toLocaleString()}` : ''}
                     {data.cap.overrideUpdatedBy ? ` · by ${data.cap.overrideUpdatedBy}` : ''}
                   </div>
@@ -242,7 +337,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <div>
-                  Once the allowance is hit, all 41 agents pause until UTC midnight — protects you from runaway membership token burn.
+                  Once the allowance is hit — or set to 0 — all AXIOM agent calls are blocked until you raise the cap. Hard max is $50/day.
                 </div>
               </div>
             </div>

@@ -213,12 +213,21 @@ type GlobalCostState = {
 
 type AllowanceOverride = {
   dailyUsdOverride?: number;
+  maxDailyUsd?: number;
   updatedAt?: string;
   updatedBy?: string;
 };
 
+type KillSwitchState = {
+  enabled?: boolean;
+  alertsEnabled?: boolean;
+  reason?: string;
+};
+
 const AXIOM_GLOBAL_COST_FILE = 'axiom-global.cost.json';
 const AXIOM_ALLOWANCE_FILE = 'axiom-allowance.json';
+const AXIOM_KILL_SWITCH_FILE = process.env.WATCH_AXIOM_KILL_SWITCH_FILE || '/var/lib/watcher/axiom-kill-switch.json';
+const AXIOM_MAX_DAILY_USD_CEILING = 50;
 const AXIOM_ALERT_THRESHOLD_PERCENT = 90;
 
 function loadAllowance(): AllowanceOverride {
@@ -230,10 +239,22 @@ function loadAllowance(): AllowanceOverride {
   }
 }
 
+function loadKillSwitch(): KillSwitchState {
+  try {
+    return JSON.parse(fs.readFileSync(AXIOM_KILL_SWITCH_FILE, 'utf8'));
+  } catch {
+    return { enabled: false, alertsEnabled: true };
+  }
+}
+
 function getEffectiveDailyCap(): number {
+  const killSwitch = loadKillSwitch();
+  if (killSwitch.enabled) return 0;
   const override = loadAllowance().dailyUsdOverride;
-  if (typeof override === 'number' && override > 0) return override;
-  return AXIOM_MAX_DAILY_USD;
+  if (typeof override === 'number' && Number.isFinite(override) && override >= 0) {
+    return Math.min(Math.max(0, override), AXIOM_MAX_DAILY_USD_CEILING);
+  }
+  return Math.min(AXIOM_MAX_DAILY_USD, AXIOM_MAX_DAILY_USD_CEILING);
 }
 
 async function sendTelegramAlert(text: string): Promise<void> {
@@ -289,6 +310,10 @@ function saveGlobalCost(state: GlobalCostState) {
 }
 
 function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason: string } {
+  const killSwitch = loadKillSwitch();
+  if (killSwitch.enabled) {
+    return { ok: false, reason: `AXIOM emergency token kill switch is ON${killSwitch.reason ? ` — ${killSwitch.reason}` : ''}` };
+  }
   const state = loadRateState(sessionKey);
   const now = Date.now();
   const oneHourAgo = now - 60 * 60 * 1000;
@@ -300,6 +325,9 @@ function checkRateLimit(sessionKey: string): { ok: true } | { ok: false; reason:
   const global = loadGlobalCost();
   const dailyCost = global.costDayKey === today ? global.todayCostUsd : 0;
   const cap = getEffectiveDailyCap();
+  if (cap <= 0) {
+    return { ok: false, reason: 'allowance cap is $0 — AXIOM token calls disabled' };
+  }
   if (dailyCost >= cap) {
     return { ok: false, reason: `allowance cap: $${dailyCost.toFixed(2)}/${cap} spent today across all agents — extend via /budget on Telegram` };
   }
@@ -324,6 +352,8 @@ function recordCallCost(_sessionKey: string, costUsd: number | undefined) {
 
   // Fire a Telegram alert when crossing the 90% threshold (once per day per threshold).
   const cap = getEffectiveDailyCap();
+  const killSwitch = loadKillSwitch();
+  if (cap <= 0 || killSwitch.alertsEnabled === false) return;
   const previousPercent = (previousCost / cap) * 100;
   const newPercent = (global.todayCostUsd / cap) * 100;
   const lastAlerted = global.alertedAtPercent ?? 0;

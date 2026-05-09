@@ -29,7 +29,8 @@ const PAUSE_FILE = process.env.WATCH_AXIOM_DRIVER_PAUSE_FILE || '/var/lib/watche
 const STATE_FILE = process.env.WATCH_AXIOM_DRIVER_STATE_FILE || '/var/lib/watcher/axiom-driver.state.json';
 const COST_FILE = join(MAILBOX_DIR, 'axiom-global.cost.json');
 const ALLOWANCE_FILE = join(MAILBOX_DIR, 'axiom-allowance.json');
-const DEFAULT_DAILY_USD = Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10);
+const MAX_DAILY_USD_CEILING = 50;
+const DEFAULT_DAILY_USD = Math.min(Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10), MAX_DAILY_USD_CEILING);
 // Pause threshold: by default we run all the way to 100% (only stop when the
 // cap is fully consumed), and warn — but keep running — at WARN_PCT.
 const CAP_HEADROOM_PCT = Number(process.env.WATCH_AXIOM_DRIVER_CAP_HEADROOM_PCT || 100);
@@ -54,7 +55,9 @@ async function writeState(state) {
 
 async function readEffectiveCap() {
   const override = await readJson(ALLOWANCE_FILE);
-  if (override && typeof override.dailyUsdOverride === 'number' && override.dailyUsdOverride > 0) return override.dailyUsdOverride;
+  if (override && typeof override.dailyUsdOverride === 'number' && Number.isFinite(override.dailyUsdOverride) && override.dailyUsdOverride >= 0) {
+    return Math.min(Math.max(0, override.dailyUsdOverride), MAX_DAILY_USD_CEILING);
+  }
   return DEFAULT_DAILY_USD;
 }
 
