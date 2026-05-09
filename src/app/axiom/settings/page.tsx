@@ -168,10 +168,15 @@ export default function SettingsPage() {
   const budgetZeroActive = Boolean(data && data.cap.configuredUsd === 0);
   const parsedBudgetUsd = Number(budgetInput);
   const budgetInputMatchesCurrent = Boolean(data && Number.isFinite(parsedBudgetUsd) && parsedBudgetUsd === data.cap.configuredUsd);
-  const activeSwitchClass = 'rounded-lg border border-[#93c5fd] bg-[#2563eb] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-none opacity-100 disabled:cursor-not-allowed disabled:opacity-100 disabled:saturate-100';
+  const disabledInUseEffect = 'blur-[0.35px] opacity-45 saturate-75 disabled:cursor-not-allowed disabled:opacity-45';
   const dangerSwitchClass = 'rounded-lg border border-[#ef4444]/60 bg-[#ef4444]/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fecaca] transition hover:bg-[#ef4444]/30 disabled:cursor-not-allowed disabled:opacity-50';
+  const dangerInUseSwitchClass = `rounded-lg border border-[#ef4444]/60 bg-[#ef4444]/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fecaca] ${disabledInUseEffect}`;
   const successSwitchClass = 'rounded-lg border border-[#86efac]/50 bg-[#86efac]/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/25 disabled:cursor-not-allowed disabled:opacity-50';
+  const successInUseSwitchClass = `rounded-lg border border-[#86efac]/50 bg-[#86efac]/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bbf7d0] ${disabledInUseEffect}`;
+  const resetSwitchClass = 'rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] transition hover:bg-[#7dd3fc]/20 disabled:cursor-not-allowed disabled:opacity-50';
+  const resetInUseSwitchClass = `rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] ${disabledInUseEffect}`;
   const neutralSwitchClass = 'rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50';
+  const neutralInUseSwitchClass = `rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] ${disabledInUseEffect}`;
 
   async function refreshSettings() {
     const res = await fetch('/api/axiom/settings', { cache: 'no-store' });
@@ -321,7 +326,7 @@ export default function SettingsPage() {
                     type="button"
                     disabled={actionBusy || killSwitchActive}
                     onClick={killAllTokenConsumers}
-                    className={killSwitchActive ? activeSwitchClass : dangerSwitchClass}
+                    className={killSwitchActive ? dangerInUseSwitchClass : dangerSwitchClass}
                     aria-pressed={killSwitchActive}
                     title={killSwitchActive ? 'Already active' : undefined}
                   >
@@ -331,7 +336,7 @@ export default function SettingsPage() {
                     type="button"
                     disabled={actionBusy || operationsActive}
                     onClick={resumeOperations}
-                    className={operationsActive ? activeSwitchClass : successSwitchClass}
+                    className={operationsActive ? successInUseSwitchClass : successSwitchClass}
                     aria-pressed={operationsActive}
                     title={operationsActive ? 'Already active' : undefined}
                   >
@@ -341,7 +346,7 @@ export default function SettingsPage() {
                     type="button"
                     disabled={actionBusy || data.today.spentUsd === 0}
                     onClick={resetTokenCounter}
-                    className={data.today.spentUsd === 0 ? activeSwitchClass : 'rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] transition hover:bg-[#7dd3fc]/20 disabled:cursor-not-allowed disabled:opacity-50'}
+                    className={data.today.spentUsd === 0 ? resetInUseSwitchClass : resetSwitchClass}
                     aria-pressed={data.today.spentUsd === 0}
                     title={data.today.spentUsd === 0 ? 'Already zero' : undefined}
                   >
@@ -351,13 +356,13 @@ export default function SettingsPage() {
                     type="button"
                     disabled={actionBusy || budgetZeroActive}
                     onClick={() => setAllowance(0)}
-                    className={budgetZeroActive ? activeSwitchClass : neutralSwitchClass}
+                    className={budgetZeroActive ? neutralInUseSwitchClass : neutralSwitchClass}
                     aria-pressed={budgetZeroActive}
                     title={budgetZeroActive ? 'Already active' : undefined}
                   >
                     {budgetZeroActive ? 'budget $0 active' : 'budget $0'}
                   </button>
-                  <div className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${budgetInputMatchesCurrent ? 'border-[#93c5fd] bg-[#2563eb] text-white shadow-none' : 'border-white/10 bg-black/20'}`}>
+                  <div className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${budgetInputMatchesCurrent ? `border-white/10 bg-black/20 ${disabledInUseEffect}` : 'border-white/10 bg-black/20'}`}>
                     <span className="text-[10px] text-[var(--watch-text-muted)]">$</span>
                     <input
                       value={budgetInput}
@@ -371,7 +376,7 @@ export default function SettingsPage() {
                       type="button"
                       disabled={actionBusy || budgetInputMatchesCurrent}
                       onClick={applyBudgetInput}
-                      className={budgetInputMatchesCurrent ? 'rounded border border-[#bfdbfe] bg-[#1d4ed8] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white opacity-100 disabled:cursor-not-allowed disabled:opacity-100' : 'rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50'}
+                      className={budgetInputMatchesCurrent ? `rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] ${disabledInUseEffect}` : 'rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50'}
                       aria-pressed={budgetInputMatchesCurrent}
                       title={budgetInputMatchesCurrent ? 'This budget is already selected' : undefined}
                     >
