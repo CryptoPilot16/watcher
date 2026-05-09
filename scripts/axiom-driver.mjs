@@ -272,6 +272,31 @@ async function fetchRoadmapHints() {
   }
 }
 
+function roadmapComplete(roadmapHints) {
+  if (!roadmapHints || roadmapHints.size === 0) return false;
+  return [...roadmapHints.values()].every((h) => {
+    const built = Number(h?.built || 0);
+    const total = Number(h?.total || 0);
+    const remaining = Array.isArray(h?.remaining) ? h.remaining.length : 0;
+    return remaining === 0 && built >= total;
+  });
+}
+
+function countAllocations(allocations) {
+  let count = 0;
+  for (const alloc of allocations.values()) {
+    for (const task of Object.values(alloc || {})) {
+      if (task) count++;
+    }
+  }
+  return count;
+}
+
+function managersDeclaredPhaseComplete(mgrResults) {
+  const managers = (mgrResults || []).filter((r) => r.role === 'manager');
+  return managers.length > 0 && managers.every((r) => r.ok && /PHASE-0\s+SCOPE\s+COMPLETE/i.test(r.reply || ''));
+}
+
 async function callCoder(team, coderIndex, managerAssignedTask) {
   const r = await callAgent(`axiom:axiom-coder-${team}-${coderIndex}`, buildCoderBrief(team, coderIndex, managerAssignedTask));
   return { ...r, role: 'coder', team, coderIndex, managerAssignedTask };
@@ -385,13 +410,22 @@ async function runCycle(cycleNum) {
   }
   lastRoundAllocations = newAllocations;
   const codSkipped = codSkippedRunning + codSkippedNoAlloc;
+  const nextAllocCount = countAllocations(newAllocations);
 
   const allResults = [...mgrResults, ...codResults];
   const dispatched = mgrResults.length;
   const ok = mgrOk;
   const fail = dispatched - ok;
+  const autoComplete = roadmapComplete(roadmapHints)
+    && codDispatched === 0
+    && codSkippedRunning === 0
+    && nextAllocCount === 0
+    && managersDeclaredPhaseComplete(mgrResults);
   process.stdout.write(`[axiom-driver] cycle=${cycleNum} mgr-done: ${ok}/${dispatched} ok, ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s (coders still running async)\n`);
-  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount: codDispatched };
+  if (autoComplete) {
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} auto-complete: roadmap complete, managers declared PHASE-0 complete, no coder allocations/running coders\n`);
+  }
+  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount: codDispatched, nextAllocCount, codSkippedRunning, autoComplete };
 }
 
 async function summarizeCycle(cycle) {
@@ -460,6 +494,16 @@ async function loop() {
       process.stderr.write(`[axiom-driver] cycle ${cycleNum} threw: ${err.message}\n`);
       await tg('sendMessage', { text: `🤖 autopilot cycle ${cycleNum} errored: ${String(err.message).slice(0, 300)}` });
       await new Promise((r) => setTimeout(r, interval));
+      continue;
+    }
+    if (cycle.autoComplete) {
+      const completedAt = new Date().toISOString();
+      try {
+        await fs.writeFile(PAUSE_FILE, `AXIOM autopilot auto-paused at ${completedAt}: roadmap complete, managers declared PHASE-0 SCOPE COMPLETE, and no coder allocations/running coders.\n`, 'utf8');
+      } catch {}
+      await writeState({ status: 'completed', completedAt, cycleNum, interval, lastCycleAt: cycle.startedAt, lastCycle: cycle });
+      summarizeCycle(cycle).catch((err) => process.stderr.write(`[axiom-driver] summarize: ${err.message}\n`));
+      await tg('sendMessage', { text: `🤖 AXIOM autopilot complete — all managers declared PHASE-0 SCOPE COMPLETE, no coder work remains, and the driver auto-paused at ${PAUSE_FILE}.` });
       continue;
     }
     await writeState({ status: 'idle', cycleNum, interval, lastCycleAt: cycle.startedAt, lastCycle: cycle });
