@@ -163,6 +163,15 @@ export default function SettingsPage() {
   const percent = data?.today.percentUsed ?? 0;
   const barColor = progressBarColor(percent);
   const totalActionCost = (data?.actions || []).reduce((s, a) => s + a.totalCostUsd, 0);
+  const operationsActive = Boolean(data && !data.killSwitch.enabled && data.cap.dailyUsd > 0);
+  const killSwitchActive = Boolean(data?.killSwitch.enabled);
+  const budgetZeroActive = Boolean(data && data.cap.configuredUsd === 0);
+  const parsedBudgetUsd = Number(budgetInput);
+  const budgetInputMatchesCurrent = Boolean(data && Number.isFinite(parsedBudgetUsd) && parsedBudgetUsd === data.cap.configuredUsd);
+  const activeSwitchClass = 'rounded-lg border border-[#38bdf8]/80 bg-[#0ea5e9]/30 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#e0f2fe] shadow-[0_0_18px_rgba(14,165,233,0.22)] disabled:cursor-not-allowed disabled:opacity-90';
+  const dangerSwitchClass = 'rounded-lg border border-[#ef4444]/60 bg-[#ef4444]/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fecaca] transition hover:bg-[#ef4444]/30 disabled:cursor-not-allowed disabled:opacity-50';
+  const successSwitchClass = 'rounded-lg border border-[#86efac]/50 bg-[#86efac]/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/25 disabled:cursor-not-allowed disabled:opacity-50';
+  const neutralSwitchClass = 'rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50';
 
   async function refreshSettings() {
     const res = await fetch('/api/axiom/settings', { cache: 'no-store' });
@@ -310,37 +319,45 @@ export default function SettingsPage() {
                 <div className="flex max-w-xl flex-wrap justify-end gap-2">
                   <button
                     type="button"
-                    disabled={actionBusy}
+                    disabled={actionBusy || killSwitchActive}
                     onClick={killAllTokenConsumers}
-                    className="rounded-lg border border-[#ef4444]/60 bg-[#ef4444]/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fecaca] transition hover:bg-[#ef4444]/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={killSwitchActive ? activeSwitchClass : dangerSwitchClass}
+                    aria-pressed={killSwitchActive}
+                    title={killSwitchActive ? 'Already active' : undefined}
                   >
-                    kill all token consumers
+                    {killSwitchActive ? 'kill active' : 'kill all token consumers'}
                   </button>
                   <button
                     type="button"
-                    disabled={actionBusy}
+                    disabled={actionBusy || operationsActive}
                     onClick={resumeOperations}
-                    className="rounded-lg border border-[#86efac]/50 bg-[#86efac]/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={operationsActive ? activeSwitchClass : successSwitchClass}
+                    aria-pressed={operationsActive}
+                    title={operationsActive ? 'Already active' : undefined}
                   >
-                    resume operations
+                    {operationsActive ? 'operations active' : 'resume operations'}
                   </button>
                   <button
                     type="button"
-                    disabled={actionBusy}
+                    disabled={actionBusy || data.today.spentUsd === 0}
                     onClick={resetTokenCounter}
-                    className="rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] transition hover:bg-[#7dd3fc]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={data.today.spentUsd === 0 ? activeSwitchClass : 'rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] transition hover:bg-[#7dd3fc]/20 disabled:cursor-not-allowed disabled:opacity-50'}
+                    aria-pressed={data.today.spentUsd === 0}
+                    title={data.today.spentUsd === 0 ? 'Already zero' : undefined}
                   >
-                    reset counter to 0
+                    {data.today.spentUsd === 0 ? 'counter at 0' : 'reset counter to 0'}
                   </button>
                   <button
                     type="button"
-                    disabled={actionBusy}
+                    disabled={actionBusy || budgetZeroActive}
                     onClick={() => setAllowance(0)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={budgetZeroActive ? activeSwitchClass : neutralSwitchClass}
+                    aria-pressed={budgetZeroActive}
+                    title={budgetZeroActive ? 'Already active' : undefined}
                   >
-                    budget $0
+                    {budgetZeroActive ? 'budget $0 active' : 'budget $0'}
                   </button>
-                  <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 px-2 py-1">
+                  <div className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${budgetInputMatchesCurrent ? 'border-[#38bdf8]/70 bg-[#0ea5e9]/15 shadow-[0_0_18px_rgba(14,165,233,0.16)]' : 'border-white/10 bg-black/20'}`}>
                     <span className="text-[10px] text-[var(--watch-text-muted)]">$</span>
                     <input
                       value={budgetInput}
@@ -352,11 +369,13 @@ export default function SettingsPage() {
                     />
                     <button
                       type="button"
-                      disabled={actionBusy}
+                      disabled={actionBusy || budgetInputMatchesCurrent}
                       onClick={applyBudgetInput}
-                      className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={budgetInputMatchesCurrent ? 'rounded border border-[#38bdf8]/70 bg-[#0ea5e9]/25 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[#e0f2fe] disabled:cursor-not-allowed disabled:opacity-90' : 'rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50'}
+                      aria-pressed={budgetInputMatchesCurrent}
+                      title={budgetInputMatchesCurrent ? 'This budget is already selected' : undefined}
                     >
-                      set budget
+                      {budgetInputMatchesCurrent ? 'current budget' : 'set budget'}
                     </button>
                   </div>
                 </div>
