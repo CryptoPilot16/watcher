@@ -22,6 +22,7 @@ type SettingsResponse = {
   generatedAt: string;
   cap: {
     dailyUsd: number;
+    configuredUsd: number;
     defaultUsd: number;
     maxDailyUsd: number;
     overrideActive: boolean;
@@ -127,6 +128,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [budgetInput, setBudgetInput] = useState('50');
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +154,12 @@ export default function SettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!data) return;
+    const configured = data.cap.configuredUsd > 0 ? data.cap.configuredUsd : data.cap.maxDailyUsd;
+    setBudgetInput(String(Math.min(data.cap.maxDailyUsd, configured)));
+  }, [data?.cap.configuredUsd, data?.cap.maxDailyUsd]);
+
   const percent = data?.today.percentUsed ?? 0;
   const barColor = progressBarColor(percent);
   const totalActionCost = (data?.actions || []).reduce((s, a) => s + a.totalCostUsd, 0);
@@ -164,7 +172,6 @@ export default function SettingsPage() {
   }
 
   async function killAllTokenConsumers() {
-    if (!window.confirm('Emergency stop AXIOM token consumers? This sets allowance to 0, pauses autopilot, kills visible agent state, disables alerts, and stops the PM2 driver.')) return;
     setActionBusy(true);
     setActionMessage(null);
     try {
@@ -195,10 +202,60 @@ export default function SettingsPage() {
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || 'allowance update failed');
-      setActionMessage(`Allowance set to $${capUsd}/day · hard max $${json.maxDailyUsd}`);
+      setActionMessage(`Budget set to $${capUsd}/day · hard max $${json.maxDailyUsd}`);
       await refreshSettings();
     } catch (e: any) {
-      setActionMessage(`Allowance update failed: ${String(e?.message || e)}`);
+      setActionMessage(`Budget update failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function applyBudgetInput() {
+    const cap = Number(budgetInput);
+    if (!Number.isFinite(cap) || cap < 0 || (data && cap > data.cap.maxDailyUsd)) {
+      setActionMessage(`Budget must be between $0 and $${data?.cap.maxDailyUsd ?? 50}.`);
+      return;
+    }
+    await setAllowance(cap);
+  }
+
+  async function resetTokenCounter() {
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-counter', updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'reset failed');
+      setActionMessage('Token counter reset to 0 for today.');
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Counter reset failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function resumeOperations() {
+    const cap = Number(budgetInput) || data?.cap.maxDailyUsd || 50;
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume-operations', capUsd: cap, updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'resume failed');
+      setActionMessage(`Operations resumed · budget $${json.capUsd}/day · token counter reset · driver ${json.pm2Started ? 'started' : 'start not confirmed'}`);
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Resume failed: ${String(e?.message || e)}`);
     } finally {
       setActionBusy(false);
     }
@@ -245,12 +302,12 @@ export default function SettingsPage() {
                     Kill switch: {data.killSwitch.enabled ? <span className="text-[#f87171]">ON — token calls blocked</span> : <span className="text-[#86efac]">off</span>}
                   </div>
                   <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
-                    Current allowance {fmtTokens(data.cap.dailyUsd)} · hard max {fmtTokens(data.cap.maxDailyUsd)} / day. Emergency stop sets allowance to 0, pauses autopilot, disables AXIOM usage alerts, and stops the PM2 driver.
+                    Effective allowance {fmtTokens(data.cap.dailyUsd)} · configured budget {fmtTokens(data.cap.configuredUsd)} · hard max {fmtTokens(data.cap.maxDailyUsd)} / day. Kill all stops token calls; resume restarts the driver and resets today's counter.
                     {data.killSwitch.updatedAt ? ` Last changed ${new Date(data.killSwitch.updatedAt).toLocaleString()}` : ''}
                   </div>
                   {data.killSwitch.reason && <div className="mt-1 text-[10px] text-[#fca5a5]">{data.killSwitch.reason}</div>}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex max-w-xl flex-wrap justify-end gap-2">
                   <button
                     type="button"
                     disabled={actionBusy}
@@ -262,19 +319,46 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     disabled={actionBusy}
-                    onClick={() => setAllowance(0)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={resumeOperations}
+                    className="rounded-lg border border-[#86efac]/50 bg-[#86efac]/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/25 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    allowance $0
+                    resume operations
                   </button>
                   <button
                     type="button"
                     disabled={actionBusy}
-                    onClick={() => setAllowance(50)}
-                    className="rounded-lg border border-[#86efac]/40 bg-[#86efac]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bbf7d0] transition hover:bg-[#86efac]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={resetTokenCounter}
+                    className="rounded-lg border border-[#7dd3fc]/40 bg-[#7dd3fc]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#bae6fd] transition hover:bg-[#7dd3fc]/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    cap $50 max
+                    reset counter to 0
                   </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => setAllowance(0)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-bright)] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    budget $0
+                  </button>
+                  <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 px-2 py-1">
+                    <span className="text-[10px] text-[var(--watch-text-muted)]">$</span>
+                    <input
+                      value={budgetInput}
+                      disabled={actionBusy}
+                      onChange={(e) => setBudgetInput(e.target.value)}
+                      inputMode="decimal"
+                      className="w-16 bg-transparent text-right text-xs text-[var(--watch-text-bright)] outline-none disabled:opacity-50"
+                      aria-label="Daily budget dollars"
+                    />
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={applyBudgetInput}
+                      className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--watch-text-bright)] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      set budget
+                    </button>
+                  </div>
                 </div>
               </div>
               {actionMessage && <div className="mt-3 text-[11px] text-[#fbbf24]">{actionMessage}</div>}
@@ -322,11 +406,11 @@ export default function SettingsPage() {
               </div>
               <div className="mt-3 space-y-1 text-[11px] text-[var(--watch-text-muted)]">
                 <div>
-                  Change the allowance from Telegram: <span className="text-[var(--watch-text-bright)]">/budget set 20</span> · <span className="text-[var(--watch-text-bright)]">/budget +5</span> · <span className="text-[var(--watch-text-bright)]">/budget reset</span>. The CEO bot also DMs you a 🚨 alert when usage crosses 90%.
+                  Change the budget from Telegram: <span className="text-[var(--watch-text-bright)]">/budget set 20</span> · <span className="text-[var(--watch-text-bright)]">/budget +5</span> · <span className="text-[var(--watch-text-bright)]">/budget reset</span>. The CEO bot also DMs you a 🚨 alert when usage crosses 90%.
                 </div>
                 {data.cap.overrideActive && (
                   <div className="text-[#fbbf24]">
-                    Override active: cap set from default {fmtTokens(data.cap.defaultUsd)} → {fmtTokens(data.cap.dailyUsd)}
+                    Override active: budget set from default {fmtTokens(data.cap.defaultUsd)} → {fmtTokens(data.cap.dailyUsd)}
                     {data.cap.overrideUpdatedAt ? ` · set ${new Date(data.cap.overrideUpdatedAt).toLocaleString()}` : ''}
                     {data.cap.overrideUpdatedBy ? ` · by ${data.cap.overrideUpdatedBy}` : ''}
                   </div>

@@ -91,6 +91,51 @@ function pauseAutopilot(reason: string) {
   fs.writeFileSync(AXIOM_PAUSE_FILE, `${reason}\n`);
 }
 
+function resumeAutopilot() {
+  try { fs.unlinkSync(AXIOM_PAUSE_FILE); } catch {}
+}
+
+function resetGlobalCostCounter() {
+  fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
+  fs.writeFileSync(path.join(AXIOM_MAILBOX_DIR, AXIOM_GLOBAL_COST_FILE), JSON.stringify({
+    todayCostUsd: 0,
+    costDayKey: new Date().toISOString().slice(0, 10),
+  }, null, 2));
+}
+
+function resetAgentRateCounters() {
+  let count = 0;
+  let files: string[] = [];
+  try { files = fs.readdirSync(AXIOM_MAILBOX_DIR).filter((n) => n.endsWith('.rate.json')); } catch { return count; }
+  for (const fname of files) {
+    try {
+      fs.writeFileSync(path.join(AXIOM_MAILBOX_DIR, fname), JSON.stringify({ callTimestamps: [] }, null, 2));
+      count++;
+    } catch {}
+  }
+  return count;
+}
+
+async function stopAxiomDriver() {
+  let stopped = false;
+  try {
+    await run('pm2', ['stop', 'clawnux-axiom-driver'], { timeout: 15_000 });
+    await run('pm2', ['save', '--force'], { timeout: 15_000 });
+    stopped = true;
+  } catch {}
+  return stopped;
+}
+
+async function startAxiomDriver() {
+  let started = false;
+  try {
+    await run('pm2', ['start', 'clawnux-axiom-driver'], { timeout: 15_000 });
+    await run('pm2', ['save', '--force'], { timeout: 15_000 });
+    started = true;
+  } catch {}
+  return started;
+}
+
 function markAgentsKilled(reason: string) {
   let count = 0;
   let files: string[] = [];
@@ -267,6 +312,7 @@ export async function GET() {
     generatedAt: new Date().toISOString(),
     cap: {
       dailyUsd: effectiveCap,
+      configuredUsd: effectiveCapFromAllowance(allowance),
       defaultUsd: AXIOM_MAX_DAILY_USD_DEFAULT,
       maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING,
       overrideActive: typeof allowance.dailyUsdOverride === 'number' && Number.isFinite(allowance.dailyUsdOverride),
@@ -312,13 +358,30 @@ export async function POST(request: Request) {
     writeKillSwitch({ enabled: true, alertsEnabled: false, reason, updatedBy });
     pauseAutopilot(reason);
     const killedAgents = markAgentsKilled(reason);
-    let pm2Stopped = false;
-    try {
-      await run('pm2', ['stop', 'clawnux-axiom-driver'], { timeout: 15_000 });
-      await run('pm2', ['save', '--force'], { timeout: 15_000 });
-      pm2Stopped = true;
-    } catch {}
-    return NextResponse.json({ ok: true, action, capUsd: 0, maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING, pm2Stopped, killedAgents });
+    const rateFilesReset = resetAgentRateCounters();
+    const pm2Stopped = await stopAxiomDriver();
+    return NextResponse.json({ ok: true, action, capUsd: 0, maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING, pm2Stopped, killedAgents, rateFilesReset });
+  }
+  if (action === 'reset-counter') {
+    resetGlobalCostCounter();
+    const rateFilesReset = resetAgentRateCounters();
+    return NextResponse.json({ ok: true, action, spentUsd: 0, rateFilesReset });
+  }
+  if (action === 'resume-operations') {
+    const requested = Number(body?.capUsd);
+    const allowance = loadAllowance();
+    const fallbackCap = effectiveCapFromAllowance(allowance) > 0 ? effectiveCapFromAllowance(allowance) : AXIOM_MAX_DAILY_USD_CEILING;
+    const cap = Number.isFinite(requested) && requested > 0 ? requested : fallbackCap;
+    if (cap <= 0 || cap > AXIOM_MAX_DAILY_USD_CEILING) {
+      return NextResponse.json({ ok: false, error: `resume cap must be > $0 and <= $${AXIOM_MAX_DAILY_USD_CEILING}` }, { status: 400 });
+    }
+    writeAllowance(cap, updatedBy);
+    writeKillSwitch({ enabled: false, alertsEnabled: true, reason: 'AXIOM operations resumed from settings UI', updatedBy });
+    resetGlobalCostCounter();
+    resetAgentRateCounters();
+    resumeAutopilot();
+    const pm2Started = await startAxiomDriver();
+    return NextResponse.json({ ok: true, action, capUsd: cap, maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING, spentUsd: 0, pm2Started });
   }
   if (action === 'set-allowance') {
     const cap = Number(body?.capUsd);
