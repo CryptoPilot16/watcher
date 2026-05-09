@@ -525,6 +525,7 @@ async function readMemoryFile() {
 const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watcher/axiom-mailbox';
 const AXIOM_GLOBAL_COST_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-global.cost.json');
 const AXIOM_ALLOWANCE_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-allowance.json');
+const AXIOM_KILL_SWITCH_FILE = process.env.WATCH_AXIOM_KILL_SWITCH_FILE || '/var/lib/watcher/axiom-kill-switch.json';
 const AXIOM_MAX_DAILY_USD_CEILING = 50;
 const AXIOM_DEFAULT_DAILY_USD = Math.min(Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10), AXIOM_MAX_DAILY_USD_CEILING);
 
@@ -534,6 +535,21 @@ async function readJsonFile(file) {
   } catch {
     return null;
   }
+}
+
+async function readKillSwitch() {
+  return (await readJsonFile(AXIOM_KILL_SWITCH_FILE)) || { enabled: false, alertsEnabled: true };
+}
+
+async function writeKillSwitch(enabled, updatedBy, reason) {
+  await fs.mkdir(dirname(AXIOM_KILL_SWITCH_FILE), { recursive: true });
+  await fs.writeFile(AXIOM_KILL_SWITCH_FILE, JSON.stringify({
+    enabled,
+    alertsEnabled: !enabled,
+    reason,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  }, null, 2));
 }
 
 async function readEffectiveAllowance() {
@@ -607,6 +623,7 @@ async function handleBudgetCommand(chatId, userId, text) {
   // Reset.
   if (/^reset|clear|default$/i.test(args)) {
     await clearAllowanceOverride();
+    await writeKillSwitch(false, updatedBy, 'AXIOM allowance reset to default from Telegram /budget');
     await clearGlobalAlertFlag();
     await tg('sendMessage', {
       chat_id: chatId,
@@ -645,6 +662,7 @@ async function handleBudgetCommand(chatId, userId, text) {
   }
 
   await writeAllowanceOverride(newCap, updatedBy);
+  await writeKillSwitch(newCap === 0, updatedBy, newCap === 0 ? 'AXIOM allowance set to zero from Telegram /budget' : 'AXIOM allowance restored from Telegram /budget');
   await clearGlobalAlertFlag();
   const pct = newCap > 0 ? (spent / newCap) * 100 : 0;
   await tg('sendMessage', {
@@ -682,6 +700,8 @@ async function writeMission(state) {
 }
 
 async function dispatchMission(brief, chatId) {
+  const killSwitch = await readKillSwitch();
+  if (killSwitch.enabled) throw new Error(`AXIOM emergency token kill switch is ON${killSwitch.reason ? ` — ${killSwitch.reason}` : ''}`);
   const id = `ax-${Math.random().toString(36).slice(2, 6)}${Math.random().toString(36).slice(2, 6)}`;
   const lastMessageFile = join(tmpdir(), `axiom-mission-${id}.txt`);
   const startedAt = new Date().toISOString();
@@ -1070,6 +1090,18 @@ async function handleMessage(state, msg) {
       lines.push(`${m.id} · ${m.status}${dur} — ${briefShort}`);
     }
     await tg('sendMessage', { chat_id: chatId, text: lines.join('\n') });
+    return;
+  }
+
+  const killSwitch = await readKillSwitch();
+  if (killSwitch.enabled) {
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: `🛑 AXIOM token kill switch is ON. I will not call CEO/manager/codex agents. ${killSwitch.reason || ''}
+
+Use /budget set 1..50 only when you want token calls enabled again.`,
+      reply_to_message_id: msg.message_id,
+    });
     return;
   }
 
