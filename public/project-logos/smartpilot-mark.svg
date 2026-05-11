@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SmartPilot">
+  <defs>
+    <linearGradient id="sp-g" x1="20" y1="14" x2="108" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0abfc"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="28" fill="#171123"/>
+  <path d="M64 27l39 74-39-18-39 18 39-74Z" fill="url(#sp-g)"/>
+  <path d="M64 49l13 35-13-6-13 6 13-35Z" fill="#faf5ff" opacity=".9"/>
+  <circle cx="64" cy="64" r="9" fill="#c084fc"/>
+  <path d="M33 96c15-8 47-8 62 0" stroke="#e9d5ff" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+</svg>

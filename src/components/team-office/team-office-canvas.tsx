@@ -493,6 +493,8 @@ function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
     rotationY: Math.PI,
   };
   if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('nysm')) return { label: 'NYSM', accent: '#22d3ee', imageUrl: '/project-logos/nysm-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
+  if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#c084fc', imageUrl: '/project-logos/smartpilot-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
   if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
   if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.11, maxHeight: 0.11, ...base };
   return null;
@@ -2940,8 +2942,13 @@ function buildAxiomDeskLayouts(topics: TeamTopic[]) {
 }
 
 function buildDeskLayouts(topics: TeamTopic[]) {
-  // Layout: left=projects+general+assistant, right=coders+housekeeping+clone
+  // Layout: left=project-owner desks + Assistant, right=coders + ops lanes.
+  // Keep the columns balanced as project lanes grow so adding NYSM/SmartPilot
+  // expands the office by one clean row instead of shoving one project into
+  // the wrong side of the room.
   const projectSky = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('sky'));
+  const projectNysm = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('nysm'));
+  const projectSmartPilot = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('smartpilot') || (l.includes('smart') && l.includes('pilot')); });
   const projectEchoes = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('echo'));
   const projectOdds = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('odds') || l.includes('gap'); });
   const coders = topics.filter((t) => isCoderTopic(t));
@@ -2954,17 +2961,23 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   const leftCol: TeamTopic[] = [];
   const rightCol: TeamTopic[] = [];
   const push = (arr: TeamTopic[], t: TeamTopic) => { if (!placed.has(t.topicId)) { placed.add(t.topicId); arr.push(t); } };
+  const pushCoderFromEnd = (offset: number) => {
+    const coder = coders[coders.length - 1 - offset];
+    if (coder) push(rightCol, coder);
+  };
 
   projectSky.forEach((t) => push(leftCol, t));
-  if (coders.length >= 3) push(rightCol, coders[coders.length - 1]);
+  pushCoderFromEnd(0);
+  projectNysm.forEach((t) => push(leftCol, t));
+  pushCoderFromEnd(1);
+  projectSmartPilot.forEach((t) => push(leftCol, t));
+  pushCoderFromEnd(2);
   projectEchoes.forEach((t) => push(leftCol, t));
-  if (coders.length >= 2) push(rightCol, coders[coders.length - 2]);
-  projectOdds.forEach((t) => push(leftCol, t));
-  if (coders.length >= 1) push(rightCol, coders[coders.length - 3] ?? coders[0]);
-  generals.forEach((t) => push(leftCol, t));
   housekeepingList.forEach((t) => push(rightCol, t));
-  assistantList.forEach((t) => push(leftCol, t));
+  projectOdds.forEach((t) => push(leftCol, t));
   cloneList.forEach((t) => push(rightCol, t));
+  assistantList.forEach((t) => push(leftCol, t));
+  generals.forEach((t) => push(rightCol, t));
   for (const t of coders) push(rightCol, t);
   for (const t of topics) { if (!placed.has(t.topicId)) { if (leftCol.length <= rightCol.length) push(leftCol, t); else push(rightCol, t); } }
 

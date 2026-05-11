@@ -21,6 +21,7 @@ function publicRoleLabel(topic: TeamTopic, workerIndex: number) {
     case 'echoes_commands':
       return 'Voice';
     case 'project_owner_and_worker':
+      return topic.configured.label || `Project ${workerIndex}`;
     case 'generic_coder':
       return `Worker ${workerIndex}`;
     default:
