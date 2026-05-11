@@ -489,14 +489,15 @@ type ProjectBadgeSpec = {
 function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
   const label = topicDisplayLabel(topic).toLowerCase();
   const base = {
-    position: [0.0, 0.31, 0.43] as [number, number, number],
-    rotationY: Math.PI,
+    // Camera-facing desk front/signboard slot, matching the existing project desks.
+    position: [-0.1, 0.82, -0.52] as [number, number, number],
+    rotationY: 0,
   };
-  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
-  if (label.includes('nysm')) return { label: 'NYSM', accent: '#22d3ee', imageUrl: '/project-logos/nysm-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
-  if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#c084fc', imageUrl: '/project-logos/smartpilot-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
-  if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
-  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('nysm')) return { label: 'NYSM', accent: '#c87830', imageUrl: '/project-logos/nysm.png', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#c084fc', imageUrl: '/project-logos/smartpilot-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.42, maxHeight: 0.3, ...base };
   return null;
 }
 
@@ -782,20 +783,19 @@ function ProjectDeskBadge({ topic }: { topic: TeamTopic }) {
   const texture = spec ? imageTexture : fallbackTexture;
   if (!texture) return null;
 
-  if (isProject) {
-    const logoSize = 0.26;
+  if (isProject && spec) {
     const aspect = imageAspect;
-    const w = Math.min(logoSize, (logoSize / Math.max(aspect, 0.01)) * aspect);
-    const h = Math.min(logoSize, logoSize / Math.max(aspect, 0.01));
-    const panelPad = 0.06;
+    const w = Math.min(spec.maxWidth, spec.maxHeight * aspect);
+    const h = Math.min(spec.maxHeight, spec.maxWidth / Math.max(aspect, 0.01));
+    const panelPad = 0.055;
     return (
-      <group position={[-0.1, 0.82, -0.52]}>
-        <RoundedBox args={[w + panelPad, h + panelPad, 0.022]} radius={0.02} smoothness={4}>
+      <group position={spec.position} rotation={[0, spec.rotationY, 0]}>
+        <RoundedBox args={[w + panelPad, h + panelPad, 0.024]} radius={0.022} smoothness={4}>
           <meshStandardMaterial color="#1a1820" roughness={0.9} />
         </RoundedBox>
-        <mesh position={[0, 0, -0.012]} renderOrder={19}>
+        <mesh position={[0, 0, -0.014]} renderOrder={19}>
           <planeGeometry args={[w, h]} />
-          <meshBasicMaterial map={texture} side={THREE.DoubleSide} toneMapped={false} />
+          <meshBasicMaterial map={texture} transparent alphaTest={0.04} side={THREE.DoubleSide} toneMapped={false} />
         </mesh>
       </group>
     );

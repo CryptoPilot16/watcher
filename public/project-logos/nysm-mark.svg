@@ -1,13 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="NYSM">
-  <defs>
-    <linearGradient id="nysm-g" x1="14" y1="12" x2="114" y2="116" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#67e8f9"/>
-      <stop offset="1" stop-color="#0e7490"/>
-    </linearGradient>
-  </defs>
-  <rect x="10" y="10" width="108" height="108" rx="26" fill="#06151d"/>
-  <path d="M31 85V43h12l22 23V43h12v42H65L43 62v23H31Z" fill="url(#nysm-g)"/>
-  <path d="M84 43h13v42H84z" fill="#a5f3fc"/>
-  <circle cx="90.5" cy="31" r="6.5" fill="#22d3ee"/>
-  <path d="M27 94h74" stroke="#22d3ee" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0c0b09"/>
+  <!-- Triangle -->
+  <polygon points="256,80 420,380 92,380" fill="none" stroke="#c87830" stroke-width="24" stroke-linejoin="round"/>
+  <!-- Eye outline -->
+  <ellipse cx="256" cy="270" rx="80" ry="48" fill="none" stroke="#c87830" stroke-width="14"/>
+  <!-- Pupil -->
+  <circle cx="256" cy="270" r="22" fill="#c87830"/>
+  <!-- Scan lines -->
+  <line x1="140" y1="340" x2="372" y2="340" stroke="#c87830" stroke-width="3" opacity="0.3"/>
+  <line x1="160" y1="355" x2="352" y2="355" stroke="#c87830" stroke-width="2" opacity="0.2"/>
 </svg>
