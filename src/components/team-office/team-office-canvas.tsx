@@ -281,8 +281,12 @@ function isHousekeepingTopic(topic: TeamTopic) {
   return role.includes('housekeeping') || configured.includes('house keeping') || display.includes('house keeping') || display.includes('housekeeping');
 }
 
+function isProjectOwnerTopic(topic: TeamTopic) {
+  return (topic.configured.role || '').toLowerCase() === 'project_owner_and_worker';
+}
+
 function isProjectDeskTopic(topic: TeamTopic) {
-  return projectBadgeSpec(topic) !== null;
+  return isProjectOwnerTopic(topic) || projectBadgeSpec(topic) !== null;
 }
 
 function shouldSitAtDesk(topic: TeamTopic) {
@@ -1110,6 +1114,8 @@ function modelPathForTopic(topic: TeamTopic): string {
     return ['/models/chars/Knight.glb', '/models/chars/Rogue.glb', '/models/chars/Rogue_Hooded.glb'][seed % 3];
   }
   if (isCloneTopic(topic)) return '/models/chars/Rogue_Hooded.glb';
+  // Project-owner lanes are visually the project managers: keep them as wizards
+  // even before a custom logo/badge is available or the Telegram title settles.
   if (isProjectDeskTopic(topic)) return '/models/chars/Mage.glb';
   if (isGeneralTopic(topic)) return '/models/chars/Rogue.glb';
   if (isAssistantTopic(topic) || isCoderTopic(topic)) return '/models/chars/Knight.glb';
