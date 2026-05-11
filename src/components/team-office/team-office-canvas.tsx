@@ -498,8 +498,8 @@ function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
     rotationY: 0,
   };
   if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
-  if (label.includes('nysm')) return { label: 'NYSM', accent: '#c87830', imageUrl: '/project-logos/nysm.png', maxWidth: 0.42, maxHeight: 0.3, ...base };
-  if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#c084fc', imageUrl: '/project-logos/smartpilot-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('nysm')) return { label: 'NYSM', accent: '#c87830', imageUrl: '/project-logos/nysm.png?v=65bd34d', maxWidth: 0.42, maxHeight: 0.3, ...base };
+  if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#c084fc', imageUrl: '/project-logos/smartpilot-mark.svg?v=e10eed1', maxWidth: 0.42, maxHeight: 0.3, ...base };
   if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.42, maxHeight: 0.3, ...base };
   if (label.includes('odds') || label.includes('gap')) return { label: 'ODDSGAP', accent: '#ffb84d', imageUrl: '/project-logos/oddsgap-symbol.png', maxWidth: 0.42, maxHeight: 0.3, ...base };
   return null;
