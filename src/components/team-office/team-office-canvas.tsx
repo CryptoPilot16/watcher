@@ -3395,7 +3395,8 @@ type AvatarShellConnection = {
 };
 
 function AgentFacePanel({ topic }: { topic: TeamTopic }) {
-  const agentId = topic.configured.agent || '';
+  const rawAgentId = (topic.configured.agent || '').trim();
+  const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
