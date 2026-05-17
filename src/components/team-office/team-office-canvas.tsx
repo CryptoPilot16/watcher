@@ -516,6 +516,7 @@ type DeskLayout = {
   // instead of the default `rotationY + π`. Used in the AXIOM layout to
   // point every worker at the CEO desk in the middle of the room.
   atDeskFacing?: number;
+  hideDesk?: boolean;
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
@@ -3151,22 +3152,23 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   });
 
   hermesList.slice(0, 1).forEach((topic) => {
-    const deskX = 1.72;
-    const deskZ = 3.36;
+    const deskX = 1.02;
+    const deskZ = 4.04;
     const rotationY = 0;
     layouts.push({
       topic,
       position: [deskX, 0, deskZ] as [number, number, number],
       rotationY,
-      workerDeskPosition: [0.72, 0, 3.8],
-      standbyPosition: [deskX + 0.86, 0, deskZ + 0.12],
-      taskTablePosition: [0.72, 0, 3.8],
-      taskTableFacing: Math.atan2(0 - 0.72, 4.45 - 3.8),
-      deliveryPosition: [0.82, 0, 3.74],
-      focusPoint: [deskX, 0.92, deskZ + 0.36],
-      deskSeatPosition: [deskX + 0.08, 0, deskZ + 0.48],
-      deskStandPosition: [deskX + 0.08, 0, deskZ + 0.88],
+      workerDeskPosition: [deskX, 0, deskZ],
+      standbyPosition: [deskX + 0.58, 0, deskZ - 0.18],
+      taskTablePosition: [deskX, 0, deskZ],
+      taskTableFacing: Math.atan2(0 - deskX, 4.45 - deskZ),
+      deliveryPosition: [deskX, 0, deskZ - 0.24],
+      focusPoint: [deskX, 0.92, deskZ + 0.18],
+      deskSeatPosition: [deskX, 0, deskZ],
+      deskStandPosition: [deskX, 0, deskZ - 0.36],
       atDeskFacing: rotationY,
+      hideDesk: true,
     });
   });
 
@@ -3323,18 +3325,20 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
 
         return (
           <group key={desk.topic.topicId}>
-            <DeskUnit
-              topic={desk.topic}
-              position={desk.position}
-              rotationY={desk.rotationY}
-              reducedMotion={reducedMotion}
-              seed={index + 1}
-              emphasized={emphasized}
-              manifest={manifest}
-              onHover={() => onHover(desk.topic.topicId)}
-              onLeave={() => onLeave(desk.topic.topicId)}
-              onSelect={() => onSelect(desk.topic.topicId)}
-            />
+            {!desk.hideDesk && (
+              <DeskUnit
+                topic={desk.topic}
+                position={desk.position}
+                rotationY={desk.rotationY}
+                reducedMotion={reducedMotion}
+                seed={index + 1}
+                emphasized={emphasized}
+                manifest={manifest}
+                onHover={() => onHover(desk.topic.topicId)}
+                onLeave={() => onLeave(desk.topic.topicId)}
+                onSelect={() => onSelect(desk.topic.topicId)}
+              />
+            )}
             <WorkerAvatar
               topic={desk.topic}
               standbyPosition={desk.standbyPosition}
