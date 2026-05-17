@@ -1199,6 +1199,7 @@ const CHARACTER_MODELS = [
 CHARACTER_MODELS.forEach((p) => { try { (useGLTF as unknown as { preload: (p: string) => void }).preload(p); } catch {} });
 
 function modelPathForTopic(topic: TeamTopic): string {
+  if (isHermesTopic(topic)) return '/models/chars/Barbarian.glb';
   // AXIOM roles take priority — keep CEO/managers/coders visually distinct
   const role = (topic.configured.role || '').toLowerCase();
   if (role === 'ceo') return '/models/chars/Barbarian.glb';
