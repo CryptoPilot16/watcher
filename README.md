@@ -44,7 +44,7 @@ npm run dev
 
 ## What ships today
 
-- Root route `/` redirects straight to the password-gated dashboard flow at `/watch`
+- Root route `/` is a destination chooser that links into either the `/watch` dashboard login or the `/axiom` admin login
 - Password-gated dashboard at `/watch`
 - Five dashboard tabs:
   - **status**: mission banner, live session feed, auth health, session freshness, recent runs, cron state, stale-fault clearing
