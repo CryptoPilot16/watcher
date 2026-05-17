@@ -526,7 +526,7 @@ const AXIOM_MAILBOX_DIR = process.env.WATCH_AXIOM_MAILBOX_DIR || '/var/lib/watch
 const AXIOM_GLOBAL_COST_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-global.cost.json');
 const AXIOM_ALLOWANCE_FILE = join(AXIOM_MAILBOX_DIR, 'axiom-allowance.json');
 const AXIOM_KILL_SWITCH_FILE = process.env.WATCH_AXIOM_KILL_SWITCH_FILE || '/var/lib/watcher/axiom-kill-switch.json';
-const AXIOM_MAX_DAILY_USD_CEILING = 50;
+const AXIOM_MAX_DAILY_USD_CEILING = 100;
 const AXIOM_DEFAULT_DAILY_USD = Math.min(Number(process.env.WATCH_AXIOM_MAX_DAILY_USD || 10), AXIOM_MAX_DAILY_USD_CEILING);
 
 async function readJsonFile(file) {

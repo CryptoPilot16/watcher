@@ -229,7 +229,7 @@ export default function SettingsPage() {
   async function applyBudgetInput() {
     const cap = Number(budgetInput);
     if (!Number.isFinite(cap) || cap < 0 || (data && cap > data.cap.maxDailyUsd)) {
-      setActionMessage(`Budget must be between $0 and $${data?.cap.maxDailyUsd ?? 50}.`);
+      setActionMessage(`Budget must be between $0 and $${data?.cap.maxDailyUsd ?? 100}.`);
       return;
     }
     await setAllowance(cap);
@@ -296,7 +296,7 @@ export default function SettingsPage() {
   }
 
   async function resumeOperations() {
-    const cap = Number(budgetInput) || data?.cap.maxDailyUsd || 50;
+    const cap = Number(budgetInput) || data?.cap.maxDailyUsd || 100;
     setActionBusy(true);
     setActionMessage(null);
     try {
@@ -527,7 +527,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <div>
-                  Once the allowance is hit — or set to 0 — all AXIOM agent calls are blocked until you raise the cap. Hard max is $50/day.
+                  Once the allowance is hit — or set to 0 — all AXIOM agent calls are blocked until you raise the cap. Hard max is ${data.cap.maxDailyUsd}/day.
                 </div>
               </div>
             </div>

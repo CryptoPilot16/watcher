@@ -227,7 +227,7 @@ type KillSwitchState = {
 const AXIOM_GLOBAL_COST_FILE = 'axiom-global.cost.json';
 const AXIOM_ALLOWANCE_FILE = 'axiom-allowance.json';
 const AXIOM_KILL_SWITCH_FILE = process.env.WATCH_AXIOM_KILL_SWITCH_FILE || '/var/lib/watcher/axiom-kill-switch.json';
-const AXIOM_MAX_DAILY_USD_CEILING = 50;
+const AXIOM_MAX_DAILY_USD_CEILING = 100;
 const AXIOM_ALERT_THRESHOLD_PERCENT = 90;
 
 function loadAllowance(): AllowanceOverride {
