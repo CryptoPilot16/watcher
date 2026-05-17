@@ -5,8 +5,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Billboard, ContactShadows, Float, OrbitControls, Outlines, RoundedBox, useAnimations, useGLTF } from '@react-three/drei';
 import { useLoader } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { BarVisualizer, LiveKitRoom, RoomAudioRenderer, VideoTrack, useTracks, useVoiceAssistant } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { BarVisualizer, LiveKitRoom, RoomAudioRenderer, VideoTrack, useRoomContext, useTracks, useVoiceAssistant } from '@livekit/components-react';
+import { RoomEvent, Track } from 'livekit-client';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { MTLLoader, OBJLoader, SkeletonUtils } from 'three-stdlib';
 import * as THREE from 'three';
@@ -3394,6 +3394,12 @@ type AvatarShellConnection = {
   persona?: { display_name?: string; agent_id?: string };
 };
 
+type FaceTranscriptEntry = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+};
+
 function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChange?: (open: boolean) => void }) {
   const rawAgentId = (topic.configured.agent || '').trim();
   const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
@@ -3506,6 +3512,7 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               className="block"
             >
               <WatcherFaceStage />
+              <WatcherFaceTranscript />
               <RoomAudioRenderer />
             </LiveKitRoom>
           )}
@@ -3538,6 +3545,54 @@ function WatcherFaceStage() {
       )}
       <div className="absolute bottom-2 left-2 rounded border border-white/10 bg-black/45 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/60">
         {state || 'connected'}
+      </div>
+    </div>
+  );
+}
+
+function WatcherFaceTranscript() {
+  const room = useRoomContext();
+  const [entries, setEntries] = useState<FaceTranscriptEntry[]>([]);
+
+  useEffect(() => {
+    function onData(payload: Uint8Array, _participant?: unknown, _kind?: unknown, topic?: string) {
+      if (topic !== 'avatar-shell:transcript') return;
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        const text = String(data?.text || '').trim();
+        if (!text || data?.is_final === false) return;
+        const role = data?.role === 'assistant' ? 'assistant' : 'user';
+        setEntries((prev) => [
+          ...prev,
+          {
+            id: Date.now() + '-' + role + '-' + Math.random().toString(36).slice(2),
+            role,
+            text,
+          },
+        ].slice(-4));
+      } catch {}
+    }
+
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="border-t border-white/10 bg-black/35 px-2 py-1.5 text-[10px] leading-4 text-white/70">
+      <div className="mb-1 text-[8px] uppercase tracking-[0.16em] text-white/35">transcript</div>
+      <div className="max-h-16 space-y-1 overflow-y-auto">
+        {entries.map((entry) => (
+          <div key={entry.id} className="grid grid-cols-[2.6rem_1fr] gap-1">
+            <span className={entry.role === 'assistant' ? 'text-[rgb(216,186,117)]' : 'text-[rgb(103,232,249)]'}>
+              {entry.role === 'assistant' ? 'her' : 'you'}
+            </span>
+            <span className="min-w-0 truncate text-white/75">{entry.text}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
