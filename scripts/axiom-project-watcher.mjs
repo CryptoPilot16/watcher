@@ -25,7 +25,16 @@ const DEBOUNCE_MS = 200;
 const IGNORED_PARTS = new Set([
   'node_modules', '.git', '.next', 'dist', 'build', '.turbo', '.cache',
   'coverage', '.nyc_output', '.parcel-cache', '.vite', '.svelte-kit',
+  // Build artefacts + runtime data that flood the events feed with churn
+  // unrelated to agent work. ClickHouse parts files in infra/data/ rotate
+  // constantly; Cargo target/ churns on every Rust build.
+  'target',
 ]);
+// Path prefixes (relative to project root) we silently drop. Use for noisy
+// trees where ignoring a single dirname like 'data' would be too broad.
+const IGNORED_PREFIXES = [
+  'infra/data/',
+];
 const IGNORED_FILES = /\.(log|swp|swo|tmp|lock)$/i;
 
 // Path → owning team mapper. Each team's manager + 4 coders work in distinct
@@ -56,6 +65,9 @@ function attributePath(relPath) {
 
 function isIgnored(relPath) {
   if (!relPath) return false;
+  for (const prefix of IGNORED_PREFIXES) {
+    if (relPath === prefix.slice(0, -1) || relPath.startsWith(prefix)) return true;
+  }
   for (const part of relPath.split('/')) {
     if (IGNORED_PARTS.has(part)) return true;
     if (part.startsWith('.') && part.length > 1 && part !== '.env.example') {
