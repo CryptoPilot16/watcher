@@ -3738,18 +3738,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
           )}
         </div>
       )}
-      {conn && !open && (
-        <LiveKitRoom
-          serverUrl={conn.livekit_url}
-          token={conn.livekit_token}
-          connect
-          audio
-          video={false}
-          className="hidden"
-        >
-          <RoomAudioRenderer />
-        </LiveKitRoom>
-      )}
     </div>
   );
 }
