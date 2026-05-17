@@ -3394,13 +3394,17 @@ type AvatarShellConnection = {
   persona?: { display_name?: string; agent_id?: string };
 };
 
-function AgentFacePanel({ topic }: { topic: TeamTopic }) {
+function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChange?: (open: boolean) => void }) {
   const rawAgentId = (topic.configured.agent || '').trim();
   const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     return () => {
@@ -3439,7 +3443,7 @@ function AgentFacePanel({ topic }: { topic: TeamTopic }) {
   }
 
   const panelClass = open
-    ? 'pointer-events-auto fixed bottom-3 right-3 z-[80] w-[calc(100vw-24px)] rounded-xl border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1 shadow-2xl shadow-black/50 backdrop-blur-md sm:w-[460px] lg:w-[520px] xl:w-[560px]'
+    ? 'pointer-events-auto mt-2 rounded-lg border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1'
     : 'pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1';
 
   return (
@@ -3521,7 +3525,7 @@ function WatcherFaceStage() {
     videoTracks[0];
 
   return (
-    <div className="relative aspect-[4/5] min-h-[420px] max-h-[78vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
+    <div className="relative aspect-[4/5] min-h-[340px] max-h-[58vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
       {avatarTrack ? (
         <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
       ) : (
@@ -3755,10 +3759,19 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
 }
 
 function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplineDemoMode, onDisciplineDemo }: { topic: TeamTopic | null; groupId: string; isMobile: boolean; expanded: boolean; onToggle: () => void; disciplineDemoMode: DisciplineDemoMode; onDisciplineDemo: (mode: Exclude<DisciplineDemoMode, 'off'>) => void }) {
+  const [faceOpen, setFaceOpen] = useState(false);
+
+  useEffect(() => {
+    setFaceOpen(false);
+  }, [topic?.topicId]);
+
   if (!topic) return null;
   const color = statusColor(topic.live.status);
   const disciplinePunch = disciplineDemoMode === 'punch';
   const disciplineKick = disciplineDemoMode === 'kick';
+  const desktopCardClass = faceOpen
+    ? 'pointer-events-none absolute right-3 top-3 z-10 w-[460px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md'
+    : 'pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md';
 
   if (isMobile) {
     if (!expanded) {
@@ -3821,14 +3834,14 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             </button>
           </div>
         )}
-        <AgentFacePanel topic={topic} />
+        <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
         <InstructInput topic={topic} groupId={groupId} />
       </div>
     );
   }
 
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md">
+    <div className={desktopCardClass}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
@@ -3838,6 +3851,8 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           {topic.live.status}
         </div>
       </div>
+      {!faceOpen && (
+        <>
       <div className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
       <div className="mt-1 text-sm leading-6 text-white/90">{topicHeadline(topic)}</div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-white/55">
@@ -3882,7 +3897,9 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </button>
         </div>
       )}
-      <AgentFacePanel topic={topic} />
+        </>
+      )}
+      <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
       <InstructInput topic={topic} groupId={groupId} />
     </div>
   );
