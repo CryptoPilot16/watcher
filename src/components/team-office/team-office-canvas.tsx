@@ -496,7 +496,7 @@ function projectBadgeSpec(topic: TeamTopic): ProjectBadgeSpec | null {
     position: [0.0, 0.31, 0.43] as [number, number, number],
     rotationY: Math.PI,
   };
-  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };
+  if (label.includes('sky')) return { label: 'SKYBUDDY', accent: '#61d86b', imageUrl: '/project-logos/skybuddy.png', maxWidth: 0.11, maxHeight: 0.11, ...base };
   if (label.includes('nysm')) return { label: 'NYSM', accent: '#c87830', imageUrl: '/project-logos/nysm.png', maxWidth: 0.12, maxHeight: 0.12, ...base };
   if (label.includes('smartpilot') || (label.includes('smart') && label.includes('pilot'))) return { label: 'SMARTPILOT', accent: '#8a8f98', imageUrl: '/project-logos/smartpilot-mark.svg', maxWidth: 0.12, maxHeight: 0.12, ...base };
   if (label.includes('echo')) return { label: 'ECHOES', accent: '#7e9bff', imageUrl: '/project-logos/echoes-mark.svg', maxWidth: 0.11, maxHeight: 0.11, ...base };

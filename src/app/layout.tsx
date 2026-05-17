@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://maosprontas.clawnux.com';
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -10,6 +12,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'Watcher',
   description: 'Self-hosted mission control for OpenClaw agent teams with live session feeds, office-floor visibility, lane control, and service health.',
   appleWebApp: {
