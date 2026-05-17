@@ -2835,7 +2835,23 @@ function WindowBlindsFallback() {
   );
 }
 
-function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames, activeTeams }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle; layoutVariant?: LayoutVariant; departmentNames?: string[]; activeTeams?: Set<number> }) {
+function PilotComputerGlow({ active }: { active: boolean }) {
+  if (!active) return null;
+  return (
+    <group position={[0, 0.86, 4.045]}>
+      <mesh>
+        <planeGeometry args={[0.86, 0.42]} />
+        <meshStandardMaterial color="#a7f3d0" emissive="#67e8f9" emissiveIntensity={1.55} transparent opacity={0.78} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, -0.03, -0.004]}>
+        <planeGeometry args={[0.58, 0.04]} />
+        <meshStandardMaterial color="#f8d57a" emissive="#f8d57a" emissiveIntensity={1.2} transparent opacity={0.72} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'default', departmentNames, activeTeams, hermesComputerActive = false }: { manifest?: OfficeAssetManifestOverride; sceneStyle?: SceneStyle; layoutVariant?: LayoutVariant; departmentNames?: string[]; activeTeams?: Set<number>; hermesComputerActive?: boolean }) {
   return (
     <>
       {sceneStyle === 'dungeon' && (
@@ -2853,6 +2869,7 @@ function OfficeShell({ manifest, sceneStyle = 'dungeon', layoutVariant = 'defaul
           <meshStandardMaterial color="#dee3ea" roughness={0.98} />
         </mesh>
       )}
+      {layoutVariant !== 'axiom' && <PilotComputerGlow active={hermesComputerActive} />}
     </>
   );
 }
@@ -3152,8 +3169,8 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   });
 
   hermesList.slice(0, 1).forEach((topic) => {
-    const screenX = 0.62;
-    const screenZ = 3.44;
+    const screenX = 0;
+    const screenZ = 3.34;
     const rotationY = 0;
     layouts.push({
       topic,
@@ -3207,6 +3224,10 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
   const deskLayouts = useMemo<DeskLayout[]>(
     () => (layoutVariant === 'axiom' ? buildAxiomDeskLayouts(topics) : buildDeskLayouts(topics)),
     [topics, layoutVariant],
+  );
+  const hermesComputerActive = useMemo(
+    () => topics.some((topic) => isHermesTopic(topic) && (topic.live.status === 'running' || topic.live.status === 'recent' || topic.topicId === selectedTopicId)),
+    [topics, selectedTopicId],
   );
   const disciplineContactRef = useRef(false);
   const avatarPositionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
@@ -3311,7 +3332,7 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
       <directionalLight position={[9, 12, 7]} intensity={1.34} color="#fff8ef" />
       <pointLight position={[0, 6.8, 5.6]} intensity={3.8} color="#f6ffff" />
 
-      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} layoutVariant={layoutVariant} departmentNames={departmentNames} activeTeams={activeTeams} />
+      <OfficeShell manifest={manifest} sceneStyle={sceneStyle} layoutVariant={layoutVariant} departmentNames={departmentNames} activeTeams={activeTeams} hermesComputerActive={hermesComputerActive} />
 
       {layoutVariant !== 'axiom' && (
         <>
