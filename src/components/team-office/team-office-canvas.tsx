@@ -276,6 +276,13 @@ function isAssistantTopic(topic: TeamTopic) {
   return display.includes('assistant') || configured.includes('assistant');
 }
 
+function isHermesTopic(topic: TeamTopic) {
+  const display = topicDisplayLabel(topic).toLowerCase();
+  const configured = topic.configured.label.toLowerCase();
+  const agent = (topic.configured.agent || '').toLowerCase();
+  return agent === 'hermes' || display.includes('hermes') || configured.includes('hermes') || display.includes('hermeus') || configured.includes('hermeus');
+}
+
 function isHousekeepingTopic(topic: TeamTopic) {
   const display = topicDisplayLabel(topic).toLowerCase();
   const configured = topic.configured.label.toLowerCase();
@@ -292,6 +299,7 @@ function isProjectDeskTopic(topic: TeamTopic) {
 }
 
 function shouldSitAtDesk(topic: TeamTopic) {
+  if (isHermesTopic(topic)) return true;
   if (isHousekeepingTopic(topic)) return true;
   return topic.live.status === 'running' || topic.live.status === 'recent';
 }
@@ -325,6 +333,9 @@ function hashLabel(label: string) {
 
 
 function paletteForTopic(topic: TeamTopic) {
+  if (isHermesTopic(topic)) {
+    return { skin: '#f0c8ac', hair: '#372018', top: '#a84668', bottom: '#3b3244' };
+  }
   const seed = hashLabel(topicDisplayLabel(topic));
   const skin = ['#f5d9c4', '#e7c09d', '#cb9b78', '#8f5d43'][seed % 4];
   const hair = ['#251d18', '#5f3625', '#2f3243', '#715940'][(seed >> 2) % 4];
@@ -433,6 +444,33 @@ type WorkerStyle = {
 };
 
 function styleForTopic(topic: TeamTopic): WorkerStyle {
+  if (isHermesTopic(topic)) {
+    return {
+      bodyScale: [0.95, 1.03, 0.93],
+      headScale: [1.15, 1.08, 1.04],
+      shoulderWidth: 0.12,
+      legHeight: 0.21,
+      armLength: 0.22,
+      hasHat: false,
+      hatColor: '#2f3340',
+      hatBrimColor: '#151515',
+      hasApron: false,
+      apronColor: '#f3f0ea',
+      hasJacket: false,
+      jacketColor: '#7ea6ef',
+      skirt: true,
+      accentStripe: false,
+      hasVest: false,
+      vestColor: '#63595a',
+      hasTie: false,
+      tieColor: '#506b9f',
+      blouseColor: '#f5f1ea',
+      sockColor: '#ddd3c8',
+      shoeColor: '#4b3934',
+      hairStyle: 'bun',
+      hairVolume: 1.08,
+    };
+  }
   const seed = hashLabel(topicDisplayLabel(topic));
   const archetype = seed % 7;
   return {
@@ -481,6 +519,59 @@ type DeskLayout = {
 };
 
 type CameraMode = 'overview' | 'focus' | 'free';
+
+const HERMES_TOPIC_ID = 'watcher-hermes';
+
+function createHermesTopic(): TeamTopic {
+  return {
+    topicId: HERMES_TOPIC_ID,
+    sessionKey: 'agent:hermes:watcher:desk',
+    sessionFile: null,
+    context: {
+      usedTokens: null,
+      maxTokens: null,
+      percent: null,
+    },
+    configured: {
+      label: 'Hermes',
+      role: 'telegram_agent',
+      agent: 'hermes',
+      runtime: 'telegram',
+      capabilities: ['voice', 'face', 'telegram'],
+    },
+    telegram: {
+      currentTopicName: 'Hermes',
+      lastSeenTopicName: 'Hermes',
+      groupLabel: null,
+      threadId: null,
+    },
+    live: {
+      status: 'idle',
+      sessionStatus: null,
+      updatedAt: null,
+      idleMs: null,
+      freshnessLabel: 'ready',
+    },
+    currentTask: {
+      snippet: 'Hermes Telegram face link',
+      source: 'none',
+      updatedAt: null,
+      confidence: 'high',
+      progress: null,
+      progressLabel: null,
+    },
+    recent: {
+      lastUserText: null,
+      lastAssistantText: null,
+      lastToolName: null,
+    },
+  };
+}
+
+function withHermesTopic(topics: TeamTopic[]) {
+  if (topics.some((topic) => isHermesTopic(topic))) return topics;
+  return [...topics, createHermesTopic()];
+}
 
 type ProjectBadgeSpec = {
   label: string;
@@ -2954,6 +3045,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   // Keep the columns balanced as project lanes grow so adding NYSM/SmartPilot
   // expands the office by one clean row instead of shoving one project into
   // the wrong side of the room.
+  const hermesList = topics.filter((t) => isHermesTopic(t));
   const projectSky = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('sky'));
   const projectNysm = topics.filter((t) => topicDisplayLabel(t).toLowerCase().includes('nysm'));
   const projectSmartPilot = topics.filter((t) => { const l = topicDisplayLabel(t).toLowerCase(); return l.includes('smartpilot') || (l.includes('smart') && l.includes('pilot')); });
@@ -2974,6 +3066,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     if (coder) push(rightCol, coder);
   };
 
+  hermesList.forEach((t) => placed.add(t.topicId));
   projectSky.forEach((t) => push(leftCol, t));
   pushCoderFromEnd(0);
   projectNysm.forEach((t) => push(leftCol, t));
@@ -3006,7 +3099,7 @@ function buildDeskLayouts(topics: TeamTopic[]) {
     [1.6, 0, 0.06], [-1.18, 0, -0.56], [0, 0, -0.72], [1.18, 0, -0.56],
   ] as const;
 
-  return sorted.map(({ topic, side, row }, index) => {
+  const layouts: DeskLayout[] = sorted.map(({ topic, side, row }, index) => {
     const jitter = ((hashLabel(topic.topicId) % 7) - 3) * 0.03;
     const deskX = side === 0 ? -4.3 : 4.3;
     const deskZ = (row - (totalRows - 1) / 2) * 2.28 - 1.8 + jitter;
@@ -3056,6 +3149,28 @@ function buildDeskLayouts(topics: TeamTopic[]) {
       deskStandPosition,
     };
   });
+
+  hermesList.slice(0, 1).forEach((topic) => {
+    const deskX = 1.72;
+    const deskZ = 3.36;
+    const rotationY = 0;
+    layouts.push({
+      topic,
+      position: [deskX, 0, deskZ] as [number, number, number],
+      rotationY,
+      workerDeskPosition: [0.72, 0, 3.8],
+      standbyPosition: [deskX + 0.86, 0, deskZ + 0.12],
+      taskTablePosition: [0.72, 0, 3.8],
+      taskTableFacing: Math.atan2(0 - 0.72, 4.45 - 3.8),
+      deliveryPosition: [0.82, 0, 3.74],
+      focusPoint: [deskX, 0.92, deskZ + 0.36],
+      deskSeatPosition: [deskX + 0.08, 0, deskZ + 0.48],
+      deskStandPosition: [deskX + 0.08, 0, deskZ + 0.88],
+      atDeskFacing: rotationY,
+    });
+  });
+
+  return layouts;
 }
 
 function currentAgentAnchor(layout: DeskLayout | null, topic: TeamTopic | null) {
@@ -3561,7 +3676,7 @@ function WatcherFaceTranscript() {
         const data = JSON.parse(new TextDecoder().decode(payload));
         const text = String(data?.text || '').trim();
         if (!text || data?.is_final === false) return;
-        const role = data?.role === 'assistant' ? 'assistant' : 'user';
+        const role: FaceTranscriptEntry['role'] = data?.role === 'assistant' ? 'assistant' : 'user';
         setEntries((prev) => [
           ...prev,
           {
@@ -4124,6 +4239,10 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   const [localAssetManifest, setLocalAssetManifest] = useState<OfficeAssetManifestOverride>();
   const [debugSnapshots, setDebugSnapshots] = useState<TopicDebugSnapshot[]>([]);
   const debugRef = useRef<Map<string, TopicDebugSnapshot>>(new Map());
+  const displayTopics = useMemo(
+    () => (layoutVariant === 'default' ? withHermesTopic(topics) : topics),
+    [topics, layoutVariant],
+  );
 
   useEffect(() => {
     const hasUsableWebGL = () => {
@@ -4191,8 +4310,8 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
   }, [resolvedAssetManifest]);
 
   const deskLayouts = useMemo(
-    () => (layoutVariant === 'axiom' ? buildAxiomDeskLayouts(topics) : buildDeskLayouts(topics)),
-    [topics, layoutVariant],
+    () => (layoutVariant === 'axiom' ? buildAxiomDeskLayouts(displayTopics) : buildDeskLayouts(displayTopics)),
+    [displayTopics, layoutVariant],
   );
   const layoutById = useMemo(() => {
     const map = new Map<string, DeskLayout>();
@@ -4200,17 +4319,17 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     return map;
   }, [deskLayouts]);
 
-  const defaultTopic = topics.find((topic) => topic.live.status === 'running') || topics.find((topic) => topic.live.status === 'recent') || topics[0] || null;
-  const hoveredTopic = topics.find((topic) => topic.topicId === hoveredTopicId) || null;
-  const selectedTopic = topics.find((topic) => topic.topicId === selectedTopicId) || null;
+  const defaultTopic = displayTopics.find((topic) => topic.live.status === 'running') || displayTopics.find((topic) => topic.live.status === 'recent') || displayTopics[0] || null;
+  const hoveredTopic = displayTopics.find((topic) => topic.topicId === hoveredTopicId) || null;
+  const selectedTopic = displayTopics.find((topic) => topic.topicId === selectedTopicId) || null;
   const activeTopic = selectedTopic;
 
   const focusTopic = selectedTopic || hoveredTopic || defaultTopic;
   const focusLayout = focusTopic ? layoutById.get(focusTopic.topicId) : null;
   const focusTarget = currentAgentAnchor(focusLayout ?? null, focusTopic ?? null);
 
-  const runningCount = topics.filter((topic) => topic.live.status === 'running').length;
-  const recentCount = topics.filter((topic) => topic.live.status === 'recent').length;
+  const runningCount = displayTopics.filter((topic) => topic.live.status === 'running').length;
+  const recentCount = displayTopics.filter((topic) => topic.live.status === 'recent').length;
   const fallbackDebugSnapshots = useMemo(() => (
     deskLayouts.map((desk) => {
       const atDesk = staysAtDesk(desk.topic);
@@ -4259,7 +4378,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  if (fallback) return <FallbackOffice topics={topics} />;
+  if (fallback) return <FallbackOffice topics={displayTopics} />;
 
   return (
     <div className={`relative overflow-hidden bg-[rgba(0,0,0,0.12)] ${demo ? 'h-full w-full min-h-[320px]' : `rounded-xl border border-[var(--watch-panel-border)] ${isMobile && isLandscape ? 'h-[96dvh] min-h-[420px]' : 'h-[86dvh] min-h-[560px] sm:h-[720px] lg:h-[800px]'}`}`}>
@@ -4280,7 +4399,7 @@ export function TeamOfficeCanvas({ topics, groupId = '', assetManifest, demo = f
       >
         <Suspense fallback={null}>
           <OfficeRoom
-            topics={topics}
+            topics={displayTopics}
             groupId={groupId}
             demo={demo}
             reducedMotion={reducedMotion}
