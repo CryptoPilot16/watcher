@@ -3682,14 +3682,21 @@ function WatcherFaceTranscript() {
         const text = String(data?.text || '').trim();
         if (!text || data?.is_final === false) return;
         const role: FaceTranscriptEntry['role'] = data?.role === 'assistant' ? 'assistant' : 'user';
-        setEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now() + '-' + role + '-' + Math.random().toString(36).slice(2),
-            role,
-            text,
-          },
-        ].slice(-4));
+        setEntries((prev) => {
+          const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+          const duplicate = prev.some((entry) => (
+            entry.role === role && entry.text.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
+          ));
+          if (duplicate) return prev;
+          return [
+            ...prev,
+            {
+              id: Date.now() + '-' + role + '-' + Math.random().toString(36).slice(2),
+              role,
+              text,
+            },
+          ].slice(-4);
+        });
       } catch {}
     }
 
