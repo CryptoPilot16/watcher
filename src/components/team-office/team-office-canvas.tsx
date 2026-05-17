@@ -3525,7 +3525,7 @@ function WatcherFaceStage() {
     videoTracks[0];
 
   return (
-    <div className="relative aspect-[4/5] min-h-[340px] max-h-[58vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
+    <div className="relative aspect-[4/5] min-h-[220px] max-h-[34vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)] sm:min-h-[340px] sm:max-h-[58vh]">
       {avatarTrack ? (
         <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
       ) : (
@@ -3792,7 +3792,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
     }
 
     return (
-      <div className="absolute inset-x-3 bottom-3 z-10 pointer-events-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] p-3 text-white shadow-2xl backdrop-blur-md">
+      <div className={`absolute inset-x-2 bottom-2 z-10 pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] text-white shadow-2xl backdrop-blur-md ${faceOpen ? 'max-h-[62vh] p-2' : 'p-3'}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
@@ -3800,29 +3800,33 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
           <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
-        <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
-        <div className="mt-1 text-xs leading-6 text-white/90">{topicHeadline(topic)}</div>
-        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
-          <span>{actionLabel(topic)}</span>
-          <span>{topic.live.freshnessLabel}</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
-          <span>context</span>
-          <span>{topicContextLabel(topic)}</span>
-        </div>
-        {topic.configured.runtime && (
-          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
-            <span>model</span>
-            <span className="text-white/85">{topic.configured.runtime}</span>
-          </div>
+        {!faceOpen && (
+          <>
+            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
+            <div className="mt-1 text-xs leading-6 text-white/90">{topicHeadline(topic)}</div>
+            <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+              <span>{actionLabel(topic)}</span>
+              <span>{topic.live.freshnessLabel}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+              <span>context</span>
+              <span>{topicContextLabel(topic)}</span>
+            </div>
+            {topic.configured.runtime && (
+              <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+                <span>model</span>
+                <span className="text-white/85">{topic.configured.runtime}</span>
+              </div>
+            )}
+            {topic.configured.capabilities.length > 0 && (
+              <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
+                <span>capabilities</span>
+                <span className="truncate text-white/85">{topic.configured.capabilities.join(' · ')}</span>
+              </div>
+            )}
+          </>
         )}
-        {topic.configured.capabilities.length > 0 && (
-          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/55">
-            <span>capabilities</span>
-            <span className="truncate text-white/85">{topic.configured.capabilities.join(' · ')}</span>
-          </div>
-        )}
-        {isHousekeepingTopic(topic) && (
+        {!faceOpen && isHousekeepingTopic(topic) && (
           <div className="mt-3 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => onDisciplineDemo('punch')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
