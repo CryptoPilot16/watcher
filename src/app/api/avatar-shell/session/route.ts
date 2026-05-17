@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const agentId = String(body?.agentId || '').trim();
+  const resumeContext = String(body?.resumeContext || '').trim().slice(0, 2000);
   if (!agentId) {
     return NextResponse.json({ ok: false, error: 'agentId required' }, { status: 400 });
   }
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
         client: 'watcher',
         voice_profile: 'brief_status',
         exclusive: true,
+        resume_context: resumeContext || undefined,
       }),
       cache: 'no-store',
     });

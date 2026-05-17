@@ -3543,6 +3543,22 @@ type FaceTranscriptEntry = {
   final?: boolean;
 };
 
+function faceResumeContext(savedTranscript: string | null) {
+  if (!savedTranscript) return '';
+  try {
+    const entries = JSON.parse(savedTranscript);
+    if (!Array.isArray(entries)) return '';
+    return entries
+      .slice(-8)
+      .map((entry: FaceTranscriptEntry) => `${entry.role === 'assistant' ? 'assistant' : 'user'}: ${String(entry.text || '').trim()}`)
+      .filter((line: string) => line.length > 8)
+      .join(' | ')
+      .slice(0, 1800);
+  } catch {
+    return '';
+  }
+}
+
 function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChange?: (open: boolean) => void }) {
   const rawAgentId = (topic.configured.agent || '').trim();
   const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
@@ -3552,6 +3568,7 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sessionStorageKey = agentId ? `watcher-face-session:${agentId}` : '';
+  const transcriptStorageKey = agentId ? `watcher-face-transcript:${agentId}` : '';
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -3559,34 +3576,14 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
 
   useEffect(() => {
     if (!sessionStorageKey || typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem(sessionStorageKey);
-    if (!saved) {
-      setConn(null);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(saved);
-      const savedAgent = String(parsed?.persona?.agent_id || agentId).toLowerCase();
-      if (savedAgent === agentId.toLowerCase() && parsed?.session_id && parsed?.livekit_url && parsed?.livekit_token) {
-        setConn(parsed);
-      } else {
-        setConn(null);
-      }
-    } catch {
-      window.localStorage.removeItem(sessionStorageKey);
-      setConn(null);
-    }
-  }, [agentId, sessionStorageKey]);
+    window.localStorage.removeItem(sessionStorageKey);
+    setConn(null);
+  }, [sessionStorageKey]);
 
   useEffect(() => {
     if (!sessionStorageKey || typeof window === 'undefined') return;
-    const connAgent = String(conn?.persona?.agent_id || agentId).toLowerCase();
-    if (conn && connAgent === agentId.toLowerCase()) {
-      window.localStorage.setItem(sessionStorageKey, JSON.stringify(conn));
-    } else {
-      window.localStorage.removeItem(sessionStorageKey);
-    }
-  }, [agentId, conn, sessionStorageKey]);
+    window.localStorage.removeItem(sessionStorageKey);
+  }, [conn, sessionStorageKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3616,14 +3613,16 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   async function startFace() {
     if (!agentId || loading || !faceConfigured) return;
     setOpen(true);
-    if (conn) return;
     setLoading(true);
     setError(null);
     try {
+      const resumeContext = transcriptStorageKey && typeof window !== 'undefined'
+        ? faceResumeContext(window.localStorage.getItem(transcriptStorageKey))
+        : '';
       const res = await fetch('/api/avatar-shell/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId }),
+        body: JSON.stringify({ agentId, resumeContext }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'HTTP ' + res.status);
@@ -3637,8 +3636,13 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   }
 
   function stopFace() {
+    const sessionId = conn?.session_id;
     setOpen(false);
+    setConn(null);
     setError(null);
+    if (sessionId) {
+      fetch('/api/avatar-shell/session/' + encodeURIComponent(sessionId) + '/end', { method: 'POST' }).catch(() => {});
+    }
   }
 
   function endFace() {
@@ -3731,7 +3735,7 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               className="block"
             >
               <WatcherFaceStage />
-              <WatcherFaceTranscript />
+              <WatcherFaceTranscript agentId={agentId} />
               <WatcherFaceTextInput />
               <RoomAudioRenderer />
             </LiveKitRoom>
@@ -3770,9 +3774,9 @@ function WatcherFaceStage() {
   );
 }
 
-function WatcherFaceTranscript() {
+function WatcherFaceTranscript({ agentId }: { agentId: string }) {
   const room = useRoomContext();
-  const transcriptStorageKey = `watcher-face-transcript:${room.name || 'session'}`;
+  const transcriptStorageKey = `watcher-face-transcript:${agentId || room.name || 'session'}`;
   const [entries, setEntries] = useState<FaceTranscriptEntry[]>([]);
 
   useEffect(() => {
