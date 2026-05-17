@@ -161,11 +161,22 @@ A separate admin tab at `/axiom/project` shows what the agents are actually buil
 
 Backed by a pm2 sidecar (`clawnux-axiom-project-watcher`) that writes events to `/var/lib/watcher/axiom-project-events.jsonl` (auto-truncates at 10MB → 4MB) and snapshots to `/var/lib/watcher/axiom-project-snapshots/<sha1>/`. New API routes: `/api/axiom/project/{tree,file,diff,events,events/stream}`.
 
+The watcher's ignore list keeps Cargo build artefacts (`target/`) and ClickHouse runtime volumes (`infra/data/`) out of the events feed — otherwise rotating parts files flood the feed with deletions and drown out real agent activity. The LOC counter (`/api/axiom/project/loc`) applies the same filter plus `CACHEDIR.TAG` cache-marker detection, so the line-count totals reflect authored code, not build state.
+
 Configurable via `WATCH_AXIOM_PROJECT_EVENT_LOG`, `WATCH_AXIOM_PROJECT_SNAPSHOT_DIR`, `WATCH_AXIOM_PROJECT_SNAPSHOT_MAX` (256KB default), `WATCH_AXIOM_PROJECT_EVENT_LOG_MAX`, `WATCH_AXIOM_PROJECT_EVENT_LOG_KEEP`.
 
 ### `/axiom/settings` — daily allowance + usage telemetry
 
 Live view of the AXIOM office's daily spend (computed from each claude turn's `total_cost_usd`), per-agent call rate over the last hour, and a breakdown of recent agent actions by category (image / pdf / document / voice / code / text) with average cost and duration. Override the default daily cap (`WATCH_AXIOM_MAX_DAILY_USD`, default $10) at runtime via the page or the `/budget` Telegram command — no restart required.
+
+**Soft autopilot pause** — a separate amber-bordered control panel above the red kill-switch lets the operator stop just the autopilot driver loop without touching the budget cap or the CEO chat session. Writes `/var/lib/watcher/axiom-autopilot.paused`; the driver picks it up within 30 s and resumes the moment the file is removed. Use this 90 % of the time you'd otherwise reach for the kill switch.
+
+| Control | What it stops | Use when |
+|---|---|---|
+| **pause autopilot** (amber) | autopilot driver only | reviewing, sleeping, throttling — CEO chat still works |
+| **budget $0** (neutral) | cap = $0 blocks new token calls, state intact | budget pressure, want a hard ceiling |
+| **kill all token consumers** (red) | cap = $0 + agent state cleared + pm2 driver stopped | something is genuinely wrong |
+| **resume operations** (green) | full reset + driver start | restarting from a kill |
 
 ### `/axiom/roadmap` — milestone-tiered phase tracker
 
@@ -195,6 +206,23 @@ The UI renders milestone pills, per-team coverage, and expandable cards with the
 8. **Anti-loop backstops** — managers with zero scoped items in the active phase are skipped (no dispatch cost for idle teams); manager-side TTL is 5 min, coder-side TTL is 20 min (codex latency); a defense-in-depth filter refuses coder dispatches for teams with no manifest items even if a manager misbehaves and allocates them.
 
 Overlay deliverables are persisted to disk so the CEO-allocated cross-team work counts toward roadmap progress just like manifest-defined items. Operator can promote anything valuable from the overlay into source on PR review or leave them in the overlay and keep building.
+
+### Integration into the operator console (`axiom.clawnux.com/app`)
+
+The autopilot doesn't just produce contracts — it ships into the airline operator console at `/opt/axiom/web/` (Next.js, basePath `/app`, served by Caddy at `axiom.clawnux.com/app`). The CEO scoping brief now mandates four deliverables per milestone:
+
+1. **Backend artefact** under `/opt/axiom/` (contracts, protos, validators).
+2. **Live API route** at `/opt/axiom/web/app/api/<feature>/route.ts` (real CRUD, not mocks).
+3. **Operator UI page** at `/opt/axiom/web/app/<feature>/page.tsx` with working Next.js server actions.
+4. **End-to-end smoke test** at `/opt/axiom/tests/smoke/<id>-e2e.test.js` exercising the API.
+
+Reference implementation: `/opt/axiom/web/lib/db/index.ts` (shared SQLite at `/var/lib/axiom-web/axiom.sqlite`) → `/opt/axiom/web/lib/data/dispatch-live.ts` (domain helpers) → `/opt/axiom/web/app/api/dispatch/release/route.ts` (live endpoint) → `/opt/axiom/web/app/dispatch/console/page.tsx` (operator UI with real forms). The CEO is briefed to copy this pattern for each role surface.
+
+A role-aware sidebar in `/opt/axiom/web/app/layout.tsx` groups every page in the console by user role (operations controller, captain, crew, engineering, safety, commercial, finance, security, platform admin) with a **LIVE** tag distinguishing DB-backed pages from autopilot scaffolds. Drawer slides in from the left on mobile (<900 px), fixed column above; tables wrap in `.axiom-table-wrap` for horizontal scroll on narrow screens.
+
+After every milestone close the driver fires `tools/run-quality-suite.sh` which runs every `tools/validate-*.js` plus every `tests/smoke/*.test.js` and updates `reports/phase0-validator-pass-matrix.json` + `reports/smoke-test-results.json` — the dashboard's quality signal stays current rather than reflecting stale Phase-0 results.
+
+Operator-facing documentation describing AXIOM from the airline operator's point of view (nine roles with daily workflow, critical procedures, onboarding checklist) lives at `/opt/axiom/OPERATOR_GUIDE.md`.
 
 ### Autopilot env knobs
 
