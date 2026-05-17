@@ -1199,7 +1199,7 @@ const CHARACTER_MODELS = [
 CHARACTER_MODELS.forEach((p) => { try { (useGLTF as unknown as { preload: (p: string) => void }).preload(p); } catch {} });
 
 function modelPathForTopic(topic: TeamTopic): string {
-  if (isHermesTopic(topic)) return '/models/chars/Barbarian.glb';
+  if (isHermesTopic(topic)) return '/models/chars/Rogue.glb';
   // AXIOM roles take priority — keep CEO/managers/coders visually distinct
   const role = (topic.configured.role || '').toLowerCase();
   if (role === 'ceo') return '/models/chars/Barbarian.glb';
@@ -1212,7 +1212,7 @@ function modelPathForTopic(topic: TeamTopic): string {
   // Project-owner lanes are visually the project managers: keep them as wizards
   // even before a custom logo/badge is available or the Telegram title settles.
   if (isProjectDeskTopic(topic)) return '/models/chars/Mage.glb';
-  if (isGeneralTopic(topic)) return '/models/chars/Rogue.glb';
+  if (isGeneralTopic(topic)) return '/models/chars/Barbarian.glb';
   if (isAssistantTopic(topic) || isCoderTopic(topic)) return '/models/chars/Knight.glb';
   const seed = hashLabel(topic.topicId);
   return CHARACTER_MODELS[seed % CHARACTER_MODELS.length];
