@@ -5,6 +5,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Billboard, ContactShadows, Float, OrbitControls, Outlines, RoundedBox, useAnimations, useGLTF } from '@react-three/drei';
 import { useLoader } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
+import { BarVisualizer, LiveKitRoom, RoomAudioRenderer, VideoTrack, useTracks, useVoiceAssistant } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { MTLLoader, OBJLoader, SkeletonUtils } from 'three-stdlib';
 import * as THREE from 'three';
@@ -3383,6 +3385,143 @@ type TranscriptEntry = {
   reply?: string;
 };
 
+type AvatarShellConnection = {
+  session_id: string;
+  livekit_url: string;
+  livekit_room: string;
+  livekit_token: string;
+  public_url?: string;
+  persona?: { display_name?: string; agent_id?: string };
+};
+
+function AgentFacePanel({ topic }: { topic: TeamTopic }) {
+  const agentId = topic.configured.agent || '';
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [conn, setConn] = useState<AvatarShellConnection | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (conn?.session_id) {
+        fetch('/api/avatar-shell/session/' + encodeURIComponent(conn.session_id) + '/end', { method: 'POST' }).catch(() => {});
+      }
+    };
+  }, [conn?.session_id]);
+
+  async function startFace() {
+    if (!agentId || loading) return;
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/avatar-shell/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'HTTP ' + res.status);
+      setConn(json);
+    } catch (err: any) {
+      setError(String(err?.message || err || 'face session failed'));
+      setConn(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function stopFace() {
+    setOpen(false);
+    setError(null);
+    setConn(null);
+  }
+
+  return (
+    <div className="pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[rgb(216,186,117)]">face</div>
+          <div className="truncate text-[10px] leading-4 text-white/45">brief voice · no long code readouts</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {conn?.public_url && (
+            <a
+              href={conn.public_url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded border border-white/10 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/55 hover:border-white/25 hover:text-white/85"
+            >
+              full
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={conn || open ? stopFace : startFace}
+            disabled={!agentId || loading}
+            className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(216,186,117,0.12)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {loading ? 'starting' : conn || open ? 'hide' : 'show'}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/45">
+          {error && <div className="p-3 text-[11px] leading-5 text-[#f87171]">{error}</div>}
+          {!error && !conn && (
+            <div className="flex h-36 items-center justify-center text-[10px] uppercase tracking-[0.16em] text-white/40">
+              {loading ? 'starting avatar...' : 'avatar not connected'}
+            </div>
+          )}
+          {conn && (
+            <LiveKitRoom
+              serverUrl={conn.livekit_url}
+              token={conn.livekit_token}
+              connect
+              audio
+              video={false}
+              onDisconnected={() => setConn(null)}
+              className="block"
+            >
+              <WatcherFaceStage />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WatcherFaceStage() {
+  const { state, audioTrack } = useVoiceAssistant();
+  const videoTracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare, Track.Source.Unknown], {
+    onlySubscribed: true,
+  }).filter((trackRef) => trackRef.publication?.kind === 'video');
+  const avatarTrack =
+    videoTracks.find((trackRef) => /avatar|simli/i.test(trackRef.participant?.identity || '')) ||
+    videoTracks[0];
+
+  return (
+    <div className="relative aspect-video min-h-[150px] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
+      {avatarTrack ? (
+        <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">waiting for avatar track</div>
+          <div className="h-12 w-40">
+            <BarVisualizer state={state as any} barCount={5} trackRef={audioTrack} />
+          </div>
+        </div>
+      )}
+      <div className="absolute bottom-2 left-2 rounded border border-white/10 bg-black/45 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/60">
+        {state || 'connected'}
+      </div>
+    </div>
+  );
+}
+
 function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -3665,6 +3804,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             </button>
           </div>
         )}
+        <AgentFacePanel topic={topic} />
         <InstructInput topic={topic} groupId={groupId} />
       </div>
     );
@@ -3725,6 +3865,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </button>
         </div>
       )}
+      <AgentFacePanel topic={topic} />
       <InstructInput topic={topic} groupId={groupId} />
     </div>
   );
