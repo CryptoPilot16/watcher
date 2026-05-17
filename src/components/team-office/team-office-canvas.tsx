@@ -3152,21 +3152,21 @@ function buildDeskLayouts(topics: TeamTopic[]) {
   });
 
   hermesList.slice(0, 1).forEach((topic) => {
-    const deskX = 1.02;
-    const deskZ = 4.04;
+    const screenX = 0.62;
+    const screenZ = 3.44;
     const rotationY = 0;
     layouts.push({
       topic,
-      position: [deskX, 0, deskZ] as [number, number, number],
+      position: [screenX, 0, screenZ] as [number, number, number],
       rotationY,
-      workerDeskPosition: [deskX, 0, deskZ],
-      standbyPosition: [deskX + 0.58, 0, deskZ - 0.18],
-      taskTablePosition: [deskX, 0, deskZ],
-      taskTableFacing: Math.atan2(0 - deskX, 4.45 - deskZ),
-      deliveryPosition: [deskX, 0, deskZ - 0.24],
-      focusPoint: [deskX, 0.92, deskZ + 0.18],
-      deskSeatPosition: [deskX, 0, deskZ],
-      deskStandPosition: [deskX, 0, deskZ - 0.36],
+      workerDeskPosition: [screenX, 0, screenZ],
+      standbyPosition: [screenX, 0, screenZ],
+      taskTablePosition: [screenX, 0, screenZ],
+      taskTableFacing: Math.atan2(0 - screenX, 4.45 - screenZ),
+      deliveryPosition: [screenX, 0, screenZ],
+      focusPoint: [screenX, 0.92, screenZ + 0.24],
+      deskSeatPosition: [screenX, 0, screenZ],
+      deskStandPosition: [screenX, 0, screenZ],
       atDeskFacing: rotationY,
       hideDesk: true,
     });
@@ -3369,6 +3369,7 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
               disciplineContactRef={disciplineContactRef}
               avatarPositionsRef={avatarPositionsRef}
               debugRef={debugRef}
+              forceStandby={isHermesTopic(desk.topic)}
               deskFacing={desk.atDeskFacing ?? (desk.rotationY + Math.PI)}
               idleFacing={desk.atDeskFacing}
               reducedMotion={reducedMotion}
