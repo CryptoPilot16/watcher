@@ -35,6 +35,7 @@ type SettingsResponse = {
   actions: ActionStat[];
   actionWindow: { days: number; entriesWithCost: number; oldestEntryTs: string | null };
   killSwitch: { enabled: boolean; alertsEnabled: boolean; reason: string | null; updatedAt: string | null; updatedBy: string | null };
+  autopilot?: { paused: boolean; reason: string | null; pausedAt: string | null };
 };
 
 // Tokens are the user-facing unit. The underlying cost data is still USD-priced
@@ -254,6 +255,46 @@ export default function SettingsPage() {
     }
   }
 
+  async function pauseAutopilotOnly() {
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause-autopilot', updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'pause failed');
+      setActionMessage('Autopilot paused. CEO chat + watcher API still running. Click "resume autopilot" to restart cycles.');
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Pause failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function resumeAutopilotOnly() {
+    setActionBusy(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch('/api/axiom/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume-autopilot', updatedBy: 'settings-ui' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'resume failed');
+      setActionMessage('Autopilot resumed — driver picks up within 30s.');
+      await refreshSettings();
+    } catch (e: any) {
+      setActionMessage(`Resume failed: ${String(e?.message || e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function resumeOperations() {
     const cap = Number(budgetInput) || data?.cap.maxDailyUsd || 50;
     setActionBusy(true);
@@ -308,6 +349,47 @@ export default function SettingsPage() {
 
         {data && (
           <>
+            {/* Soft autopilot pause — separate from the kill switch. Stops
+                the driver loop only; CEO chat + watcher API stay up. Use
+                this 90% of the time instead of "kill all token consumers". */}
+            <div className="rounded-xl border border-[#f7c763]/40 bg-[#2a1f00]/20 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.24em] text-[#f7c763]">▌ autopilot — soft pause</div>
+                  <div className="mt-2 text-sm text-[var(--watch-text-bright)]">
+                    Driver state: {data.autopilot?.paused ? <span className="text-[#f7c763]">PAUSED</span> : <span className="text-[#86efac]">running</span>}
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--watch-text-muted)]">
+                    Pauses just the autopilot cycle loop. CEO chat keeps working. Other watcher services keep running. Use this instead of the kill switch when you want to stop dispatching new cycles without freezing the rest of the system. Driver picks up state changes within 30s.
+                    {data.autopilot?.pausedAt ? ` Paused at ${new Date(data.autopilot.pausedAt).toLocaleString()}` : ''}
+                  </div>
+                  {data.autopilot?.reason && <div className="mt-1 text-[10px] text-[#f7c763]">{data.autopilot.reason}</div>}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={actionBusy || Boolean(data.autopilot?.paused)}
+                    onClick={pauseAutopilotOnly}
+                    className={data.autopilot?.paused ? neutralInUseSwitchClass : neutralSwitchClass}
+                    aria-pressed={Boolean(data.autopilot?.paused)}
+                    title={data.autopilot?.paused ? 'Already paused' : undefined}
+                  >
+                    {data.autopilot?.paused ? 'autopilot paused' : 'pause autopilot'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy || !data.autopilot?.paused}
+                    onClick={resumeAutopilotOnly}
+                    className={!data.autopilot?.paused ? successInUseSwitchClass : successSwitchClass}
+                    aria-pressed={!data.autopilot?.paused}
+                    title={!data.autopilot?.paused ? 'Already running' : undefined}
+                  >
+                    {data.autopilot?.paused ? 'resume autopilot' : 'autopilot running'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="rounded-xl border border-[#ef4444]/40 bg-[#450a0a]/20 p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

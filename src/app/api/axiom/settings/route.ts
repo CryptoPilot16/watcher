@@ -95,6 +95,20 @@ function resumeAutopilot() {
   try { fs.unlinkSync(AXIOM_PAUSE_FILE); } catch {}
 }
 
+// Read the current autopilot pause state (the .paused file). Surfaces to
+// the UI so the operator sees "paused" or "running" without having to
+// inspect the filesystem.
+function readAutopilotPaused(): { paused: boolean; reason: string | null; pausedAt: string | null } {
+  try {
+    const stat = fs.statSync(AXIOM_PAUSE_FILE);
+    let reason: string | null = null;
+    try { reason = fs.readFileSync(AXIOM_PAUSE_FILE, 'utf8').split('\n')[0] || null; } catch {}
+    return { paused: true, reason, pausedAt: stat.mtime.toISOString() };
+  } catch {
+    return { paused: false, reason: null, pausedAt: null };
+  }
+}
+
 function resetGlobalCostCounter() {
   fs.mkdirSync(AXIOM_MAILBOX_DIR, { recursive: true });
   fs.writeFileSync(path.join(AXIOM_MAILBOX_DIR, AXIOM_GLOBAL_COST_FILE), JSON.stringify({
@@ -341,6 +355,7 @@ export async function GET() {
       updatedAt: killSwitch.updatedAt || null,
       updatedBy: killSwitch.updatedBy || null,
     },
+    autopilot: readAutopilotPaused(),
   });
 }
 
@@ -395,6 +410,19 @@ export async function POST(request: Request) {
     writeKillSwitch({ enabled: cap === 0, alertsEnabled: cap > 0, reason: cap === 0 ? 'AXIOM allowance set to zero from settings UI' : 'AXIOM allowance restored from settings UI', updatedBy });
     if (cap === 0) pauseAutopilot('AXIOM allowance set to zero from settings UI');
     return NextResponse.json({ ok: true, action, capUsd: cap, maxDailyUsd: AXIOM_MAX_DAILY_USD_CEILING });
+  }
+  if (action === 'pause-autopilot') {
+    // Soft pause — only stops the autopilot driver loop. CEO chat keeps
+    // working, watcher web stays up, costs continue counting for any
+    // in-flight calls. Use this instead of the kill switch when you just
+    // want autopilot to stop dispatching new cycles.
+    const reason = String(body?.reason || `Autopilot paused from settings UI by ${updatedBy}`);
+    pauseAutopilot(reason);
+    return NextResponse.json({ ok: true, action, paused: true, reason });
+  }
+  if (action === 'resume-autopilot') {
+    resumeAutopilot();
+    return NextResponse.json({ ok: true, action, paused: false });
   }
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });
 }
