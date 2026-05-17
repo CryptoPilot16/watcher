@@ -26,6 +26,20 @@ const IGNORED_DIRS = new Set([
   '__pycache__', '.venv', 'venv', '.tox',
 ]);
 
+// Path-prefix ignores (relative to PROJECT_DIR). For runtime data dirs that
+// can't be matched by a simple basename (e.g. infra/data is the ClickHouse
+// volume, but a 'data' directory elsewhere might be legit project data).
+const IGNORED_REL_PREFIXES = [
+  'infra/data',
+  'target',
+];
+
+// If a directory contains a CACHEDIR.TAG file (https://bford.info/cachedir/)
+// it's a cache and should be skipped — Cargo, npm, etc. drop these.
+function isCacheDir(abs: string): boolean {
+  try { return fs.statSync(path.join(abs, 'CACHEDIR.TAG')).isFile(); } catch { return false; }
+}
+
 const MAX_FILE_BYTES = 1_000_000; // skip files > 1MB (probably data dumps)
 
 let cache: { ts: number; payload: any } | null = null;
@@ -58,6 +72,9 @@ function walk(dir: string, depth: number, byExt: Map<string, FileBucket>, byTopD
     if (ent.name.startsWith('.') && depth === 0) continue;
     const abs = path.join(dir, ent.name);
     if (ent.isDirectory()) {
+      const rel = path.relative(PROJECT_DIR, abs);
+      if (IGNORED_REL_PREFIXES.some((p) => rel === p || rel.startsWith(`${p}/`))) continue;
+      if (isCacheDir(abs)) continue;
       walk(abs, depth + 1, byExt, byTopDir, total);
     } else if (ent.isFile()) {
       const ext = path.extname(ent.name).toLowerCase();

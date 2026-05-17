@@ -167,6 +167,50 @@ Configurable via `WATCH_AXIOM_PROJECT_EVENT_LOG`, `WATCH_AXIOM_PROJECT_SNAPSHOT_
 
 Live view of the AXIOM office's daily spend (computed from each claude turn's `total_cost_usd`), per-agent call rate over the last hour, and a breakdown of recent agent actions by category (image / pdf / document / voice / code / text) with average cost and duration. Override the default daily cap (`WATCH_AXIOM_MAX_DAILY_USD`, default $10) at runtime via the page or the `/budget` Telegram command — no restart required.
 
+### `/axiom/roadmap` — milestone-tiered phase tracker
+
+The roadmap manifest is structured as **Phase → Milestones → Deliverables** rather than a flat item list, so completion semantics stay honest as the project grows. Edit `src/app/api/axiom/roadmap/route.ts` — each milestone has `{ id, num, name, scope, owners, deliverables[] }`. Status derives automatically:
+
+- `total === 0` → **scoping** (placeholder; phase cannot be marked complete while present)
+- `qualityHealthy < total` → **in_progress**
+- `qualityHealthy === total` → **closed**
+
+A **phase** is complete only when every milestone is closed AND no milestone is in scoping state. This structural lock prevents the recurring "dashboard says complete but the real scope isn't built" bug — empty placeholders for future milestones block false completions even when current items happen to ship.
+
+Per deliverable, evidence is a list of file paths under the project dir. The API runs `fs.stat()` on each path and a deliverable counts as **built** when any evidence path exists on disk (with a trailing-slash convention for directories and a prefix-stem fallback). Validators referenced in the evidence list (`tools/validate-*.js`) cross-check against the validator pass matrix (`reports/phase0-validator-pass-matrix.json`); a failing tagged validator flags the deliverable `qualityFailed` and excludes it from `qualityHealthy`.
+
+The UI renders milestone pills, per-team coverage, and expandable cards with the deliverables grouped by department — no aggregate percent (counts are honest, percents lie when scope is in flight). Polls every 10s.
+
+### Autopilot driver — CEO as cycle orchestrator
+
+`scripts/axiom-driver.mjs` runs as a pm2 service and dispatches the 41-agent floor on a fixed interval. Wired so the **CEO is the actual conductor**, not just a chat agent:
+
+1. **Roadmap pull** — driver fetches `/api/axiom/roadmap` for current phase, per-team built/total counts, active milestone, and remaining items with their exact target paths.
+2. **CEO consultation** — every `WATCH_AXIOM_DRIVER_CEO_EVERY` cycles (default 3), driver calls the CEO with floor state, last cycle's newly-built deliverables, and a slice of `AXIOM_MASTERPLAN.md §15.1` for mission context. CEO returns `<<DELEGATE-ALL: m1: ... m2: ... >>` (per-team allocations with exact file paths) or `<<DELEGATE: m9,m1,m3 :: ...>>` for a subset, or `PHASE-N MILESTONE COMPLETE`. Runs in a separate session (`axiom:axiom-ceo-autopilot`) from the operator-facing CEO chat so operator instructions about pausing/stopping don't bleed into autopilot decisions. 90s timeout; falls back to manifest-derived briefs if CEO fails to reply with a parseable DELEGATE.
+3. **Per-team dispatch** — each named manager receives a brief built from the CEO's allocation, wrapped with path-discipline rules (ship at the exact `→ /opt/axiom/path` shown; no `.v1` suffixes; no relocations) and a coder decomposition pattern (c1 = fixtures, c2 = implementation/glue, c3 = regression test or validator — three different file paths, not three angles on the same file).
+4. **Coder fire-and-forget** — managers parse their reply for a `<<CODERS>>...<<END>>` block, each coder dispatched with the manager-allocated task. Coders are not awaited (codex /goal can run 2–15 min) — they trickle in via state files and `isAgentRunning` skips them on next cycle until done.
+5. **Auto-scope** — when the active milestone has `status === 'scoping'`, driver invokes the CEO in scope mode and writes the returned deliverables into a sidecar overlay (`/var/lib/watcher/axiom-roadmap-overlay.json`). The API merges the overlay into the milestone at request time, lighting up the relevant teams the next cycle without operator intervention.
+6. **Auto-advance phase** — when current phase closes, the API's `currentPhase` advances via first-incomplete-phase logic; CEO sees the new phase next cycle and either auto-scopes its first milestone or declares phase complete. Pauses only on the final phase or with `WATCH_AXIOM_DRIVER_PAUSE_ON_PHASE_CLOSE=1`.
+7. **Milestone autolog** — every milestone-close transition appends a one-line entry to `/opt/axiom/CEO_AUTOPILOT_LOG.md` for cross-session continuity (overridable via `WATCH_AXIOM_AUTOPILOT_LOG`).
+8. **Anti-loop backstops** — managers with zero scoped items in the active phase are skipped (no dispatch cost for idle teams); manager-side TTL is 5 min, coder-side TTL is 20 min (codex latency); a defense-in-depth filter refuses coder dispatches for teams with no manifest items even if a manager misbehaves and allocates them.
+
+Overlay deliverables are persisted to disk so the CEO-allocated cross-team work counts toward roadmap progress just like manifest-defined items. Operator can promote anything valuable from the overlay into source on PR review or leave them in the overlay and keep building.
+
+### Autopilot env knobs
+
+```bash
+WATCH_AXIOM_DRIVER_CEO_EVERY=3                  # cycles between CEO consultations
+WATCH_AXIOM_DRIVER_CEO_TIMEOUT_MS=90000         # max wait per CEO call
+WATCH_AXIOM_DRIVER_CEO_SESSION=axiom:axiom-ceo-autopilot
+WATCH_AXIOM_DRIVER_CEO_SCOPE_SESSION=axiom:axiom-ceo-scoping
+WATCH_AXIOM_ROADMAP_OVERLAY=/var/lib/watcher/axiom-roadmap-overlay.json
+WATCH_AXIOM_AUTOPILOT_LOG=/opt/axiom/CEO_AUTOPILOT_LOG.md
+WATCH_AXIOM_CODER_TTL_MS=1200000                # 20 min — codex /goal can run long
+WATCH_AXIOM_DRIVER_PAUSE_ON_PHASE_CLOSE=0       # 1 = pause when current phase closes (default: auto-advance to next phase)
+```
+
+Manual pause: `touch /var/lib/watcher/axiom-autopilot.paused` (driver picks it up within 30s).
+
 ## Main surfaces
 
 ### App routes
@@ -178,6 +222,7 @@ Live view of the AXIOM office's daily spend (computed from each claude turn's `t
 - `/axiom` — admin-authenticated 41-agent AXIOM Office showcase floor
 - `/axiom/tasks` — admin-authenticated live feed of directives + agent replies across the AXIOM floor
 - `/axiom/project` — admin-authenticated live file tree + change feed + diff viewer for `/opt/axiom`
+- `/axiom/roadmap` — admin-authenticated milestone-tiered phase tracker (Phase → Milestones → Deliverables)
 - `/axiom/settings` — admin-authenticated daily allowance + per-agent + per-action usage telemetry
 - `/docs` — authenticated in-app reference
 - `/office-preview` — public sanitized office visualization

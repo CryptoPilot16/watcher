@@ -18,6 +18,20 @@ type Deliverable = {
   evidence: string[]; // any one matching = built
 };
 
+// A phase is broken into milestones; a milestone is broken into deliverables.
+// A milestone with `deliverables.length === 0` is "scoping" — it exists as a
+// placeholder so the phase can't be marked complete just because its already-
+// scoped milestones happen to be done. This is the fix for the recurring
+// "watcher shows complete but real scope isn't built" bug.
+type Milestone = {
+  id: string;        // e.g. "P2-M1"
+  num: number;       // 1, 2, 3...
+  name: string;      // "Two-gate schedule publish"
+  scope: string;     // one-line description so the operator knows what's in this M
+  owners: string;    // dept letter list, "D9" / "D9 + D5" / "all"
+  deliverables: Deliverable[];
+};
+
 const PHASE0: Deliverable[] = [
   // ── D1 Foundation — spine P01..P05 + Bus + KMS ──────────────────────
   { id: 'D1-p01-svc',     label: 'P01 Identity service skeleton (Keycloak + Cedar + SpiceDB)', team: 1, evidence: ['services/p01-identity/Cargo.toml', 'services/p01-identity/src/'] },
@@ -178,22 +192,164 @@ const PHASE1: Deliverable[] = [
 
 const DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
 
-// ── Phase 2 milestone 1 — Two-gate schedule publish (D9 leads) ────────
-// Source: /opt/axiom/departments/D9_PHASE2_WORK_ORDER.md
-// Doctrine: AXIOM_MASTERPLAN.md §9 (slots & traffic rights two-gate),
-// AXIOM_TECHSTACK.md §8.6, AXIOM_DIAGRAMS.md D-07.
-const PHASE2: Deliverable[] = [
-  { id: 'P2-D9-schema',       label: 'P2 D9 commercial two-gate PG schema (9 canonical entities)',           team: 9, evidence: ['services/p03-data/migrations/0002_commercial_two_gate.sql'] },
-  { id: 'P2-D9-work-order',   label: 'P2 D9 work order with c9-1/c9-2/c9-3 coder briefs',                    team: 9, evidence: ['departments/D9_PHASE2_WORK_ORDER.md'] },
-  { id: 'P2-D9-seeder',       label: 'P2 D9 seed-commercial-two-gate.sh fixture (route/ASA/designation/permit/ownership/slots)', team: 9, evidence: ['scripts/seed-commercial-two-gate.sh'] },
-  { id: 'P2-D9-cli-cmd',      label: 'P2 axiom-cli `commercial gate-check <id>` subcommand',                 team: 9, evidence: ['services/axiom-cli/src/main.rs'] },
-  { id: 'P2-D9-demo',         label: 'P2 demo-two-gate.sh (3 schedules: GREEN, SLOT_BLOCKED, RIGHTS_BLOCKED)', team: 9, evidence: ['scripts/demo-two-gate.sh'] },
-  { id: 'P2-D9-close-report', label: 'P2 milestone-1 close report (two-gate)',                                team: 9, evidence: ['reports/PHASE2_M1_TWO_GATE_DEMO.md'] },
-  { id: 'P2-D2-cba-pgaspac',  label: 'P2 AE PGA/SPAC BTE 33/2009 Layer-2 CBA pack (alongside UPA23)',         team: 2, evidence: ['contracts/cba/pga_spac_bte_33_2009/', 'contracts/rules/cba/pga_spac_bte_33_2009/'] },
-  { id: 'P2-D9-rule-pack',    label: 'P2 commercial two-gate rule pack v0',                                  team: 9, evidence: ['contracts/rules/commercial_two_gate_v0.yaml'] },
-  { id: 'P2-D9-validators',   label: 'P2 D9 commercial validators (board-deck, CORSIA, IFRS16, loyalty, ownership-control, sales-channel, two-gate)', team: 9, evidence: ['contracts/validators/commercial/'] },
-  { id: 'P2-D9-entities',     label: 'P2 D9 slots-rights canonical entities contract',                       team: 9, evidence: ['contracts/entities/commercial/slots_rights_entities.yaml'] },
+// Phase 0 — single Foundation milestone wrapping every Phase-0 deliverable.
+// All Phase-0 work was one push; we keep one milestone so the structure is
+// uniform across phases.
+const PHASE0_MILESTONES: Milestone[] = [
+  {
+    id: 'P0-M1', num: 1,
+    name: 'Foundation close',
+    scope: 'AXIOM-CORE, ID, LOG, RULE, UI, DOC, OBS, LINK, KMS. Reference data ingest. Department close-gates.',
+    owners: 'all',
+    deliverables: PHASE0,
+  },
 ];
+
+// Phase 1 — single Operate milestone wrapping every Phase-1 deliverable.
+const PHASE1_MILESTONES: Milestone[] = [
+  {
+    id: 'P1-M1', num: 1,
+    name: 'Operate runtime',
+    scope: 'AXIOM-DISPATCH, CREW, TECH, SMS runtimes + weather/NOTAM/ATC-slots/ACARS/FDM connectors + UX shells.',
+    owners: 'D5 D6 D7 D8 + UX/Ops',
+    deliverables: PHASE1,
+  },
+];
+
+// Phase 2 — Sell & Serve (months 8–16, $1.3–2M). AXIOM_MASTERPLAN.md §15.1
+// names: "AXIOM-COMM, AXIOM-CUST, AXIOM-OPS, AXIOM-CABIN. NDC/GDS, DCS, BSP/CASS, baggage."
+// Milestone breakdown follows that scope. Every milestone shipped in the M1
+// "two-gate" push goes under M1; the remaining four are placeholders so the
+// phase can't show complete until they're scoped + built.
+const PHASE2_MILESTONES: Milestone[] = [
+  {
+    id: 'P2-M1', num: 1,
+    name: 'Two-gate schedule publish',
+    scope: 'Slots + traffic-rights two-gate check before any schedule reaches NDC/GDS. Doctrine: §9.',
+    owners: 'D9',
+    deliverables: [
+      { id: 'P2-M1-schema',       label: 'D9 commercial two-gate PG schema (9 canonical entities)',                                                                                              team: 9, evidence: ['services/p03-data/migrations/0002_commercial_two_gate.sql'] },
+      { id: 'P2-M1-work-order',   label: 'D9 work order with c9-1/c9-2/c9-3 coder briefs',                                                                                                       team: 9, evidence: ['departments/D9_PHASE2_WORK_ORDER.md'] },
+      { id: 'P2-M1-seeder',       label: 'D9 seed-commercial-two-gate.sh fixture (route/ASA/designation/permit/ownership/slots)',                                                                team: 9, evidence: ['scripts/seed-commercial-two-gate.sh'] },
+      { id: 'P2-M1-cli-cmd',      label: 'axiom-cli `commercial gate-check <id>` subcommand',                                                                                                    team: 9, evidence: ['services/axiom-cli/src/main.rs'] },
+      { id: 'P2-M1-demo',         label: 'demo-two-gate.sh (3 schedules: GREEN, SLOT_BLOCKED, RIGHTS_BLOCKED)',                                                                                  team: 9, evidence: ['scripts/demo-two-gate.sh'] },
+      { id: 'P2-M1-close-report', label: 'M1 close report (two-gate)',                                                                                                                           team: 9, evidence: ['reports/PHASE2_M1_TWO_GATE_DEMO.md'] },
+      { id: 'P2-M1-cba-pgaspac',  label: 'AE PGA/SPAC BTE 33/2009 Layer-2 CBA pack (alongside UPA23)',                                                                                          team: 2, evidence: ['contracts/cba/pga_spac_bte_33_2009/', 'contracts/rules/cba/pga_spac_bte_33_2009/'] },
+      { id: 'P2-M1-rule-pack',    label: 'Commercial two-gate rule pack v0',                                                                                                                     team: 9, evidence: ['contracts/rules/commercial_two_gate_v0.yaml'] },
+      { id: 'P2-M1-validators',   label: 'D9 commercial validators (board-deck, CORSIA, IFRS16, loyalty, ownership-control, sales-channel, two-gate)',                                          team: 9, evidence: ['contracts/validators/commercial/'] },
+      { id: 'P2-M1-entities',     label: 'D9 slots-rights canonical entities contract',                                                                                                          team: 9, evidence: ['contracts/entities/commercial/slots_rights_entities.yaml'] },
+    ],
+  },
+  {
+    id: 'P2-M2', num: 2,
+    name: 'AXIOM-COMM (NDC/GDS distribution)',
+    scope: 'IATA NDC 21.3 schedule + offer + order management; GDS connectors (Amadeus, Sabre, Travelport); fare publication; ATPCO category fares.',
+    owners: 'D9',
+    deliverables: [
+      { id: 'P2-M2-work-order',      label: 'D9 M2 work order (AXIOM-COMM / NDC + GDS coder briefs)',                                                                  team: 9, evidence: ['departments/D9_PHASE2_M2_WORK_ORDER.md'] },
+      { id: 'P2-M2-entities',        label: 'AXIOM-COMM canonical entities (offer / order / ticket / fare / baggage-offer)',                                            team: 9, evidence: ['contracts/entities/commercial/axiom_comm_entities.yaml'] },
+      { id: 'P2-M2-ndc-proto',       label: 'IATA NDC 21.3 message proto (AirShopping, OfferPrice, OrderCreate/View/Retrieve/Cancel)',                                  team: 9, evidence: ['contracts/protos/axiom/commercial/v1/ndc.proto'] },
+      { id: 'P2-M2-svc-skel',        label: 'P15 AXIOM-COMM service skeleton',                                                                                          team: 9, evidence: ['services/p15-comm/Cargo.toml', 'services/p15-comm/src/'] },
+      { id: 'P2-M2-pg-schema',       label: 'D9 NDC/GDS PG schema (offer / order / fare_rule / ticket tables)',                                                         team: 9, evidence: ['services/p03-data/migrations/0003_commercial_ndc_gds.sql'] },
+      { id: 'P2-M2-asyncapi',        label: 'AXIOM-COMM AsyncAPI (offer-published, order-created, order-cancelled, baggage-offered)',                                   team: 9, evidence: ['contracts/asyncapi/commercial/axiom_comm_v0.yaml'] },
+      { id: 'P2-M2-atpco-rule-pack', label: 'ATPCO category-fare publication rule pack v0 (cat-1/2/3/4/19 fare-rule subset)',                                           team: 9, evidence: ['contracts/rules/commercial_atpco_fare_pack_v0.yaml'] },
+      { id: 'P2-M2-gds-adapter',     label: 'GDS adapter contract (Amadeus / Sabre / Travelport — one interface, three impl manifests)',                                team: 9, evidence: ['contracts/connectors/gds_adapter.v1.yaml'] },
+      { id: 'P2-M2-ndc-validator',   label: 'NDC offer + order admission validator (Cedar + JSON schema invariants)',                                                   team: 9, evidence: ['contracts/validators/commercial/d9_ndc_admission_semantic_invariants.v1.yaml', 'tools/validate-ndc-admission.js'] },
+      { id: 'P2-M2-atpco-validator', label: 'ATPCO fare-rule pack validator',                                                                                           team: 9, evidence: ['tools/validate-atpco-fare-pack.js'] },
+      { id: 'P2-M2-demo',            label: 'demo-ndc-offer-order.sh (shop → price → order → ticket — 3 scenarios: PUBLISHED, FARE_BLOCKED, OWNERSHIP_BLOCKED)',        team: 9, evidence: ['scripts/demo-ndc-offer-order.sh'] },
+      { id: 'P2-M2-close-report',    label: 'M2 close report (NDC/GDS distribution demo)',                                                                               team: 9, evidence: ['reports/PHASE2_M2_NDC_DEMO.md'] },
+    ],
+  },
+  {
+    id: 'P2-M3', num: 3,
+    name: 'AXIOM-CUST (DCS + baggage)',
+    scope: 'Departure Control System: check-in, seat assignment, boarding, weight-and-balance handoff. Baggage tracking per IATA Resolution 753.',
+    owners: 'D9 + D5 + D6',
+    deliverables: [
+      { id: 'P2-M3-work-order',      label: 'D9 M3 work order (AXIOM-CUST / DCS + baggage coder briefs)',                                                                team: 9, evidence: ['departments/D9_PHASE2_M3_WORK_ORDER.md'] },
+      { id: 'P2-M3-entities',        label: 'AXIOM-CUST canonical entities (passenger journey / check-in / seat / boarding pass / baggage tag / mishandled bag)',         team: 9, evidence: ['contracts/entities/customer/axiom_cust_entities.yaml'] },
+      { id: 'P2-M3-dcs-proto',       label: 'DCS proto (CheckIn / SeatAssign / Board / WBHandoff / Manifest)',                                                              team: 9, evidence: ['contracts/protos/axiom/customer/v1/dcs.proto'] },
+      { id: 'P2-M3-svc-skel',        label: 'P16 AXIOM-CUST service skeleton',                                                                                              team: 9, evidence: ['services/p16-cust/Cargo.toml', 'services/p16-cust/src/'] },
+      { id: 'P2-M3-pg-schema',       label: 'DCS + baggage PG schema (passenger_journey / checkin / seat / boarding / baggage_tag / scan_event tables)',                    team: 9, evidence: ['services/p03-data/migrations/0004_customer_dcs.sql'] },
+      { id: 'P2-M3-asyncapi',        label: 'AXIOM-CUST AsyncAPI (passenger-accepted, seat-assigned, boarded, baggage-tagged, baggage-scanned, baggage-mishandled)',        team: 9, evidence: ['contracts/asyncapi/customer/axiom_cust_v0.yaml'] },
+      { id: 'P2-M3-wb-handoff',      label: 'W&B handoff contract — DCS final passenger/baggage counts → dispatch release (D5 boundary)',                                   team: 5, evidence: ['contracts/entities/customer/wb_handoff_to_dispatch.schema.json'] },
+      { id: 'P2-M3-boarding-wf',     label: 'Boarding gate workflow (gate process, last-call, no-show, off-load — D6 cabin/ground boundary)',                              team: 6, evidence: ['contracts/workflows/boarding_v1.yaml'] },
+      { id: 'P2-M3-res753-entities', label: 'IATA Resolution 753 baggage tracking entities (4 mandatory tracking points: acceptance / loading / transfer / arrival)',       team: 9, evidence: ['contracts/entities/customer/baggage_res753_entities.yaml'] },
+      { id: 'P2-M3-dcs-validator',   label: 'DCS admission validator (Cedar + JSON schema invariants: doc check, seat capacity, boarding cutoffs)',                         team: 9, evidence: ['contracts/validators/customer/d9_dcs_admission_invariants.v1.yaml', 'tools/validate-dcs-admission.js'] },
+      { id: 'P2-M3-res753-validator',label: 'Res. 753 tracking validator (all 4 tracking points logged before flight close)',                                              team: 9, evidence: ['tools/validate-res753-tracking.js'] },
+      { id: 'P2-M3-demo',            label: 'demo-checkin-board-bag.sh (5 pax: 3 GREEN, 1 NO_SHOW, 1 MISHANDLED_BAG; show 4 scan points fire)',                            team: 9, evidence: ['scripts/demo-checkin-board-bag.sh'] },
+      { id: 'P2-M3-close-report',    label: 'M3 close report (DCS + baggage demo)',                                                                                          team: 9, evidence: ['reports/PHASE2_M3_DCS_BAGGAGE_DEMO.md'] },
+    ],
+  },
+  {
+    id: 'P2-M4', num: 4,
+    name: 'AXIOM-OPS (BSP/CASS settlement)',
+    scope: 'IATA BSP (passenger) + CASS (cargo) settlement integration; remittance/reconciliation; IFRS 15 revenue recognition for tickets.',
+    owners: 'D9',
+    deliverables: [],
+  },
+  {
+    id: 'P2-M5', num: 5,
+    name: 'AXIOM-CABIN (cabin operations)',
+    scope: 'Cabin-crew duty integration, IFE/IFC manifest, catering uplift, retail-onboard cycle.',
+    owners: 'D9 + D6',
+    deliverables: [],
+  },
+];
+
+// Phase 3+ — Run Business / Harden / Productise. Milestones not yet scoped.
+// Adding a known-scope placeholder per phase keeps the "scoping" gate honest:
+// the phase can't go complete just because nobody filled it in.
+const PHASE3_MILESTONES: Milestone[] = [];
+const PHASE4_MILESTONES: Milestone[] = [];
+const PHASE5_MILESTONES: Milestone[] = [];
+
+// ── Overlay manifest ────────────────────────────────────────────────
+// The autopilot CEO orchestrator nominates cross-team contributions at
+// paths outside the hardcoded manifest above. Without overlay merging,
+// those teams stay at total=0 → their coders get skipped by the driver's
+// idle-team backstop → only 1 manager + 3 coders ever run per cycle.
+// The overlay file lets the driver inject CEO-allocated deliverables AS
+// IF they were in the manifest, unlocking the full floor. Operator can
+// review + promote into source on PR review; or just leave them in the
+// overlay and let autopilot keep working.
+const OVERLAY_FILE = process.env.WATCH_AXIOM_ROADMAP_OVERLAY || '/var/lib/watcher/axiom-roadmap-overlay.json';
+
+type OverlayDeliverable = { id: string; label: string; team: number; evidence: string[]; milestoneId: string };
+type OverlayFile = { generatedAt?: string; entries: OverlayDeliverable[] };
+
+function loadOverlay(): OverlayFile {
+  try {
+    const txt = fs.readFileSync(OVERLAY_FILE, 'utf8');
+    const parsed = JSON.parse(txt);
+    if (parsed && Array.isArray(parsed.entries)) return parsed as OverlayFile;
+  } catch {}
+  return { entries: [] };
+}
+
+function applyOverlay(allMilestones: Milestone[][]): void {
+  // Mutates the milestone arrays in place by appending overlay deliverables
+  // to the matching milestone (by id). Overlay entries with no matching
+  // milestone are dropped silently — they'd need a manifest milestone first.
+  const overlay = loadOverlay();
+  if (!overlay.entries.length) return;
+  const byMilestone = new Map<string, Deliverable[]>();
+  for (const e of overlay.entries) {
+    if (!byMilestone.has(e.milestoneId)) byMilestone.set(e.milestoneId, []);
+    byMilestone.get(e.milestoneId)!.push({ id: e.id, label: e.label, team: e.team, evidence: e.evidence });
+  }
+  for (const phaseMilestones of allMilestones) {
+    for (const m of phaseMilestones) {
+      const extra = byMilestone.get(m.id);
+      if (!extra || !extra.length) continue;
+      // Dedupe by id — if a later overlay write repeats an id, last wins.
+      const existing = new Map<string, Deliverable>();
+      for (const d of m.deliverables) existing.set(d.id, d);
+      for (const d of extra) existing.set(d.id, d);
+      m.deliverables = Array.from(existing.values());
+    }
+  }
+}
 
 // Multi-phase platform plan from AXIOM_MASTERPLAN.md §15.1.
 // Phase 0 has detailed deliverables tracked above; future phases shown as
@@ -269,6 +425,102 @@ function validatorsForItem(evidence: string[]): string[] {
   return evidence.filter((e) => /(^|\/)tools\/validate-[^/]+\.js$/.test(e));
 }
 
+// ── Evaluated shapes (what the UI consumes) ─────────────────────────────
+type EvaluatedDeliverable = Deliverable & {
+  phase: number;
+  milestoneId: string;
+  built: boolean;
+  matchedPath: string | null;
+  size: number;
+  qualityFailed: boolean | null;     // null = no validators in evidence
+  failedValidators: string[];
+};
+
+type MilestoneStatus = 'scoping' | 'in_progress' | 'closed';
+
+type EvaluatedMilestone = {
+  id: string;
+  num: number;
+  name: string;
+  scope: string;
+  owners: string;
+  phase: number;
+  status: MilestoneStatus;
+  built: number;
+  total: number;
+  qualityHealthy: number;        // built AND not qualityFailed
+  qualityBlocked: number;        // built AND qualityFailed
+  deliverables: EvaluatedDeliverable[];
+};
+
+type PhaseSummary = {
+  phase: number;
+  name: string;
+  milestonesTotal: number;
+  milestonesClosed: number;
+  milestonesScoping: number;
+  milestonesInProgress: number;
+  built: number;                 // sum of built deliverables across milestones
+  total: number;                 // sum of total deliverables across scoped milestones
+  complete: boolean;             // every milestone closed AND none scoping
+};
+
+function evalDeliverable(
+  d: Deliverable,
+  phase: number,
+  milestoneId: string,
+  matrix: ValidatorMatrix | null,
+  passByValidator: Map<string, boolean>,
+): EvaluatedDeliverable {
+  let hit: { built: boolean; matchedPath: string | null; size: number } = { built: false, matchedPath: null, size: 0 };
+  for (const ev of d.evidence) {
+    hit = evidenceMatches(ev);
+    if (hit.built) break;
+  }
+  const itemValidators = validatorsForItem(d.evidence);
+  let qualityFailed: boolean | null = null;
+  let failedValidators: string[] = [];
+  if (itemValidators.length && matrix) {
+    const known = itemValidators.filter((v) => passByValidator.has(v));
+    if (known.length) {
+      failedValidators = known.filter((v) => !passByValidator.get(v));
+      qualityFailed = failedValidators.length > 0;
+    }
+  }
+  return { ...d, phase, milestoneId, ...hit, qualityFailed, failedValidators };
+}
+
+function evalMilestone(
+  m: Milestone,
+  phase: number,
+  matrix: ValidatorMatrix | null,
+  passByValidator: Map<string, boolean>,
+): EvaluatedMilestone {
+  const deliverables = m.deliverables.map((d) => evalDeliverable(d, phase, m.id, matrix, passByValidator));
+  const total = deliverables.length;
+  const built = deliverables.filter((d) => d.built).length;
+  const qualityHealthy = deliverables.filter((d) => d.built && d.qualityFailed !== true).length;
+  const qualityBlocked = deliverables.filter((d) => d.built && d.qualityFailed === true).length;
+  let status: MilestoneStatus;
+  if (total === 0) status = 'scoping';
+  else if (qualityHealthy === total) status = 'closed';
+  else status = 'in_progress';
+  return { id: m.id, num: m.num, name: m.name, scope: m.scope, owners: m.owners, phase, status, built, total, qualityHealthy, qualityBlocked, deliverables };
+}
+
+function summarizePhase(phaseNum: number, name: string, milestones: EvaluatedMilestone[]): PhaseSummary {
+  const milestonesTotal = milestones.length;
+  const milestonesClosed = milestones.filter((m) => m.status === 'closed').length;
+  const milestonesScoping = milestones.filter((m) => m.status === 'scoping').length;
+  const milestonesInProgress = milestones.filter((m) => m.status === 'in_progress').length;
+  const built = milestones.reduce((acc, m) => acc + m.built, 0);
+  const total = milestones.reduce((acc, m) => acc + m.total, 0);
+  // A phase is complete only when (a) at least one milestone is defined,
+  // (b) none are scoping placeholders, (c) all scoped milestones are closed.
+  const complete = milestonesTotal > 0 && milestonesScoping === 0 && milestonesClosed === milestonesTotal;
+  return { phase: phaseNum, name, milestonesTotal, milestonesClosed, milestonesScoping, milestonesInProgress, built, total, complete };
+}
+
 export async function GET() {
   const now = Date.now();
   if (cache && now - cache.ts < CACHE_TTL_MS) {
@@ -278,75 +530,86 @@ export async function GET() {
   const passByValidator = new Map<string, boolean>();
   if (matrix) for (const r of matrix.results) passByValidator.set(r.validator, r.passed);
 
-  // Tag items with their phase + evaluate them.
-  function evalItems(deliverables: Deliverable[], phase: number) {
-    return deliverables.map((d) => {
-      let hit: { built: boolean; matchedPath: string | null; size: number } = { built: false, matchedPath: null, size: 0 };
-      for (const ev of d.evidence) {
-        hit = evidenceMatches(ev);
-        if (hit.built) break;
-      }
-      const itemValidators = validatorsForItem(d.evidence);
-      let qualityFailed: boolean | null = null;
-      let failedValidators: string[] = [];
-      if (itemValidators.length && matrix) {
-        const known = itemValidators.filter((v) => passByValidator.has(v));
-        if (known.length) {
-          failedValidators = known.filter((v) => !passByValidator.get(v));
-          qualityFailed = failedValidators.length > 0;
-        }
-      }
-      return { ...d, phase, ...hit, qualityFailed, failedValidators };
-    });
+  // Apply autopilot CEO's overlay deliverables before evaluation.
+  // We clone the manifests so source arrays stay untouched cycle-to-cycle.
+  const phase0Src = PHASE0_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  const phase1Src = PHASE1_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  const phase2Src = PHASE2_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  const phase3Src = PHASE3_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  const phase4Src = PHASE4_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  const phase5Src = PHASE5_MILESTONES.map((m) => ({ ...m, deliverables: [...m.deliverables] }));
+  applyOverlay([phase0Src, phase1Src, phase2Src, phase3Src, phase4Src, phase5Src]);
+
+  const phase0Milestones = phase0Src.map((m) => evalMilestone(m, 0, matrix, passByValidator));
+  const phase1Milestones = phase1Src.map((m) => evalMilestone(m, 1, matrix, passByValidator));
+  const phase2Milestones = phase2Src.map((m) => evalMilestone(m, 2, matrix, passByValidator));
+  const phase3Milestones = phase3Src.map((m) => evalMilestone(m, 3, matrix, passByValidator));
+  const phase4Milestones = phase4Src.map((m) => evalMilestone(m, 4, matrix, passByValidator));
+  const phase5Milestones = phase5Src.map((m) => evalMilestone(m, 5, matrix, passByValidator));
+
+  const phaseSummaries: PhaseSummary[] = [
+    summarizePhase(0, 'Foundation',         phase0Milestones),
+    summarizePhase(1, 'Operate',            phase1Milestones),
+    summarizePhase(2, 'Sell & Serve',       phase2Milestones),
+    summarizePhase(3, 'Run Business',       phase3Milestones),
+    summarizePhase(4, 'Harden & Extend',    phase4Milestones),
+    summarizePhase(5, 'Productise',         phase5Milestones),
+  ];
+
+  // Phase advance: the first phase that isn't `complete` is the current one.
+  // Operator override stays via WATCH_AXIOM_CURRENT_PHASE.
+  let computedCurrentPhase = 5;
+  for (const s of phaseSummaries) {
+    if (!s.complete) { computedCurrentPhase = s.phase; break; }
   }
-
-  const phase0Items = evalItems(PHASE0, 0);
-  const phase1Items = evalItems(PHASE1, 1);
-  const phase2Items = evalItems(PHASE2, 2);
-
-  // Phase advance: each phase is "complete" when every item is built.
-  // Phase-2 entry requires both Phase-0 AND Phase-1 closed.
-  // Operator override via env var WATCH_AXIOM_CURRENT_PHASE.
-  const phase0AllBuilt = phase0Items.every((i) => i.built);
-  const phase1AllBuilt = phase1Items.every((i) => i.built);
   const currentPhase = process.env.WATCH_AXIOM_CURRENT_PHASE
     ? Number(process.env.WATCH_AXIOM_CURRENT_PHASE)
-    : phase0AllBuilt && phase1AllBuilt
-      ? 2
-      : phase0AllBuilt
-        ? 1
-        : 0;
+    : computedCurrentPhase;
 
-  // Active items = items in the current phase (used for "Remaining" list, % bar)
-  const activeItems = currentPhase === 2 ? phase2Items : currentPhase === 1 ? phase1Items : phase0Items;
+  const milestonesByPhase: Record<number, EvaluatedMilestone[]> = {
+    0: phase0Milestones, 1: phase1Milestones, 2: phase2Milestones,
+    3: phase3Milestones, 4: phase4Milestones, 5: phase5Milestones,
+  };
+  const activeMilestones = milestonesByPhase[currentPhase] ?? [];
 
-  const byTeam: Record<number, { built: number; total: number; qualityHealthy: number; team: number; dept: string }> = {};
-  for (let n = 0; n <= 10; n++) byTeam[n] = { built: 0, total: 0, qualityHealthy: 0, team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1] };
+  // ── Backward-compatible flattened view ──────────────────────────────
+  // The autopilot driver (scripts/axiom-driver.mjs) and any other consumer
+  // that pre-dates the milestone tier reads `items`, `byTeam`, and
+  // `overall`. Build those from the active phase's milestones so the
+  // existing manager-brief pipeline keeps working unchanged. Note this
+  // intentionally flattens across milestones — for the autopilot all that
+  // matters is "for this team, what's still unbuilt in the active phase".
+  const activeItems = activeMilestones.flatMap((m) => m.deliverables);
+  const byTeam: Record<number, { team: number; dept: string; built: number; total: number; qualityHealthy: number }> = {};
+  for (let n = 0; n <= 10; n++) {
+    byTeam[n] = { team: n, dept: n === 0 ? 'CEO / shared' : DEPARTMENTS[n - 1], built: 0, total: 0, qualityHealthy: 0 };
+  }
   for (const it of activeItems) {
     byTeam[it.team].total += 1;
     if (it.built) byTeam[it.team].built += 1;
     if (it.built && it.qualityFailed !== true) byTeam[it.team].qualityHealthy += 1;
   }
-  const built = activeItems.filter((i) => i.built).length;
-  const qualityHealthy = activeItems.filter((i) => i.built && i.qualityFailed !== true).length;
-  const total = activeItems.length;
-
-  // Per-phase summary (used by the UI to show all-phase strip)
-  const phaseSummaries = [
-    { phase: 0, name: 'Foundation',  built: phase0Items.filter((i) => i.built).length, total: phase0Items.length, complete: phase0AllBuilt },
-    { phase: 1, name: 'Operate',     built: phase1Items.filter((i) => i.built).length, total: phase1Items.length, complete: phase1AllBuilt },
-    { phase: 2, name: 'Sell & Serve',built: phase2Items.filter((i) => i.built).length, total: phase2Items.length, complete: phase2Items.every((i) => i.built) },
-  ];
+  const builtCount = activeItems.filter((i) => i.built).length;
+  const qualityHealthyCount = activeItems.filter((i) => i.built && i.qualityFailed !== true).length;
+  const totalCount = activeItems.length;
 
   const payload = {
     ok: true,
     generatedAt: new Date().toISOString(),
+    currentPhase,
+    phases: PHASES,
+    phaseSummaries,
+    milestones: activeMilestones,
+    allMilestones: milestonesByPhase,
+    // Backward-compat (autopilot driver):
+    items: activeItems,
+    byTeam: Object.values(byTeam).filter((b) => b.total > 0),
     overall: {
-      built,
-      total,
-      percent: total ? Math.round((built / total) * 100) : 0,
-      qualityHealthy,
-      qualityPercent: total ? Math.round((qualityHealthy / total) * 100) : 0,
+      built: builtCount,
+      total: totalCount,
+      percent: totalCount ? Math.round((builtCount / totalCount) * 100) : 0,
+      qualityHealthy: qualityHealthyCount,
+      qualityPercent: totalCount ? Math.round((qualityHealthyCount / totalCount) * 100) : 0,
     },
     validatorMatrix: matrix
       ? {
@@ -357,12 +620,7 @@ export async function GET() {
           passRate: matrix.passRate,
         }
       : null,
-    byTeam: Object.values(byTeam).filter((b) => b.total > 0),
-    items: activeItems,
-    allItems: { phase0: phase0Items, phase1: phase1Items, phase2: phase2Items },
-    phases: PHASES,
-    phaseSummaries,
-    currentPhase,
+    departments: DEPARTMENTS,
   };
   cache = { ts: now, payload };
   return NextResponse.json(payload);

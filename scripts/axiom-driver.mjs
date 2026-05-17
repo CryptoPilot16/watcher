@@ -39,6 +39,40 @@ const TG_TOKEN = (process.env.WATCH_AXIOM_CEO_BOT_TOKEN || '').trim();
 const TG_CHAT_ID = (process.env.WATCH_AXIOM_CEO_OPERATOR_ID || '').trim();
 const PROJECT_DIR = process.env.WATCH_AXIOM_PROJECT_DIR || '/opt/axiom';
 
+// ── CEO orchestrator ────────────────────────────────────────────────
+// Driver consults the CEO every N cycles to decide which managers run
+// with what brief, instead of dispatching strictly from the roadmap
+// manifest. This makes the CEO the actual conductor (previously CEO
+// was chat-only via Telegram, autopilot dispatched managers blindly).
+// Uses a SEPARATE sessionKey from the operator-facing CEO chat — if we
+// share the chat session, prior operator instructions ("stop", "pause",
+// philosophical chat) bleed into autopilot decisions. CEO_MEMORY.md is
+// loaded into both sessions so the persistent brain stays consistent.
+// Fail-safe: if CEO doesn't reply within CEO_TIMEOUT_MS or doesn't emit
+// a DELEGATE tag, driver falls back to the manifest-derived brief.
+const CEO_SESSION_KEY = process.env.WATCH_AXIOM_DRIVER_CEO_SESSION || 'axiom:axiom-ceo-autopilot';
+const CEO_SCOPE_SESSION_KEY = process.env.WATCH_AXIOM_DRIVER_CEO_SCOPE_SESSION || 'axiom:axiom-ceo-scoping';
+const CEO_TIMEOUT_MS = Math.max(15_000, Number(process.env.WATCH_AXIOM_DRIVER_CEO_TIMEOUT_MS || 90_000));
+const CEO_EVERY = Math.max(1, Number(process.env.WATCH_AXIOM_DRIVER_CEO_EVERY || 3));
+const CEO_DELEGATE_RE = /<<\s*DELEGATE\s*:\s*([^:]+?)\s*::\s*([\s\S]*?)\s*>>/;
+const CEO_DELEGATE_ALL_RE = /<<\s*DELEGATE-ALL\s*:\s*([\s\S]*?)\s*>>/;
+const CEO_MIN_BRIEF_CHARS = 30;
+
+// Overlay: CEO-allocated cross-team deliverables written to a sidecar JSON
+// file. The roadmap API merges these into milestones at GET time, so when
+// CEO assigns m1 a buf-lint validator at /opt/axiom/tools/x.js the team's
+// total goes 0→1 and its coders dispatch instead of being skipped as idle.
+const OVERLAY_FILE = process.env.WATCH_AXIOM_ROADMAP_OVERLAY || '/var/lib/watcher/axiom-roadmap-overlay.json';
+const AUTOPILOT_LOG_FILE = process.env.WATCH_AXIOM_AUTOPILOT_LOG || '/opt/axiom/CEO_AUTOPILOT_LOG.md';
+
+// Coders run codex /goal (2–15 min) fire-and-forget; their state files
+// stay "running" for the duration. The manager-side TTL (5 min) is too
+// short — a long codex coder gets reaped and re-dispatched mid-flight.
+// Separate TTL so the watchdog reaps zombies without killing live coders.
+const CODER_RUNNING_ZOMBIE_TTL_MS = Math.max(5 * 60_000, Number(process.env.WATCH_AXIOM_CODER_TTL_MS || 20 * 60_000));
+
+const MASTERPLAN_FILE = `${PROJECT_DIR}/AXIOM_MASTERPLAN.md`;
+
 const DEFAULT_DEPARTMENTS = ['Foundation', 'Governance', 'Reliability', 'Substrate', 'Flight Ops', 'Crew', 'Engineering', 'Safety', 'Commercial', 'ATC / IQ'];
 const _envDepts = (process.env.NEXT_PUBLIC_AXIOM_DEPARTMENTS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const DEPARTMENTS = _envDepts.length === 10 ? _envDepts : DEFAULT_DEPARTMENTS;
@@ -82,32 +116,40 @@ async function tg(method, body) {
   }
 }
 
-function buildManagerBrief(team, roadmapHint) {
+function buildManagerBrief(team, roadmapHint, currentPhase = 0) {
   const dept = DEPARTMENTS[team - 1] || 'unknown';
   const remainingItems = roadmapHint?.remaining || [];
+  const phaseTag = `PHASE-${currentPhase}`;
+  // Render each remaining item with its EXACT manifest path so codex has no
+  // room to drift (e.g. axiom_comm_entities.v1.yaml when manifest wants
+  // axiom_comm_entities.yaml). The path comes from item.evidence[0] in the
+  // roadmap API and is what the API checks for file existence to mark built.
+  function renderItem(it, i) {
+    if (typeof it === 'string') return `  ${i + 1}. ${it}`; // legacy shape, shouldn't happen
+    const path = it.path ? ` → ${PROJECT_DIR}/${it.path}` : '';
+    return `  ${i + 1}. [${it.id}] ${it.label}${path}`;
+  }
+  // No-hardening rule: when REMAINING is empty for a team that has tracked
+  // items in this phase, the only acceptable reply is "{phaseTag} SCOPE
+  // COMPLETE" + empty <<CODERS>>.
   const remainingBlock = roadmapHint
     ? remainingItems.length > 0
-      ? `REMAINING for D${team} (${roadmapHint.built}/${roadmapHint.total} done) — your ONLY allowed work this cycle:\n${remainingItems.slice(0, 8).map((it, i) => `  ${i + 1}. ${it}`).join('\n')}`
-      : `Tracked roadmap is COMPLETE for D${team}. If D${team}_GOAL.md scope is also done, reply "PHASE-0 SCOPE COMPLETE" and emit empty <<CODERS>>. Otherwise allocate hardening / regression-test work to all 3 coders.`
+      ? `REMAINING for D${team} in ${phaseTag} (${roadmapHint.built}/${roadmapHint.total} done) — your ONLY allowed work this cycle:\n${remainingItems.slice(0, 8).map(renderItem).join('\n')}`
+      : `Tracked roadmap is COMPLETE for D${team} in ${phaseTag} (${roadmapHint.built}/${roadmapHint.total}). Reply EXACTLY: "${phaseTag} SCOPE COMPLETE" and emit empty <<CODERS>><<END>>. Do NOT allocate hardening, regression, or any other work — that is forbidden busywork. Other teams have real work; idle managers must declare and exit so cost goes to teams that need it.`
     : '';
-  // Critical anti-loop rule: managers were observed spending 8+ cycles
-  // tightening invariants on an already-built item instead of advancing the
-  // remaining list. Cost piled up; roadmap % did not move. The rule below
-  // forbids elaboration of already-built items.
   return [
     `[AUTOPILOT — m${team} ${dept}]`,
     remainingBlock,
-    `RULE 1: Pick ONE item from REMAINING above. Build the artifact at the EXACT path the roadmap expects — the API checks file existence at those paths to mark items built. If your dept's items are listed by id like "D1-otel-mandate", look at the corresponding evidence path in src/app/api/axiom/roadmap/route.ts of the watcher repo if you need to confirm.`,
-    `RULE 2: Do NOT elaborate, harden, or add invariants to items you already built in earlier cycles. That is busywork — it spends money without moving the %. If you want to harden, allocate it to c3 as an audit task.`,
-    `RULE 3: Allocate ALL 3 coders every cycle to concrete parallel tasks. Idle c-lines = wasted cycle. Spell out file paths inside ${PROJECT_DIR}.`,
-    `Coder roles: c1 = tests / fixtures / negative cases. c2 = integration glue / fakes / migration. c3 = QA reviewer — runs validators, fixes one real gap.`,
+    `RULE 1 (PATH DISCIPLINE — CRITICAL): Ship files at the EXACT path shown after the "→" arrow above. No version suffixes (.v1, .v0). No relocations to "more idiomatic" locations. No variant filenames. The roadmap API runs fs.stat() on that literal path; if your file lands anywhere else, you shipped nothing the roadmap can count, the cycle was wasted, and the operator pays for it. If a path looks wrong to you, REPLY explaining the conflict — do NOT silently rename.`,
+    `RULE 2 (NO ELABORATION): Coder tasks must be DIFFERENT FILES from each other and from your own ship this cycle. Forbidden pattern: "c1: validate X. c2: check X. c3: verify X" where X is the same file. That ships nothing new. If you can't think of 3 distinct artifacts to advance, emit empty <<CODERS>> instead of busywork.`,
+    `RULE 3 (PARALLEL DECOMPOSITION): Allocate ALL 3 coders to advance THREE DIFFERENT remaining items where possible — each coder gets a distinct [id] and its exact /opt/axiom path from REMAINING. If REMAINING has fewer than 3 items, decompose your single primary item into 3 sibling files: c1=tests/fixtures path, c2=implementation/glue path, c3=regression test or validator path. All three paths must differ.`,
     `Reply ≤500 chars + <<CODERS>>...<<END>> block.`,
     `Format:`,
-    `m${team} ${dept}: <≤200ch — which REMAINING item you advanced + file you shipped>`,
+    `m${team} ${dept}: <≤200ch — which [id] you advanced + EXACT path you shipped>`,
     `<<CODERS>>`,
-    `c1: <concrete task with file path>`,
-    `c2: <concrete task with file path>`,
-    `c3: <what to audit/fix with file path>`,
+    `c1: [id] ship ${PROJECT_DIR}/<exact path — a different file from c2/c3 and your ship>`,
+    `c2: [id] ship ${PROJECT_DIR}/<exact path — different again>`,
+    `c3: [id] ship ${PROJECT_DIR}/<exact path — different again>`,
     `<<END>>`,
   ].filter(Boolean).join('\n');
 }
@@ -146,7 +188,8 @@ function buildCoderBrief(team, coderIndex, managerAssignedTask) {
     return [
       `[AUTOPILOT — c${coderIndex}/m${team} ${dept}]`,
       `Manager allocated: ${managerAssignedTask}`,
-      `Do EXACTLY this task. Reference D${team}_GOAL.md if needed. Reply ≤200 chars: what you built + file paths. End with "c${coderIndex}/m${team} ${dept}: <summary>". Report blocker if impossible.`,
+      `PATH DISCIPLINE (CRITICAL): the task contains a file path. Write to that EXACT path. No version suffixes (.v1, .v0). No relocations. The roadmap API runs fs.stat() on that literal path — if you ship anywhere else, you shipped nothing the roadmap can count. If the path looks wrong, reply with the conflict instead of silently renaming.`,
+      `Do EXACTLY this task. Reference D${team}_GOAL.md if needed. Reply ≤200 chars: what you built + EXACT file path. End with "c${coderIndex}/m${team} ${dept}: <summary>". Report blocker if impossible.`,
     ].join('\n');
   }
   // SAFETY NET — runCycle won't dispatch a coder without a manager
@@ -219,11 +262,14 @@ async function callAgent(sessionKey, message) {
   }
 }
 
-// Treat a "running" state as actually running only if it started within the
-// last 5 minutes. Anything older is a zombie (parent watcher-web restart
+// Treat a "running" state as actually running only if it started within
+// the agent's TTL. Anything older is a zombie (parent watcher-web restart
 // killed the subprocess but the state file was never updated). The driver
-// would otherwise skip these forever and the team would idle. Decaying here
-// also writes back to disk so the API stays truthful.
+// would otherwise skip these forever and the team would idle. Decaying
+// here also writes back to disk so the API stays truthful.
+//
+// Managers: 5 min TTL (claude reply; if not back in 5 min, dead).
+// Coders:   20 min TTL (codex /goal can legitimately run 2-15 min).
 const RUNNING_ZOMBIE_TTL_MS = 5 * 60 * 1000;
 async function isAgentRunning(sessionKey) {
   const safe = sessionKey.replace(/[^a-z0-9_.\-:]/gi, '_').slice(0, 200) || 'unknown';
@@ -232,8 +278,9 @@ async function isAgentRunning(sessionKey) {
   if (s?.status !== 'running') return false;
   const startedAt = s?.startedAt;
   if (startedAt) {
+    const ttl = sessionKey.includes('coder') ? CODER_RUNNING_ZOMBIE_TTL_MS : RUNNING_ZOMBIE_TTL_MS;
     const elapsed = Date.now() - new Date(startedAt).getTime();
-    if (elapsed > RUNNING_ZOMBIE_TTL_MS) {
+    if (elapsed > ttl) {
       // Reap: rewrite as idle so next cycle dispatches.
       try {
         await fs.writeFile(f, JSON.stringify({ ...s, status: 'idle', progress: null, task: null }, null, 2));
@@ -244,8 +291,8 @@ async function isAgentRunning(sessionKey) {
   return true;
 }
 
-async function callManager(team, roadmapHint) {
-  const r = await callAgent(`axiom:axiom-mgr-${team}`, buildManagerBrief(team, roadmapHint));
+async function callManager(team, roadmapHint, currentPhase = 0) {
+  const r = await callAgent(`axiom:axiom-mgr-${team}`, buildManagerBrief(team, roadmapHint, currentPhase));
   return { ...r, role: 'manager', team, coderIndex: null };
 }
 
@@ -266,10 +313,23 @@ async function fetchRoadmapHints() {
       const counts = byTeamCounts.get(team) || { built: 0, total: 0 };
       const remaining = (j?.items || [])
         .filter((it) => it.team === team && !it.built)
-        .map((it) => it.label);
+        .map((it) => ({
+          id: it.id,
+          label: it.label,
+          path: Array.isArray(it.evidence) && it.evidence.length ? it.evidence[0] : '',
+        }));
       map.set(team, { built: counts.built, total: counts.total, remaining });
     }
-    return map;
+    const currentPhase = typeof j?.currentPhase === 'number' ? j.currentPhase : 0;
+    let activeMilestone = null;
+    if (Array.isArray(j?.milestones) && j.milestones.length) {
+      activeMilestone = j.milestones.find((m) => m.status === 'in_progress')
+        || j.milestones.find((m) => m.status === 'scoping')
+        || j.milestones[0];
+    }
+    // Surface which items are built right now (for cycle-over-cycle diffs).
+    const builtIds = new Set((j?.items || []).filter((it) => it.built).map((it) => it.id));
+    return { hints: map, currentPhase, activeMilestone, builtIds, rawItems: j?.items || [], allMilestones: j?.allMilestones || {} };
   } catch {
     return null;
   }
@@ -295,14 +355,382 @@ function countAllocations(allocations) {
   return count;
 }
 
-function managersDeclaredPhaseComplete(mgrResults) {
+function managersDeclaredPhaseComplete(mgrResults, currentPhase = 0) {
   const managers = (mgrResults || []).filter((r) => r.role === 'manager');
-  return managers.length > 0 && managers.every((r) => r.ok && /PHASE-0\s+SCOPE\s+COMPLETE/i.test(r.reply || ''));
+  if (managers.length === 0) return false;
+  const re = new RegExp(`PHASE-${currentPhase}\\s+SCOPE\\s+COMPLETE`, 'i');
+  return managers.every((r) => r.ok && re.test(r.reply || ''));
 }
 
 async function callCoder(team, coderIndex, managerAssignedTask) {
   const r = await callAgent(`axiom:axiom-coder-${team}-${coderIndex}`, buildCoderBrief(team, coderIndex, managerAssignedTask));
   return { ...r, role: 'coder', team, coderIndex, managerAssignedTask };
+}
+
+// ── Masterplan slice (cached) ───────────────────────────────────────
+// CEO needs to see the mission, not just per-team counters. We slice
+// §15.1 (the six-phase build plan) on first call and cache it for the
+// session. Cheap and infrequent.
+let _masterplanSliceCache = null;
+async function getMasterplanSlice() {
+  if (_masterplanSliceCache !== null) return _masterplanSliceCache;
+  try {
+    const full = await fs.readFile(MASTERPLAN_FILE, 'utf8');
+    const idx = full.indexOf('### 15.1');
+    if (idx < 0) { _masterplanSliceCache = ''; return ''; }
+    // Find next ### or ## after 15.1 — that's the end of the slice
+    const tail = full.slice(idx);
+    const endIdx = tail.search(/\n###\s+15\.2/);
+    const slice = endIdx > 0 ? tail.slice(0, endIdx) : tail.slice(0, 2500);
+    _masterplanSliceCache = slice.trim();
+  } catch {
+    _masterplanSliceCache = '';
+  }
+  return _masterplanSliceCache;
+}
+
+// ── Overlay reader/writer ───────────────────────────────────────────
+async function readOverlay() {
+  try {
+    const txt = await fs.readFile(OVERLAY_FILE, 'utf8');
+    const j = JSON.parse(txt);
+    return (j && Array.isArray(j.entries)) ? j : { entries: [] };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+async function writeOverlay(overlay) {
+  overlay.generatedAt = new Date().toISOString();
+  try { await fs.writeFile(OVERLAY_FILE, JSON.stringify(overlay, null, 2), 'utf8'); } catch {}
+}
+
+// Parse CEO's per-team allocation lines from DELEGATE-ALL brief. Format:
+//   m1: [P2-M3-buf-lint] DCS proto buf-lint → /opt/axiom/tools/validate-x.js
+// Returns array of { team, id, label, path } records. Strips PROJECT_DIR
+// prefix from path to get the manifest-relative form.
+function parseCeoAllocations(brief, activeMilestoneId) {
+  const out = [];
+  const seen = new Set();
+  // Per-team lines start with "m{N}:" — split on those, ignore everything before m1
+  const re = /m(\d+)\s*:\s*([\s\S]*?)(?=\s+m\d+\s*:|$)/g;
+  let m;
+  while ((m = re.exec(brief)) !== null) {
+    const team = Number(m[1]);
+    if (team < 1 || team > 10) continue;
+    const body = m[2].trim();
+    // Skip scope-complete declarations
+    if (/SCOPE\s+COMPLETE/i.test(body)) continue;
+    // Extract [id] and → path
+    const idMatch = body.match(/\[([A-Za-z0-9_\-]+)\]/);
+    if (!idMatch) continue;
+    const id = idMatch[1];
+    if (seen.has(id)) continue;
+    // Label = body without [id] and after the arrow
+    const arrowIdx = body.indexOf('→');
+    if (arrowIdx < 0) continue;
+    const labelRaw = body.slice(0, arrowIdx).replace(/\[[^\]]+\]/, '').trim();
+    let pathRaw = body.slice(arrowIdx + 1).trim().split(/\s+(?=m\d+\s*:)/)[0].split('|')[0].trim();
+    // Strip trailing sentence punctuation that CEO often appends (".", ",", ";")
+    pathRaw = pathRaw.replace(/[.,;:]+$/, '').trim();
+    // Strip /opt/axiom/ prefix → manifest-relative
+    const rel = pathRaw.startsWith(`${PROJECT_DIR}/`) ? pathRaw.slice(PROJECT_DIR.length + 1) : pathRaw;
+    if (!rel || rel.length > 300) continue;
+    seen.add(id);
+    out.push({
+      team,
+      id,
+      label: labelRaw.slice(0, 200) || id,
+      evidence: [rel],
+      milestoneId: activeMilestoneId,
+    });
+  }
+  return out;
+}
+
+async function appendOverlayFromCeo(brief, activeMilestoneId) {
+  if (!activeMilestoneId) return 0;
+  const newEntries = parseCeoAllocations(brief, activeMilestoneId);
+  if (!newEntries.length) return 0;
+  const overlay = await readOverlay();
+  // Dedupe: if id already in overlay, replace; otherwise add.
+  const byId = new Map();
+  for (const e of overlay.entries) byId.set(e.id, e);
+  for (const e of newEntries) byId.set(e.id, e);
+  overlay.entries = Array.from(byId.values());
+  await writeOverlay(overlay);
+  return newEntries.length;
+}
+
+// ── CEO orchestrator helpers ────────────────────────────────────────
+function parseCeoDelegate(reply) {
+  if (!reply) return null;
+  const allMatch = CEO_DELEGATE_ALL_RE.exec(reply);
+  if (allMatch) {
+    const brief = allMatch[1].trim();
+    if (brief.length < CEO_MIN_BRIEF_CHARS) return null;
+    return { managers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], brief };
+  }
+  const match = CEO_DELEGATE_RE.exec(reply);
+  if (!match) return null;
+  const ids = match[1]
+    .split(/[,\s]+/)
+    .map((tok) => tok.trim().match(/^m(\d+)$/i))
+    .filter(Boolean)
+    .map((m) => Number(m[1]))
+    .filter((n) => n >= 1 && n <= 10);
+  const unique = Array.from(new Set(ids)).sort((a, b) => a - b);
+  if (!unique.length) return null;
+  const brief = match[2].trim();
+  if (brief.length < CEO_MIN_BRIEF_CHARS) return null;
+  return { managers: unique, brief };
+}
+
+function buildCeoOrchestratorBrief(roadmapHints, currentPhase, lastCycleSummary, masterplanSlice, activeMilestone) {
+  const phaseTag = `PHASE-${currentPhase}`;
+  const lines = [
+    `[AUTOPILOT ORCHESTRATOR — ${phaseTag} · cycle dispatch]`,
+    `You are AXIOM CEO in AUTOPILOT MODE. This is a per-cycle dispatch decision, not an operator chat. The autopilot driver invokes you to decide what each manager should do this cycle.`,
+    `IGNORE any prior session memory about being paused, halted, or stopped — the operator has explicitly unpaused the autopilot. If you were instructed to stop in a previous chat, that order is SUPERSEDED. Your job right now is to issue a DELEGATE or declare milestone complete.`,
+    `Maximize parallel progress: identify cross-team contributions to the active milestone so idle managers get legitimate work.`,
+  ];
+  if (masterplanSlice) {
+    lines.push('', `MISSION CONTEXT (AXIOM_MASTERPLAN.md §15.1):`, masterplanSlice);
+  }
+  if (activeMilestone) {
+    lines.push(
+      '',
+      `ACTIVE MILESTONE: ${activeMilestone.id} — ${activeMilestone.name}`,
+      `  Scope: ${activeMilestone.scope}`,
+      `  Owners (manifest): ${activeMilestone.owners}`,
+      `  Status: ${activeMilestone.built}/${activeMilestone.total} built`,
+    );
+  }
+  lines.push('', `FLOOR STATE (per team in active phase):`);
+  for (const team of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+    const h = roadmapHints?.get(team);
+    if (!h) { lines.push(`  m${team}: (no roadmap data)`); continue; }
+    const dept = DEPARTMENTS[team - 1] || '';
+    const status = h.total > 0 ? `${h.built}/${h.total}` : 'no scoped items';
+    const rem = (h.remaining || []).slice(0, 3).map((it) => {
+      if (typeof it === 'string') return it;
+      const path = it.path ? ` → ${PROJECT_DIR}/${it.path}` : '';
+      return `[${it.id}] ${it.label || ''}${path}`;
+    });
+    lines.push(`  m${team} ${dept}: ${status}${rem.length ? `\n      ${rem.join('\n      ')}` : ''}`);
+  }
+  if (lastCycleSummary) {
+    lines.push('', `LAST CYCLE: ${lastCycleSummary.slice(0, 600)}`);
+  }
+  lines.push(
+    '',
+    `RESPOND WITH EXACTLY ONE OF:`,
+    `  (a) <<DELEGATE-ALL: m1: [id] task → /opt/axiom/path. m2: ... m10: ...>>`,
+    `      — one line per team, format "m{N}: [id] task → /opt/axiom/exact/path"`,
+    `  (b) <<DELEGATE: m9,m1,m3 :: m9: ... m1: ... m3: ...>>`,
+    `      — only the listed teams, same per-team format`,
+    `  (c) "${phaseTag} MILESTONE COMPLETE"`,
+    `      — only if every remaining item is built AND no further cross-team contribution is needed`,
+    ``,
+    `CONSTRAINTS:`,
+    `- PATH DISCIPLINE: every task MUST cite the exact file path under /opt/axiom from the REMAINING list above. No version suffixes (.v1/.v0). No relocations. Drift kills the cycle silently.`,
+    `- CROSS-TEAM: idle teams (status "no scoped items") can be assigned legitimate contributions to the active milestone — e.g. m1 ships proto buf-lint for D9's NDC proto, m3 ships SLO catalog for AXIOM-COMM, m4 ships substrate publish gate. Cite the EXACT new file path you want the team to ship at; do NOT invent placeholder work.`,
+    `- SCOPE COMPLETE: if a team has tracked items all built (e.g. m2: 1/1), tell it to reply "${phaseTag} SCOPE COMPLETE" so it counts toward auto-pause.`,
+    `- Each manager will allocate 3 coders from your brief. Include enough granularity that each manager can derive 3 parallel coder tasks at exact paths.`,
+    `- Reply ≤2000 chars. Just the DELEGATE tag or the completion phrase. NO preamble, NO chat.`,
+  );
+  return lines.join('\n');
+}
+
+async function callCeoOrchestrator(message) {
+  const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
+  const headers = { 'Content-Type': 'application/json' };
+  if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
+  const body = JSON.stringify({ agentId: 'claude-code', sessionKey: CEO_SESSION_KEY, groupId: 'axiom', message });
+  const t0 = Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CEO_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { method: 'POST', headers, body, signal: ctrl.signal });
+    const j = await r.json().catch(() => ({}));
+    const dur = Math.round((Date.now() - t0) / 1000);
+    // Full reply (not truncated to 200 like callAgent — orchestrator output is the entire brief).
+    const reply = String(j?.reply || '');
+    const ok = r.ok && reply && !reply.startsWith('(empty');
+    return { ok, dur, reply, engine: j?.engine };
+  } catch (err) {
+    return { ok: false, dur: Math.round((Date.now() - t0) / 1000), reply: `(fetch failed: ${err.message})` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Auto-scope: ask CEO to draft deliverables for an empty milestone ──
+function buildCeoScopingBrief(milestone, currentPhase, masterplanSlice) {
+  return [
+    `[AUTOPILOT SCOPING — Phase ${currentPhase} · Milestone ${milestone.id}]`,
+    `You are AXIOM CEO. This is autopilot scoping, not chat. The current milestone has NO deliverables enumerated and the autopilot needs work to dispatch.`,
+    ``,
+    masterplanSlice ? `MISSION CONTEXT:\n${masterplanSlice}\n` : '',
+    `MILESTONE TO SCOPE: ${milestone.id} — ${milestone.name}`,
+    `  Stated scope: ${milestone.scope}`,
+    `  Manifest owners: ${milestone.owners}`,
+    ``,
+    `YOUR JOB: emit a DELEGATE-ALL with 8-12 cross-team deliverables that together close this milestone. Spread ownership across at least 3 teams (D5/D6/D7/D8/D9/D10 as appropriate to scope) to maximize parallelism.`,
+    ``,
+    `OUTPUT FORMAT — same per-team line shape as cycle dispatch:`,
+    `<<DELEGATE-ALL: m1: [${milestone.id}-foo] short label → ${PROJECT_DIR}/exact/path.ext. m2: [${milestone.id}-bar] label → ${PROJECT_DIR}/path. ...>>`,
+    ``,
+    `RULES:`,
+    `- Each [id] starts with "${milestone.id}-" (e.g. ${milestone.id}-svc-skel, ${milestone.id}-proto, ${milestone.id}-validator).`,
+    `- Each path must be NEW (not already on disk) and under ${PROJECT_DIR}.`,
+    `- 8-12 entries total. Cover: work-order, entities/schema, proto, service skeleton, PG migration, AsyncAPI, rule pack, validators, demo, close report. Adapt names to the milestone's domain.`,
+    `- Reply with ONLY the DELEGATE-ALL tag. No preamble.`,
+  ].filter(Boolean).join('\n');
+}
+
+async function callCeoScoping(message) {
+  const url = new URL('/api/team-office/instruct', WATCH_URL).toString();
+  const headers = { 'Content-Type': 'application/json' };
+  if (WATCH_AUTH) headers.Authorization = `Bearer ${WATCH_AUTH}`;
+  const body = JSON.stringify({ agentId: 'claude-code', sessionKey: CEO_SCOPE_SESSION_KEY, groupId: 'axiom', message });
+  const t0 = Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CEO_TIMEOUT_MS * 2); // scoping can take longer than cycle dispatch
+  try {
+    const r = await fetch(url, { method: 'POST', headers, body, signal: ctrl.signal });
+    const j = await r.json().catch(() => ({}));
+    const dur = Math.round((Date.now() - t0) / 1000);
+    const reply = String(j?.reply || '');
+    const ok = r.ok && reply && !reply.startsWith('(empty');
+    return { ok, dur, reply };
+  } catch (err) {
+    return { ok: false, dur: Math.round((Date.now() - t0) / 1000), reply: `(fetch failed: ${err.message})` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Track milestone-close transitions so we can autolog them on first detection.
+let lastSeenMilestoneStatus = new Map(); // milestoneId → status
+
+async function appendAutopilotLog(line) {
+  try {
+    const header = `\n## ${new Date().toISOString()}\n${line}\n`;
+    await fs.appendFile(AUTOPILOT_LOG_FILE, header, 'utf8');
+  } catch {}
+}
+
+async function detectMilestoneCloseTransitions(allMilestones) {
+  // allMilestones: { phase0: [...], phase1: [...], phase2: [...], ... }
+  for (const phaseKey of Object.keys(allMilestones || {})) {
+    for (const m of (allMilestones[phaseKey] || [])) {
+      const prev = lastSeenMilestoneStatus.get(m.id);
+      if (prev && prev !== 'closed' && m.status === 'closed') {
+        const line = `Milestone ${m.id} (${m.name}) just closed. ${m.built}/${m.total} deliverables built. Owners: ${m.owners}.`;
+        process.stdout.write(`[axiom-driver] milestone close: ${m.id}\n`);
+        await appendAutopilotLog(line);
+      }
+      lastSeenMilestoneStatus.set(m.id, m.status);
+    }
+  }
+}
+
+async function autoScopeMilestone(milestone, currentPhase) {
+  const masterplanSlice = await getMasterplanSlice();
+  const brief = buildCeoScopingBrief(milestone, currentPhase, masterplanSlice);
+  process.stdout.write(`[axiom-driver] auto-scoping milestone ${milestone.id} via CEO\n`);
+  const res = await callCeoScoping(brief);
+  if (!res.ok) {
+    process.stdout.write(`[axiom-driver] auto-scope failed for ${milestone.id} in ${res.dur}s: ${res.reply.slice(0, 160)}\n`);
+    return 0;
+  }
+  const delegation = parseCeoDelegate(res.reply);
+  if (!delegation) {
+    process.stdout.write(`[axiom-driver] auto-scope ${milestone.id}: CEO reply lacked DELEGATE in ${res.dur}s: ${res.reply.slice(0, 160)}\n`);
+    return 0;
+  }
+  const added = await appendOverlayFromCeo(delegation.brief, milestone.id);
+  process.stdout.write(`[axiom-driver] auto-scope ${milestone.id}: persisted ${added} deliverables to overlay in ${res.dur}s\n`);
+  return added;
+}
+
+async function consultCeoOrchestrator(roadmapHints, currentPhase, lastCycleSummary, activeMilestone) {
+  const masterplanSlice = await getMasterplanSlice();
+  const brief = buildCeoOrchestratorBrief(roadmapHints, currentPhase, lastCycleSummary, masterplanSlice, activeMilestone);
+  process.stdout.write(`[axiom-driver] consulting CEO orchestrator (timeout=${Math.round(CEO_TIMEOUT_MS / 1000)}s)\n`);
+  const res = await callCeoOrchestrator(brief);
+  if (!res.ok) {
+    process.stdout.write(`[axiom-driver] CEO call failed in ${res.dur}s — fallback to manifest brief. preview: ${res.reply.slice(0, 160)}\n`);
+    return null;
+  }
+  if (new RegExp(`PHASE-${currentPhase}\\s+MILESTONE\\s+COMPLETE`, 'i').test(res.reply)) {
+    process.stdout.write(`[axiom-driver] CEO declared MILESTONE COMPLETE in ${res.dur}s\n`);
+    return { milestoneComplete: true, ceoDur: res.dur };
+  }
+  const delegation = parseCeoDelegate(res.reply);
+  if (!delegation) {
+    process.stdout.write(`[axiom-driver] CEO reply lacked DELEGATE in ${res.dur}s — fallback. preview: ${res.reply.slice(0, 160)}\n`);
+    return null;
+  }
+  process.stdout.write(`[axiom-driver] CEO delegated to ${delegation.managers.length} mgrs in ${res.dur}s: ${delegation.managers.map((n) => 'm' + n).join(',')}\n`);
+
+  // Persist CEO's cross-team allocations into the overlay manifest so the
+  // roadmap API will include them next request — unlocks coder dispatch
+  // for teams whose manifest items would otherwise be empty.
+  if (activeMilestone?.id) {
+    const added = await appendOverlayFromCeo(delegation.brief, activeMilestone.id);
+    if (added > 0) {
+      process.stdout.write(`[axiom-driver] overlay: persisted ${added} CEO-allocated deliverables to ${OVERLAY_FILE}\n`);
+    }
+  }
+  return { delegation, ceoDur: res.dur };
+}
+
+// Wrap a CEO-issued brief in the same scaffolding (rules, format) that
+// buildManagerBrief provides for manifest-driven dispatch. The manager
+// scans the CEO brief for its own "m{N}:" line and acts on that.
+//
+// YOUR JOB AS MANAGER (the key thing): the CEO names ONE primary file.
+// You ship that file, then DECOMPOSE the work into 3 DIFFERENT supporting
+// artifacts for c1/c2/c3. They are sibling files at different paths —
+// NOT three coders staring at the same file you just shipped (that's the
+// elaboration anti-pattern from Phase-0 Lesson 2).
+function buildManagerBriefFromCeo(team, ceoBrief, currentPhase = 0) {
+  const dept = DEPARTMENTS[team - 1] || 'unknown';
+  const phaseTag = `PHASE-${currentPhase}`;
+  return [
+    `[AUTOPILOT — m${team} ${dept} · CEO ORCHESTRATED · ${phaseTag}]`,
+    `The CEO issued floor-wide allocations this cycle. Find YOUR line below (starts with "m${team}:") and execute that.`,
+    ``,
+    `CEO BRIEF:`,
+    ceoBrief,
+    ``,
+    `YOUR ROLE — orchestrate your own coders. The CEO told you to ship ONE file. Your job: (a) ship that primary file yourself, and (b) decompose the work into THREE DIFFERENT supporting artifacts at three different file paths for c1, c2, c3.`,
+    ``,
+    `RULE 1 (PATH DISCIPLINE — CRITICAL): Ship the primary file at the EXACT path after the "→" in YOUR m${team} line. No version suffixes (.v1, .v0). No relocations.`,
+    `RULE 2 (NO ELABORATION — CRITICAL): Coder tasks must be DIFFERENT FILES from your primary file. Forbidden: "c1: validate <my file>. c2: check <my file>. c3: verify <my file>." That ships nothing new and wastes 3 cycles of spend. If you literally can't think of 3 distinct sub-artifacts, emit empty <<CODERS>> instead — better than busywork.`,
+    `RULE 3 (DECOMPOSITION PATTERN): For a primary contract file, the three coders typically ship:`,
+    `   c1 = tests/fixtures (valid + invalid examples) at /opt/axiom/tests/fixtures/<area>/<name>_valid.json + _invalid.json`,
+    `   c2 = the JS validator/glue at /opt/axiom/tools/validate-<name>.js OR the integration glue file`,
+    `   c3 = the regression test or CI gate at /opt/axiom/tests/<name>.test.js OR a Cedar invariants YAML in /opt/axiom/contracts/validators/<area>/`,
+    `   ADAPT to your domain — but coder paths MUST differ from your primary path and from each other.`,
+    `RULE 4: If your CEO line says reply "${phaseTag} SCOPE COMPLETE", do exactly that with empty <<CODERS>><<END>>.`,
+    ``,
+    `Reply ≤500 chars + <<CODERS>>...<<END>> block.`,
+    `Format:`,
+    `m${team} ${dept}: <≤200ch — what you advanced + EXACT path of primary file>`,
+    `<<CODERS>>`,
+    `c1: <DIFFERENT file path under /opt/axiom — tests/fixtures>`,
+    `c2: <DIFFERENT file path — implementation/glue>`,
+    `c3: <DIFFERENT file path — regression test or CI gate>`,
+    `<<END>>`,
+  ].join('\n');
+}
+
+async function callManagerWithBrief(team, brief) {
+  const r = await callAgent(`axiom:axiom-mgr-${team}`, brief);
+  return { ...r, role: 'manager', team };
 }
 
 // Last round's coder allocations, kept in memory so coders can run in
@@ -312,6 +740,15 @@ async function callCoder(team, coderIndex, managerAssignedTask) {
 // round N-1's allocations) concurrently — five-agent teams are always
 // active together.
 let lastRoundAllocations = new Map(); // team → { 1: task, 2: task, 3: task, 4: task }
+
+// Compact summary of the previous cycle, fed back to the CEO at the start
+// of the next cycle so it can plan based on what just happened.
+let lastCycleSummary = null;
+
+// Track which deliverable IDs were built going into the previous cycle so
+// we can diff and surface "newly built this cycle" to the CEO. Powers the
+// quality-feedback signal in the orchestrator brief.
+let prevBuiltSet = new Set();
 
 // Two-phase cycle: managers run first and allocate one task per coder via a
 // <<CODERS>>...<<END>> block in their reply. Driver parses each manager's
@@ -323,12 +760,51 @@ async function runCycle(cycleNum) {
   const STAGGER_MS = 150;
 
   // ── Phase 0: pull roadmap once so managers know what's still pending ─
-  const roadmapHints = await fetchRoadmapHints();
+  // fetchRoadmapHints now returns { hints, currentPhase } so the manager
+  // brief and the auto-pause string can both tag themselves with the active
+  // phase (was hardcoded PHASE-0).
+  const roadmap = await fetchRoadmapHints();
+  const roadmapHints = roadmap?.hints || null;
+  const currentPhase = roadmap?.currentPhase ?? 0;
+  const activeMilestone = roadmap?.activeMilestone || null;
+  // Detect milestone-close transitions → write to autopilot log
+  if (roadmap?.allMilestones) await detectMilestoneCloseTransitions(roadmap.allMilestones);
   if (roadmapHints) {
     const summary = [...roadmapHints.entries()]
       .map(([t, h]) => `m${t}=${h.built}/${h.total}`)
       .join(' ');
-    process.stdout.write(`[axiom-driver] cycle=${cycleNum} roadmap: ${summary}\n`);
+    const mLabel = activeMilestone ? ` · active=${activeMilestone.id} ${activeMilestone.status}` : '';
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase=${currentPhase}${mLabel} roadmap: ${summary}\n`);
+  }
+
+  // ── AUTO-SCOPE: if the active milestone is "scoping" (no deliverables),
+  // ask the CEO to draft its manifest BEFORE the orchestrator cycle. This
+  // removes the operator-bottleneck between milestones — autopilot can
+  // close one milestone, scope the next, and keep building.
+  if (activeMilestone?.status === 'scoping') {
+    await autoScopeMilestone(activeMilestone, currentPhase);
+    // Refresh hints so the just-scoped deliverables are visible to the
+    // orchestrator immediately on this same cycle.
+    const refreshed = await fetchRoadmapHints();
+    if (refreshed?.hints) {
+      for (const [t, h] of refreshed.hints.entries()) roadmapHints.set(t, h);
+    }
+  }
+
+  // ── CEO ORCHESTRATOR (every CEO_EVERY cycles) ───────────────────
+  // Ask the CEO to nominate per-team allocations for this cycle. CEO sees
+  // the full roadmap state + last cycle's summary and returns DELEGATE-ALL
+  // or DELEGATE :: brief. If the call fails or the brief is malformed,
+  // we fall back to the manifest-derived per-team brief.
+  let ceoDelegation = null; // { managers: [1,3,9], brief: '...' } or null
+  let ceoMilestoneComplete = false;
+  if (roadmapHints && cycleNum % CEO_EVERY === 1) {
+    const ceoOut = await consultCeoOrchestrator(roadmapHints, currentPhase, lastCycleSummary || null, activeMilestone);
+    if (ceoOut?.milestoneComplete) {
+      ceoMilestoneComplete = true;
+    } else if (ceoOut?.delegation) {
+      ceoDelegation = ceoOut.delegation;
+    }
   }
 
   // ── Phase 1 + 2 in PARALLEL ──────────────────────────────────────
@@ -338,16 +814,46 @@ async function runCycle(cycleNum) {
   // instead of alternating "managers up, coders down" each cycle.
   const mgrTasks = [];
   let mgrSkipped = 0;
+  let mgrSkippedNoItems = 0;
+  let mgrSkippedNotDelegated = 0;
   let stagger = 0;
+  // When CEO has delegated, only managers in its list run. Other teams
+  // are intentionally idle this cycle (CEO's decision, not the manifest's).
+  const delegatedSet = ceoDelegation ? new Set(ceoDelegation.managers) : null;
   for (let n = 1; n <= 10; n++) {
     if (await isAgentRunning(`axiom:axiom-mgr-${n}`)) {
       process.stdout.write(`[axiom-driver] cycle=${cycleNum} skip m${n} (already running)\n`);
       mgrSkipped++;
       continue;
     }
+    if (delegatedSet) {
+      if (!delegatedSet.has(n)) { mgrSkippedNotDelegated++; continue; }
+      // CEO told us to run this team — use the CEO brief. Skip-idle is overridden;
+      // CEO may have legitimately allocated cross-team work for a team with
+      // no roadmap-tracked items in this phase.
+      const brief = buildManagerBriefFromCeo(n, ceoDelegation.brief, currentPhase);
+      const delay = stagger; stagger += STAGGER_MS;
+      mgrTasks.push(new Promise((r) => setTimeout(() => r(callManagerWithBrief(n, brief)), delay)));
+      continue;
+    }
+    // No CEO this cycle — fall back to manifest-derived brief with skip-idle.
     const hint = roadmapHints ? roadmapHints.get(n) : null;
+    // Skip teams with zero scoped items in the active phase. Dispatching them
+    // burns a manager call only to get "no work" — the brief's no-hardening
+    // rule means they'd just reply scope-complete or refuse. Save the spend.
+    // Teams with items but remaining=0 (e.g. m2 with 1/1) still dispatch so
+    // they can declare scope-complete and contribute to the auto-pause check.
+    if (hint && hint.total === 0) {
+      mgrSkippedNoItems++;
+      continue;
+    }
     const delay = stagger; stagger += STAGGER_MS;
-    mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n, hint)), delay)));
+    mgrTasks.push(new Promise((r) => setTimeout(() => r(callManager(n, hint, currentPhase)), delay)));
+  }
+  if (delegatedSet) {
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} CEO-driven: ${mgrTasks.length} dispatched, ${mgrSkippedNotDelegated} skipped (not in CEO delegation)\n`);
+  } else if (mgrSkippedNoItems > 0) {
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} skipped ${mgrSkippedNoItems} mgrs with 0 items in phase=${currentPhase}\n`);
   }
 
   // Coders use last round's allocations. On the first cycle (no prior
@@ -364,7 +870,20 @@ async function runCycle(cycleNum) {
   let codDispatched = 0;
   let codSkippedRunning = 0;
   let codSkippedNoAlloc = 0;
+  let codSkippedIdleTeam = 0;
   for (let n = 1; n <= 10; n++) {
+    // Defense-in-depth: even if a misbehaving manager allocated coder tasks
+    // for a team with 0 scoped items in the active phase, refuse to dispatch
+    // them. The hardening-fallback bug had 60% of cycle-N coder slots going
+    // to idle teams while m9 starved — this is the backstop in case the
+    // brief change doesn't fully land.
+    const teamHint = roadmapHints ? roadmapHints.get(n) : null;
+    if (teamHint && teamHint.total === 0) {
+      // Count any phantom allocations against codSkippedIdleTeam.
+      const phantom = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null };
+      codSkippedIdleTeam += [1, 2, 3].filter((c) => phantom[c]).length;
+      continue;
+    }
     const teamAlloc = lastRoundAllocations.get(n) || { 1: null, 2: null, 3: null };
     for (let c = 1; c <= 3; c++) {
       if (await isAgentRunning(`axiom:axiom-coder-${n}-${c}`)) {
@@ -392,7 +911,7 @@ async function runCycle(cycleNum) {
       codDispatched++;
     }
   }
-  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${mgrTasks.length} managers (await) + ${codDispatched} coders (fire-and-forget) [${codSkippedRunning} skip:running, ${codSkippedNoAlloc} skip:no-alloc]\n`);
+  process.stdout.write(`[axiom-driver] cycle=${cycleNum} dispatching ${mgrTasks.length} managers (await) + ${codDispatched} coders (fire-and-forget) [${codSkippedRunning} skip:running, ${codSkippedNoAlloc} skip:no-alloc, ${codSkippedIdleTeam} skip:idle-team]\n`);
 
   // Cycle awaits ONLY managers — coders trickle in async via state files.
   const mgrResults = await Promise.all(mgrTasks);
@@ -419,16 +938,46 @@ async function runCycle(cycleNum) {
   const dispatched = mgrResults.length;
   const ok = mgrOk;
   const fail = dispatched - ok;
-  const autoComplete = roadmapComplete(roadmapHints)
+  // Auto-complete: only fire on the LAST phase. For earlier phases that
+  // close, just keep looping — the API's currentPhase advances on its own
+  // (first-incomplete logic), and the CEO will pick up the new phase next
+  // cycle. Empty milestones in the new phase trigger auto-scope.
+  const isFinalPhase = currentPhase >= 5;
+  const manifestComplete = roadmapComplete(roadmapHints)
     && codDispatched === 0
     && codSkippedRunning === 0
     && nextAllocCount === 0
-    && managersDeclaredPhaseComplete(mgrResults);
+    && managersDeclaredPhaseComplete(mgrResults, currentPhase);
+  const ceoComplete = ceoMilestoneComplete && codDispatched === 0 && codSkippedRunning === 0 && nextAllocCount === 0;
+  // Only pause if this is the FINAL phase or operator has set explicit pause-on-phase-close.
+  const pauseOnPhaseClose = process.env.WATCH_AXIOM_DRIVER_PAUSE_ON_PHASE_CLOSE === '1';
+  const autoComplete = (isFinalPhase || pauseOnPhaseClose) && (manifestComplete || ceoComplete);
+  if ((manifestComplete || ceoComplete) && !autoComplete) {
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase ${currentPhase} closed — auto-advancing (set WATCH_AXIOM_DRIVER_PAUSE_ON_PHASE_CLOSE=1 to pause instead)\n`);
+  }
   process.stdout.write(`[axiom-driver] cycle=${cycleNum} mgr-done: ${ok}/${dispatched} ok, ${fail} failed in ${Math.round((Date.now() - Date.parse(startedAt)) / 1000)}s (coders still running async)\n`);
   if (autoComplete) {
-    process.stdout.write(`[axiom-driver] cycle=${cycleNum} auto-complete: roadmap complete, managers declared PHASE-0 complete, no coder allocations/running coders\n`);
+    const reason = ceoComplete ? 'CEO declared MILESTONE COMPLETE' : `managers declared PHASE-${currentPhase} SCOPE COMPLETE`;
+    process.stdout.write(`[axiom-driver] cycle=${cycleNum} auto-complete: ${reason}, no coder allocations/running coders\n`);
   }
-  return { startedAt, cycleNum, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount: codDispatched, nextAllocCount, codSkippedRunning, autoComplete };
+
+  // Quality feedback: diff built items vs the snapshot the cycle started
+  // from. Tells the CEO concretely which deliverables flipped to ✓ this
+  // cycle (the work that LANDED) vs which managers reported success but
+  // didn't move the roadmap (= path-drift incidents).
+  const currentBuilt = roadmap?.builtIds || new Set();
+  const newlyBuilt = [];
+  for (const id of currentBuilt) if (!prevBuiltSet.has(id)) newlyBuilt.push(id);
+  prevBuiltSet = currentBuilt;
+
+  const cycleBrief = (() => {
+    const mgrLines = mgrResults.map((r) => `m${r.team}=${r.ok ? 'ok' : 'fail'}${r.dur ? `(${r.dur}s)` : ''}`).join(' ');
+    const builtLine = newlyBuilt.length ? ` · newly built (${newlyBuilt.length}): ${newlyBuilt.slice(0, 8).join(', ')}` : ' · NO items flipped to built (path drift suspected)';
+    return `c${cycleNum}: ${mgrLines || '(no managers)'} · coders dispatched=${codDispatched} skip:idle-team=${codSkippedIdleTeam}${ceoDelegation ? ' · CEO-led' : ''}${ceoMilestoneComplete ? ' · CEO-declared-complete' : ''}${builtLine}`;
+  })();
+  lastCycleSummary = cycleBrief;
+
+  return { startedAt, cycleNum, currentPhase, dispatched, completed: ok, failed: fail, skipped: mgrSkipped + codSkipped, results: allResults, allocCount: codDispatched, nextAllocCount, codSkippedRunning, autoComplete, ceoLed: Boolean(ceoDelegation), ceoMilestoneComplete };
 }
 
 async function summarizeCycle(cycle) {
@@ -501,12 +1050,13 @@ async function loop() {
     }
     if (cycle.autoComplete) {
       const completedAt = new Date().toISOString();
+      const phaseTag = `PHASE-${cycle.currentPhase ?? 0}`;
       try {
-        await fs.writeFile(PAUSE_FILE, `AXIOM autopilot auto-paused at ${completedAt}: roadmap complete, managers declared PHASE-0 SCOPE COMPLETE, and no coder allocations/running coders.\n`, 'utf8');
+        await fs.writeFile(PAUSE_FILE, `AXIOM autopilot auto-paused at ${completedAt}: roadmap complete, managers declared ${phaseTag} SCOPE COMPLETE, and no coder allocations/running coders.\n`, 'utf8');
       } catch {}
       await writeState({ status: 'completed', completedAt, cycleNum, interval, lastCycleAt: cycle.startedAt, lastCycle: cycle });
       summarizeCycle(cycle).catch((err) => process.stderr.write(`[axiom-driver] summarize: ${err.message}\n`));
-      await tg('sendMessage', { text: `🤖 AXIOM autopilot complete — all managers declared PHASE-0 SCOPE COMPLETE, no coder work remains, and the driver auto-paused at ${PAUSE_FILE}.` });
+      await tg('sendMessage', { text: `🤖 AXIOM autopilot complete — all managers declared ${phaseTag} SCOPE COMPLETE, no coder work remains, and the driver auto-paused at ${PAUSE_FILE}.` });
       continue;
     }
     await writeState({ status: 'idle', cycleNum, interval, lastCycleAt: cycle.startedAt, lastCycle: cycle });

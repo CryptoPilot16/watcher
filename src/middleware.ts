@@ -78,11 +78,12 @@ export async function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/axiom/login' ||
     pathname.startsWith('/office-preview') ||
+    pathname === '/api/og' ||
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/admin/auth/login') ||
     pathname.startsWith('/_next/') ||
     PUBLIC_FILE.test(pathname)
-  ) {
+ ) {
     return NextResponse.next();
   }
 
@@ -117,8 +118,11 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  // Watcher zone — requires watch cookie or API key
-  if (await isAuthed(request)) {
+  // Watcher zone — requires watch cookie or API key.
+  // The AXIOM admin cookie is a superset: anyone authed into /axiom can also
+  // drive the watcher zone (needed so the agent chat panel inside /axiom can
+  // POST /api/team-office/instruct without a second login).
+  if (await isAuthed(request) || await isAdminAuthed(request)) {
     return NextResponse.next();
   }
 
