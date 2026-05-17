@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         agent_id: agentId,
         client: 'watcher',
         voice_profile: 'brief_status',
-        exclusive: false,
+        exclusive: true,
       }),
       cache: 'no-store',
     });
