@@ -3547,6 +3547,7 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [faceConfigured, setFaceConfigured] = useState<boolean | null>(agentId ? null : false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -3562,8 +3563,34 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
     };
   }, [conn?.session_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setOpen(false);
+    setConn(null);
+    setError(null);
+    setFaceConfigured(agentId ? null : false);
+    if (!agentId) return;
+
+    fetch('/api/avatar-shell/persona/' + encodeURIComponent(agentId), { cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'face lookup failed');
+        if (!cancelled) setFaceConfigured(Boolean(json.configured));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFaceConfigured(false);
+          setError(String(err?.message || err || 'face lookup failed'));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+
   async function startFace() {
-    if (!agentId || loading) return;
+    if (!agentId || loading || !faceConfigured) return;
     setOpen(true);
     setLoading(true);
     setError(null);
@@ -3593,6 +3620,13 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const panelClass = open
     ? 'pointer-events-auto mt-2 rounded-lg border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1'
     : 'pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1';
+  const faceHint = !agentId
+    ? 'no agent bound'
+    : faceConfigured === null
+      ? 'checking face config'
+      : faceConfigured
+        ? 'brief voice · no long code readouts'
+        : 'no face configured';
 
   return (
     <div className={panelClass}>
@@ -3600,16 +3634,16 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
         <div className="flex items-center justify-between gap-2 px-1.5 py-1">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.18em] text-[rgb(216,186,117)]">face</div>
-            <div className="truncate text-[10px] leading-4 text-white/45">brief voice · no long code readouts</div>
+            <div className="truncate text-[10px] leading-4 text-white/45">{faceHint}</div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={startFace}
-              disabled={!agentId || loading}
+              disabled={!agentId || loading || !faceConfigured}
               className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {loading ? 'starting' : 'show'}
+              {loading ? 'starting' : faceConfigured === null ? 'check' : 'show'}
             </button>
           </div>
         </div>
