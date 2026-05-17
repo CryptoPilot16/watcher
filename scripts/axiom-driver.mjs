@@ -580,11 +580,14 @@ function buildCeoScopingBrief(milestone, currentPhase, masterplanSlice) {
     ``,
     `YOUR JOB: emit a DELEGATE-ALL with 10-14 cross-team deliverables that together close this milestone AND produce real user-facing utility. Spread ownership across at least 3 teams to maximize parallelism.`,
     ``,
-    `INTEGRATION MANDATE — every milestone MUST include the following deliverables (not just scaffolding):`,
-    `  1. An axiom-web API route at /opt/axiom/web/app/api/<feature>/route.ts that exercises this milestone's contracts on real input/output. (This is the Next.js app served at https://axiom.clawnux.com/app)`,
-    `  2. An axiom-web UI page at /opt/axiom/web/app/<feature>/page.tsx that renders the feature for the operator. (Reachable at https://axiom.clawnux.com/app/<feature>)`,
-    `  3. An end-to-end smoke test at /opt/axiom/tests/smoke/${milestone.id}-e2e.test.js that fetches the axiom-web API route and asserts a real response — proves the milestone actually works, not just compiles.`,
-    `Without these three, the milestone is "paper" — shipped contracts that nobody can use. With them, the operator can navigate to https://axiom.clawnux.com/app/<feature>, click a button, and see something happen.`,
+    `INTEGRATION MANDATE — every milestone MUST include ALL FOUR of these deliverables. Skipping any of them is failure:`,
+    `  1. An axiom-web API route at /opt/axiom/web/app/api/<feature>/route.ts that does REAL CRUD via /opt/axiom/web/lib/data/<feature>-live.ts → /opt/axiom/web/lib/db (SQLite). NOT hardcoded sample arrays. NOT mock data. Follow the template at /opt/axiom/web/app/api/dispatch/release/route.ts which uses createRelease() + auditLog().`,
+    `  2. An axiom-web UI page at /opt/axiom/web/app/<feature>/page.tsx that calls the API + uses Next.js server actions for POST/PATCH/DELETE. Forms must be wired to write to the DB. Follow the template at /opt/axiom/web/app/dispatch/console/page.tsx — every button there persists.`,
+    `  3. A data module at /opt/axiom/web/lib/data/<feature>-live.ts that holds the DB queries, schema if needed, and helpers. Follow /opt/axiom/web/lib/data/dispatch-live.ts.`,
+    `  4. An end-to-end smoke test at /opt/axiom/tests/smoke/${milestone.id}-e2e.test.js that POSTs to /api/<feature>, GETs back, asserts the row exists. The autopilot quality suite runs all smoke tests after each milestone close.`,
+    `Without these four, the milestone is "paper". With them, the operator at axiom.clawnux.com/app/<feature> clicks a real button that writes to the real DB and shows up on reload.`,
+    ``,
+    `Reference implementation to study before scoping: /opt/axiom/web/lib/db/index.ts (DB), /opt/axiom/web/lib/data/dispatch-live.ts (domain helpers), /opt/axiom/web/app/dispatch/console/page.tsx (live UI), /opt/axiom/web/app/api/dispatch/release/route.ts (API). These prove the pattern works end-to-end — copy it.`,
     ``,
     `PATHS — CRITICAL. ALL paths must be under /opt/axiom only. The axiom coders are bwrap-sandboxed to /opt/axiom; they cannot write anywhere else. Use paths like /opt/axiom/web/app/<feature>/page.tsx — NEVER /opt/watcher/... (the watcher app is a separate sandbox, untouchable from here).`,
     ``,
@@ -723,6 +726,7 @@ async function appendAutopilotLog(line) {
 
 async function detectMilestoneCloseTransitions(allMilestones) {
   // allMilestones: { phase0: [...], phase1: [...], phase2: [...], ... }
+  let anyClose = false;
   for (const phaseKey of Object.keys(allMilestones || {})) {
     for (const m of (allMilestones[phaseKey] || [])) {
       const prev = lastSeenMilestoneStatus.get(m.id);
@@ -730,9 +734,22 @@ async function detectMilestoneCloseTransitions(allMilestones) {
         const line = `Milestone ${m.id} (${m.name}) just closed. ${m.built}/${m.total} deliverables built. Owners: ${m.owners}.`;
         process.stdout.write(`[axiom-driver] milestone close: ${m.id}\n`);
         await appendAutopilotLog(line);
+        anyClose = true;
       }
       lastSeenMilestoneStatus.set(m.id, m.status);
     }
+  }
+  if (anyClose) {
+    // Refresh the validator + smoke-test matrix so the dashboard's quality
+    // signal reflects what was actually shipped this cycle. Fire-and-forget;
+    // takes ~30s for 100+ validators so we don't block cycle cadence on it.
+    const child = (await import('node:child_process')).spawn('bash', [`${PROJECT_DIR}/tools/run-quality-suite.sh`], {
+      cwd: PROJECT_DIR,
+      stdio: 'ignore',
+      detached: true,
+    });
+    child.unref();
+    process.stdout.write(`[axiom-driver] quality-suite triggered (fire-and-forget) after milestone close\n`);
   }
 }
 
