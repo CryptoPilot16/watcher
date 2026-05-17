@@ -3440,37 +3440,47 @@ function AgentFacePanel({ topic }: { topic: TeamTopic }) {
 
   return (
     <div className="pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1">
-      <div className={open ? 'flex items-center justify-end gap-2' : 'flex items-center justify-between gap-2 px-1.5 py-1'}>
-        {!open && (
+      {!open && (
+        <div className="flex items-center justify-between gap-2 px-1.5 py-1">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.18em] text-[rgb(216,186,117)]">face</div>
             <div className="truncate text-[10px] leading-4 text-white/45">brief voice · no long code readouts</div>
           </div>
-        )}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {conn?.public_url && (
-            <a
-              href={conn.public_url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded border border-white/10 bg-black/45 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/55 hover:border-white/25 hover:text-white/85"
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={startFace}
+              disabled={!agentId || loading}
+              className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              full
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={conn || open ? stopFace : startFace}
-            disabled={!agentId || loading}
-            className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {loading ? 'starting' : conn || open ? 'hide' : 'show'}
-          </button>
+              {loading ? 'starting' : 'show'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {open && (
-        <div className="mt-1 overflow-hidden rounded-lg border border-white/10 bg-black/45">
+        <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black/45">
+          <div className="absolute right-2 top-2 z-20 flex shrink-0 items-center gap-1.5">
+            {conn?.public_url && (
+              <a
+                href={conn.public_url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-white/10 bg-black/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65 backdrop-blur hover:border-white/25 hover:text-white/90"
+              >
+                full
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={stopFace}
+              disabled={loading}
+              className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              hide
+            </button>
+          </div>
           {error && <div className="p-3 text-[11px] leading-5 text-[#f87171]">{error}</div>}
           {!error && !conn && (
             <div className="flex h-36 items-center justify-center text-[10px] uppercase tracking-[0.16em] text-white/40">
@@ -3507,7 +3517,7 @@ function WatcherFaceStage() {
     videoTracks[0];
 
   return (
-    <div className="relative aspect-[4/5] min-h-[220px] max-h-[56vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
+    <div className="relative aspect-[3/4] min-h-[300px] max-h-[70vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
       {avatarTrack ? (
         <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
       ) : (
