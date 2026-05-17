@@ -3732,10 +3732,23 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
             >
               <WatcherFaceStage />
               <WatcherFaceTranscript />
+              <WatcherFaceTextInput />
               <RoomAudioRenderer />
             </LiveKitRoom>
           )}
         </div>
+      )}
+      {conn && !open && (
+        <LiveKitRoom
+          serverUrl={conn.livekit_url}
+          token={conn.livekit_token}
+          connect
+          audio
+          video={false}
+          className="hidden"
+        >
+          <RoomAudioRenderer />
+        </LiveKitRoom>
       )}
     </div>
   );
@@ -3853,6 +3866,69 @@ function WatcherFaceTranscript() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function WatcherFaceTextInput() {
+  const room = useRoomContext();
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null);
+  const canSend = Boolean(text.trim() && !sending && room.state === 'connected');
+
+  async function sendText() {
+    const message = text.trim();
+    if (!message || sending) return;
+    setSending(true);
+    setStatus(null);
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify({ text: message }));
+      await room.localParticipant.publishData(payload, {
+        reliable: true,
+        topic: 'avatar-shell:text',
+      });
+      setText('');
+      setStatus({ kind: 'ok', message: 'sent' });
+      window.setTimeout(() => setStatus(null), 1200);
+    } catch (err: any) {
+      setStatus({ kind: 'err', message: String(err?.message || err || 'send failed').slice(0, 160) });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-white/10 bg-black/25 px-2 py-2">
+      <div className="mb-1 text-[8px] uppercase tracking-[0.16em] text-white/35">chat</div>
+      <div className="flex items-end gap-2">
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+              event.preventDefault();
+              sendText();
+            }
+          }}
+          placeholder={room.state === 'connected' ? 'type to this face' : 'connecting...'}
+          disabled={sending || room.state !== 'connected'}
+          className="min-h-[44px] flex-1 resize-y rounded-md border border-white/10 bg-[rgba(255,255,255,0.04)] px-2 py-1.5 text-xs leading-5 text-white/90 placeholder:text-white/35 focus:border-[rgba(103,232,249,0.45)] focus:outline-none disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={sendText}
+          disabled={!canSend}
+          className="shrink-0 rounded-md border border-[rgba(103,232,249,0.4)] bg-[rgba(103,232,249,0.14)] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[rgb(103,232,249)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {sending ? 'sending' : 'send'}
+        </button>
+      </div>
+      {status && (
+        <div className={`mt-1 text-[9px] uppercase tracking-[0.16em] ${status.kind === 'ok' ? 'text-[rgb(103,232,249)]' : 'text-[#f87171]'}`}>
+          {status.message}
+        </div>
+      )}
     </div>
   );
 }
@@ -4153,7 +4229,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
         )}
         <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-        <InstructInput topic={topic} groupId={groupId} />
+        {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
       </div>
     );
   }
@@ -4218,7 +4294,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         </>
       )}
       <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-      <InstructInput topic={topic} groupId={groupId} />
+      {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
     </div>
   );
 }
