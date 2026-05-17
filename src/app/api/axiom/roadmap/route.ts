@@ -390,7 +390,23 @@ const PHASES = [
 ];
 
 function evidenceMatches(rel: string): { built: boolean; matchedPath: string | null; size: number } {
+  // Defend against absolute or escaping paths: if the CEO or a manifest writer
+  // hands us '/opt/watcher/X' (or '../X'), path.join produces a nonsense path
+  // like '/opt/axiom/opt/watcher/X' that a sandboxed coder MAY have created
+  // (the axiom bwrap chroots to /opt/axiom, so '/opt/watcher' inside the
+  // sandbox becomes /opt/axiom/opt/watcher). Treating that as built is a
+  // false positive — the file is in the wrong place, not where the watcher
+  // app expects it. Reject anything not contained inside PROJECT_DIR.
+  if (rel.startsWith('/') || rel.includes('..')) {
+    return { built: false, matchedPath: null, size: 0 };
+  }
   const abs = path.join(PROJECT_DIR, rel);
+  // Belt-and-braces: confirm the joined path is still inside PROJECT_DIR.
+  const projectAbs = path.resolve(PROJECT_DIR);
+  const resolvedAbs = path.resolve(abs);
+  if (resolvedAbs !== projectAbs && !resolvedAbs.startsWith(`${projectAbs}/`)) {
+    return { built: false, matchedPath: null, size: 0 };
+  }
   // Trailing slash = directory existence (recursive: at least one file inside)
   if (rel.endsWith('/')) {
     try {
