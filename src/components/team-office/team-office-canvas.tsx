@@ -3540,6 +3540,7 @@ type FaceTranscriptEntry = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  final?: boolean;
 };
 
 function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChange?: (open: boolean) => void }) {
@@ -3550,23 +3551,46 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const [faceConfigured, setFaceConfigured] = useState<boolean | null>(agentId ? null : false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sessionStorageKey = agentId ? `watcher-face-session:${agentId}` : '';
 
   useEffect(() => {
     onOpenChange?.(open);
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    return () => {
-      if (conn?.session_id) {
-        fetch('/api/avatar-shell/session/' + encodeURIComponent(conn.session_id) + '/end', { method: 'POST' }).catch(() => {});
+    if (!sessionStorageKey || typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(sessionStorageKey);
+    if (!saved) {
+      setConn(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved);
+      const savedAgent = String(parsed?.persona?.agent_id || agentId).toLowerCase();
+      if (savedAgent === agentId.toLowerCase() && parsed?.session_id && parsed?.livekit_url && parsed?.livekit_token) {
+        setConn(parsed);
+      } else {
+        setConn(null);
       }
-    };
-  }, [conn?.session_id]);
+    } catch {
+      window.localStorage.removeItem(sessionStorageKey);
+      setConn(null);
+    }
+  }, [agentId, sessionStorageKey]);
+
+  useEffect(() => {
+    if (!sessionStorageKey || typeof window === 'undefined') return;
+    const connAgent = String(conn?.persona?.agent_id || agentId).toLowerCase();
+    if (conn && connAgent === agentId.toLowerCase()) {
+      window.localStorage.setItem(sessionStorageKey, JSON.stringify(conn));
+    } else {
+      window.localStorage.removeItem(sessionStorageKey);
+    }
+  }, [agentId, conn, sessionStorageKey]);
 
   useEffect(() => {
     let cancelled = false;
     setOpen(false);
-    setConn(null);
     setError(null);
     setFaceConfigured(agentId ? null : false);
     if (!agentId) return;
@@ -3592,6 +3616,7 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   async function startFace() {
     if (!agentId || loading || !faceConfigured) return;
     setOpen(true);
+    if (conn) return;
     setLoading(true);
     setError(null);
     try {
@@ -3614,7 +3639,16 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   function stopFace() {
     setOpen(false);
     setError(null);
+  }
+
+  function endFace() {
+    const sessionId = conn?.session_id;
+    setOpen(false);
     setConn(null);
+    setError(null);
+    if (sessionId) {
+      fetch('/api/avatar-shell/session/' + encodeURIComponent(sessionId) + '/end', { method: 'POST' }).catch(() => {});
+    }
   }
 
   const panelClass = open
@@ -3668,8 +3702,18 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               disabled={loading}
               className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
             >
-              hide
+              min
             </button>
+            {conn && (
+              <button
+                type="button"
+                onClick={endFace}
+                disabled={loading}
+                className="rounded border border-red-300/30 bg-red-950/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-red-200/80 shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                end
+              </button>
+            )}
           </div>
           {error && <div className="p-3 text-[11px] leading-5 text-[#f87171]">{error}</div>}
           {!error && !conn && (
@@ -3684,7 +3728,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               connect
               audio
               video={false}
-              onDisconnected={() => setConn(null)}
               className="block"
             >
               <WatcherFaceStage />
@@ -3728,7 +3771,27 @@ function WatcherFaceStage() {
 
 function WatcherFaceTranscript() {
   const room = useRoomContext();
+  const transcriptStorageKey = `watcher-face-transcript:${room.name || 'session'}`;
   const [entries, setEntries] = useState<FaceTranscriptEntry[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(transcriptStorageKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setEntries(parsed.slice(-8));
+    } catch {
+      window.localStorage.removeItem(transcriptStorageKey);
+    }
+  }, [transcriptStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (entries.length) {
+      window.localStorage.setItem(transcriptStorageKey, JSON.stringify(entries.slice(-8)));
+    }
+  }, [entries, transcriptStorageKey]);
 
   useEffect(() => {
     function onData(payload: Uint8Array, _participant?: unknown, _kind?: unknown, topic?: string) {
@@ -3736,22 +3799,35 @@ function WatcherFaceTranscript() {
       try {
         const data = JSON.parse(new TextDecoder().decode(payload));
         const text = String(data?.text || '').trim();
-        if (!text || data?.is_final === false) return;
+        if (!text) return;
+        const isFinal = data?.is_final !== false;
         const role: FaceTranscriptEntry['role'] = data?.role === 'assistant' ? 'assistant' : 'user';
         setEntries((prev) => {
           const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
-          const duplicate = prev.some((entry) => (
-            entry.role === role && entry.text.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
-          ));
-          if (duplicate) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role === role && !last.final) {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, text, final: isFinal },
+            ].slice(-8);
+          }
+          if (isFinal) {
+            const duplicate = prev.some((entry) => (
+              entry.final !== false &&
+              entry.role === role &&
+              entry.text.toLowerCase().replace(/\s+/g, ' ').trim() === normalized
+            ));
+            if (duplicate) return prev;
+          }
           return [
             ...prev,
             {
               id: Date.now() + '-' + role + '-' + Math.random().toString(36).slice(2),
               role,
               text,
+              final: isFinal,
             },
-          ].slice(-4);
+          ].slice(-8);
         });
       } catch {}
     }
@@ -3767,13 +3843,13 @@ function WatcherFaceTranscript() {
   return (
     <div className="border-t border-white/10 bg-black/35 px-2 py-1.5 text-[10px] leading-4 text-white/70">
       <div className="mb-1 text-[8px] uppercase tracking-[0.16em] text-white/35">transcript</div>
-      <div className="max-h-16 space-y-1 overflow-y-auto">
+      <div className="max-h-24 space-y-1 overflow-y-auto">
         {entries.map((entry) => (
           <div key={entry.id} className="grid grid-cols-[2.6rem_1fr] gap-1">
             <span className={entry.role === 'assistant' ? 'text-[rgb(216,186,117)]' : 'text-[rgb(103,232,249)]'}>
               {entry.role === 'assistant' ? 'her' : 'you'}
             </span>
-            <span className="min-w-0 truncate text-white/75">{entry.text}</span>
+            <span className={`min-w-0 whitespace-normal break-words text-white/75 ${entry.final === false ? 'italic opacity-70' : ''}`}>{entry.text}</span>
           </div>
         ))}
       </div>
