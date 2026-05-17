@@ -316,37 +316,63 @@ const PHASE5_MILESTONES: Milestone[] = [];
 const OVERLAY_FILE = process.env.WATCH_AXIOM_ROADMAP_OVERLAY || '/var/lib/watcher/axiom-roadmap-overlay.json';
 
 type OverlayDeliverable = { id: string; label: string; team: number; evidence: string[]; milestoneId: string };
-type OverlayFile = { generatedAt?: string; entries: OverlayDeliverable[] };
+type OverlayMilestone = { id: string; num: number; name: string; scope: string; owners: string; phase: number };
+type OverlayFile = { generatedAt?: string; entries: OverlayDeliverable[]; milestones?: OverlayMilestone[] };
 
 function loadOverlay(): OverlayFile {
   try {
     const txt = fs.readFileSync(OVERLAY_FILE, 'utf8');
     const parsed = JSON.parse(txt);
-    if (parsed && Array.isArray(parsed.entries)) return parsed as OverlayFile;
+    if (parsed && Array.isArray(parsed.entries)) {
+      if (!Array.isArray(parsed.milestones)) parsed.milestones = [];
+      return parsed as OverlayFile;
+    }
   } catch {}
-  return { entries: [] };
+  return { entries: [], milestones: [] };
 }
 
 function applyOverlay(allMilestones: Milestone[][]): void {
-  // Mutates the milestone arrays in place by appending overlay deliverables
-  // to the matching milestone (by id). Overlay entries with no matching
-  // milestone are dropped silently — they'd need a manifest milestone first.
+  // Mutates the phase milestone arrays in place. Two operations:
+  //   1. Add NEW milestones to a phase (from overlay.milestones[])
+  //   2. Append CEO-allocated deliverables to existing milestones (overlay.entries[])
+  // The new-milestone path is what unlocks autonomous phase scoping: when
+  // PHASE3_MILESTONES is empty in source, the autopilot CEO drafts a M1 and
+  // writes it here; next request the API merges it in and managers light up.
   const overlay = loadOverlay();
-  if (!overlay.entries.length) return;
-  const byMilestone = new Map<string, Deliverable[]>();
-  for (const e of overlay.entries) {
-    if (!byMilestone.has(e.milestoneId)) byMilestone.set(e.milestoneId, []);
-    byMilestone.get(e.milestoneId)!.push({ id: e.id, label: e.label, team: e.team, evidence: e.evidence });
+  if (!overlay.entries.length && !overlay.milestones?.length) return;
+
+  // 1. Inject new milestones into the matching phase.
+  if (overlay.milestones?.length) {
+    for (const om of overlay.milestones) {
+      const target = allMilestones[om.phase];
+      if (!target) continue;
+      // Dedupe by id — if the source manifest already defines this id, skip.
+      if (target.some((m) => m.id === om.id)) continue;
+      target.push({
+        id: om.id, num: om.num, name: om.name, scope: om.scope, owners: om.owners,
+        deliverables: [],
+      });
+    }
+    // Sort by num so the UI shows them in order.
+    for (const target of allMilestones) target.sort((a, b) => a.num - b.num);
   }
-  for (const phaseMilestones of allMilestones) {
-    for (const m of phaseMilestones) {
-      const extra = byMilestone.get(m.id);
-      if (!extra || !extra.length) continue;
-      // Dedupe by id — if a later overlay write repeats an id, last wins.
-      const existing = new Map<string, Deliverable>();
-      for (const d of m.deliverables) existing.set(d.id, d);
-      for (const d of extra) existing.set(d.id, d);
-      m.deliverables = Array.from(existing.values());
+
+  // 2. Append CEO-allocated deliverables to existing milestones.
+  if (overlay.entries.length) {
+    const byMilestone = new Map<string, Deliverable[]>();
+    for (const e of overlay.entries) {
+      if (!byMilestone.has(e.milestoneId)) byMilestone.set(e.milestoneId, []);
+      byMilestone.get(e.milestoneId)!.push({ id: e.id, label: e.label, team: e.team, evidence: e.evidence });
+    }
+    for (const phaseMilestones of allMilestones) {
+      for (const m of phaseMilestones) {
+        const extra = byMilestone.get(m.id);
+        if (!extra || !extra.length) continue;
+        const existing = new Map<string, Deliverable>();
+        for (const d of m.deliverables) existing.set(d.id, d);
+        for (const d of extra) existing.set(d.id, d);
+        m.deliverables = Array.from(existing.values());
+      }
     }
   }
 }

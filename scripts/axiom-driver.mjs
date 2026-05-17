@@ -394,10 +394,12 @@ async function readOverlay() {
   try {
     const txt = await fs.readFile(OVERLAY_FILE, 'utf8');
     const j = JSON.parse(txt);
-    return (j && Array.isArray(j.entries)) ? j : { entries: [] };
-  } catch {
-    return { entries: [] };
-  }
+    if (j && Array.isArray(j.entries)) {
+      if (!Array.isArray(j.milestones)) j.milestones = [];
+      return j;
+    }
+  } catch {}
+  return { entries: [], milestones: [] };
 }
 
 async function writeOverlay(overlay) {
@@ -576,17 +578,111 @@ function buildCeoScopingBrief(milestone, currentPhase, masterplanSlice) {
     `  Stated scope: ${milestone.scope}`,
     `  Manifest owners: ${milestone.owners}`,
     ``,
-    `YOUR JOB: emit a DELEGATE-ALL with 8-12 cross-team deliverables that together close this milestone. Spread ownership across at least 3 teams (D5/D6/D7/D8/D9/D10 as appropriate to scope) to maximize parallelism.`,
+    `YOUR JOB: emit a DELEGATE-ALL with 10-14 cross-team deliverables that together close this milestone AND produce real user-facing utility. Spread ownership across at least 3 teams to maximize parallelism.`,
+    ``,
+    `INTEGRATION MANDATE — every milestone MUST include the following deliverables (not just scaffolding):`,
+    `  1. A watcher app API route at /opt/watcher/src/app/api/axiom/<area>/<feature>/route.ts that exercises this milestone's contracts on real input/output.`,
+    `  2. A watcher app UI page at /opt/watcher/src/app/axiom/<area>/page.tsx that renders the feature for the operator (must be navigable from the existing /axiom shell).`,
+    `  3. An end-to-end smoke test at /opt/axiom/tests/smoke/${milestone.id}-e2e.test.js that HITS the watcher API route and asserts a real response — proves the milestone actually works, not just compiles.`,
+    `Without these three, the milestone is "paper" — shipped contracts that nobody can use. With them, the operator can navigate to /axiom/<area>, click a button, and see something happen.`,
     ``,
     `OUTPUT FORMAT — same per-team line shape as cycle dispatch:`,
-    `<<DELEGATE-ALL: m1: [${milestone.id}-foo] short label → ${PROJECT_DIR}/exact/path.ext. m2: [${milestone.id}-bar] label → ${PROJECT_DIR}/path. ...>>`,
+    `<<DELEGATE-ALL: m1: [${milestone.id}-foo] short label → /opt/axiom/exact/path.ext. m2: [${milestone.id}-bar] label → /opt/watcher/src/app/api/axiom/x/route.ts. ...>>`,
     ``,
     `RULES:`,
-    `- Each [id] starts with "${milestone.id}-" (e.g. ${milestone.id}-svc-skel, ${milestone.id}-proto, ${milestone.id}-validator).`,
-    `- Each path must be NEW (not already on disk) and under ${PROJECT_DIR}.`,
-    `- 8-12 entries total. Cover: work-order, entities/schema, proto, service skeleton, PG migration, AsyncAPI, rule pack, validators, demo, close report. Adapt names to the milestone's domain.`,
+    `- Each [id] starts with "${milestone.id}-" (e.g. ${milestone.id}-svc-skel, ${milestone.id}-api-route, ${milestone.id}-ui-page, ${milestone.id}-e2e).`,
+    `- Each path is NEW (not already on disk). Code lives under /opt/axiom for backend artifacts, /opt/watcher/src for watcher app integration.`,
+    `- 10-14 entries total. Mix: contracts/schemas under /opt/axiom + integration (API route + UI page + smoke test) under /opt/watcher. The /opt/watcher entries are owned by m2 (Governance/UI) primarily.`,
     `- Reply with ONLY the DELEGATE-ALL tag. No preamble.`,
   ].filter(Boolean).join('\n');
+}
+
+// ── Auto-create milestone: phase has 0 milestones, CEO drafts one ──
+function buildCeoCreateMilestoneBrief(currentPhase, milestoneNum, masterplanSlice) {
+  const phaseNames = ['Foundation', 'Operate', 'Sell & Serve', 'Run Business', 'Harden & Extend', 'Productise'];
+  const phaseName = phaseNames[currentPhase] || `Phase ${currentPhase}`;
+  return [
+    `[AUTOPILOT CREATE-MILESTONE — Phase ${currentPhase} · M${milestoneNum}]`,
+    `You are AXIOM CEO. This phase has NO milestones defined yet. Your job: design the first milestone for this phase from scratch.`,
+    ``,
+    masterplanSlice ? `MISSION CONTEXT:\n${masterplanSlice}\n` : '',
+    `TARGET PHASE: ${currentPhase} — ${phaseName}`,
+    `Per AXIOM_MASTERPLAN.md §15.1 above, this phase is the next logical block of work. You design its M${milestoneNum}.`,
+    ``,
+    `OUTPUT — TWO tagged blocks in a single reply:`,
+    ``,
+    `(1) Milestone metadata block (one line):`,
+    `<<MILESTONE: id=P${currentPhase}-M${milestoneNum} | num=${milestoneNum} | name=<Short milestone name> | scope=<One-sentence scope statement> | owners=<dept letters like D5+D9>>>`,
+    ``,
+    `(2) Deliverables via DELEGATE-ALL (10-14 entries, same as cycle dispatch):`,
+    `<<DELEGATE-ALL: m1: [P${currentPhase}-M${milestoneNum}-foo] label → /opt/axiom/path. m2: [P${currentPhase}-M${milestoneNum}-bar] label → /opt/watcher/src/app/api/axiom/x/route.ts. ...>>`,
+    ``,
+    `INTEGRATION MANDATE — the milestone MUST produce real user-facing utility, not just scaffolding:`,
+    `  a) Backend contracts/services under /opt/axiom/ (schemas, protos, validators).`,
+    `  b) A watcher app API route at /opt/watcher/src/app/api/axiom/<area>/<feature>/route.ts (live endpoint).`,
+    `  c) A watcher app UI page at /opt/watcher/src/app/axiom/<area>/page.tsx (operator-facing).`,
+    `  d) An end-to-end smoke test at /opt/axiom/tests/smoke/P${currentPhase}-M${milestoneNum}-e2e.test.js (proves it works end-to-end).`,
+    `Without (b)(c)(d) the milestone is "paper" — contracts nobody uses. With them, the operator gets a real feature surfaced in the /axiom shell.`,
+    ``,
+    `RULES:`,
+    `- Pick the FIRST natural milestone for this phase from the masterplan's deliverable list above.`,
+    `- Spread across teams to maximize parallelism. m2 owns watcher app routes/pages by default.`,
+    `- Reply with ONLY the two tagged blocks. No preamble, no explanation.`,
+  ].filter(Boolean).join('\n');
+}
+
+const MILESTONE_TAG_RE = /<<\s*MILESTONE\s*:\s*([\s\S]+?)>>/;
+
+function parseCeoMilestoneTag(reply, currentPhase) {
+  const m = MILESTONE_TAG_RE.exec(reply);
+  if (!m) return null;
+  const fields = {};
+  for (const part of m[1].split('|')) {
+    const [k, ...v] = part.split('=');
+    if (!k || v.length === 0) continue;
+    fields[k.trim()] = v.join('=').trim();
+  }
+  const id = fields.id || '';
+  const num = Number(fields.num || 0);
+  if (!id || !num || !fields.name || !fields.scope) return null;
+  return {
+    id,
+    num,
+    name: fields.name,
+    scope: fields.scope,
+    owners: fields.owners || 'all',
+    phase: currentPhase,
+  };
+}
+
+async function autoCreateMilestoneForEmptyPhase(currentPhase) {
+  const masterplanSlice = await getMasterplanSlice();
+  const brief = buildCeoCreateMilestoneBrief(currentPhase, 1, masterplanSlice);
+  process.stdout.write(`[axiom-driver] phase ${currentPhase} has 0 milestones — asking CEO to create M1\n`);
+  const res = await callCeoScoping(brief);
+  if (!res.ok) {
+    process.stdout.write(`[axiom-driver] create-milestone CEO call failed in ${res.dur}s: ${res.reply.slice(0, 200)}\n`);
+    return false;
+  }
+  const milestone = parseCeoMilestoneTag(res.reply, currentPhase);
+  const delegation = parseCeoDelegate(res.reply);
+  if (!milestone || !delegation) {
+    process.stdout.write(`[axiom-driver] create-milestone: CEO reply missing MILESTONE tag (${!!milestone}) or DELEGATE (${!!delegation}). preview: ${res.reply.slice(0, 300)}\n`);
+    return false;
+  }
+  // Persist milestone metadata + deliverables to overlay
+  const overlay = await readOverlay();
+  // Dedupe by id
+  overlay.milestones = (overlay.milestones || []).filter((m) => m.id !== milestone.id);
+  overlay.milestones.push(milestone);
+  const added = parseCeoAllocations(delegation.brief, milestone.id);
+  const byId = new Map();
+  for (const e of overlay.entries) byId.set(e.id, e);
+  for (const e of added) byId.set(e.id, e);
+  overlay.entries = Array.from(byId.values());
+  await writeOverlay(overlay);
+  process.stdout.write(`[axiom-driver] create-milestone: created ${milestone.id} (${milestone.name}) with ${added.length} deliverables in ${res.dur}s\n`);
+  return true;
 }
 
 async function callCeoScoping(message) {
@@ -775,6 +871,27 @@ async function runCycle(cycleNum) {
       .join(' ');
     const mLabel = activeMilestone ? ` · active=${activeMilestone.id} ${activeMilestone.status}` : '';
     process.stdout.write(`[axiom-driver] cycle=${cycleNum} phase=${currentPhase}${mLabel} roadmap: ${summary}\n`);
+  }
+
+  // ── AUTO-CREATE MILESTONE: if the current phase has 0 milestones at all,
+  // ask CEO to design M1 from scratch (metadata + deliverables) so the
+  // autopilot can advance into a new phase without operator intervention.
+  // This is what unblocks the "Phase 3, no milestones, 0 dispatch" loop.
+  const phaseHasNoMilestones = !activeMilestone && roadmapHints && [...roadmapHints.values()].every((h) => h.total === 0);
+  if (phaseHasNoMilestones) {
+    const created = await autoCreateMilestoneForEmptyPhase(currentPhase);
+    if (created) {
+      // Refresh state so the new milestone + deliverables are visible.
+      const refreshed = await fetchRoadmapHints();
+      if (refreshed?.hints) {
+        for (const [t, h] of refreshed.hints.entries()) roadmapHints.set(t, h);
+      }
+      // refresh activeMilestone too
+      if (refreshed?.activeMilestone) {
+        // eslint-disable-next-line no-param-reassign
+        Object.assign(activeMilestone || {}, refreshed.activeMilestone);
+      }
+    }
   }
 
   // ── AUTO-SCOPE: if the active milestone is "scoping" (no deliverables),
