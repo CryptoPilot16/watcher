@@ -3438,8 +3438,12 @@ function AgentFacePanel({ topic }: { topic: TeamTopic }) {
     setConn(null);
   }
 
+  const panelClass = open
+    ? 'pointer-events-auto fixed bottom-3 right-3 z-[80] w-[calc(100vw-24px)] rounded-xl border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1 shadow-2xl shadow-black/50 backdrop-blur-md sm:w-[460px] lg:w-[520px] xl:w-[560px]'
+    : 'pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1';
+
   return (
-    <div className="pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1">
+    <div className={panelClass}>
       {!open && (
         <div className="flex items-center justify-between gap-2 px-1.5 py-1">
           <div className="min-w-0">
@@ -3517,7 +3521,7 @@ function WatcherFaceStage() {
     videoTracks[0];
 
   return (
-    <div className="relative aspect-[3/4] min-h-[300px] max-h-[70vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
+    <div className="relative aspect-[4/5] min-h-[420px] max-h-[78vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
       {avatarTrack ? (
         <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
       ) : (
