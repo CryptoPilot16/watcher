@@ -3552,7 +3552,19 @@ type AgentFaceMeta = {
 
 function topicAgentId(topic: TeamTopic) {
   const rawAgentId = (topic.configured.agent || '').trim();
-  return rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
+  if (rawAgentId.toLowerCase() !== 'main') return rawAgentId;
+
+  const labels = [
+    topic.configured.label,
+    topic.telegram.currentTopicName,
+    topic.telegram.lastSeenTopicName,
+  ];
+  const isAssistantLane = labels.some((label) => {
+    const normalized = (label || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return normalized === 'assistant';
+  });
+
+  return isAssistantLane ? 'assistant' : '';
 }
 
 function AgentFaceBadge({ topic, color }: { topic: TeamTopic; color: string }) {
