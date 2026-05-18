@@ -12,6 +12,10 @@ Live app example: intentionally private / self-hosted
 Watcher is a real operator surface for a live OpenClaw setup, not a mock dashboard.
 It gives you one place to read the active session, see lane state, inspect recent runs and flows, watch service health, and steer the right lane from the browser when something needs intervention.
 
+## Branding assets
+
+The dashboard logo and app icons come from `public/watch-logo.png` and the generated favicon / manifest assets. When swapping the artwork, bump the versioned asset URLs in the app shell so browsers do not keep serving a stale icon.
+
 ## Quick setup
 
 ```bash
