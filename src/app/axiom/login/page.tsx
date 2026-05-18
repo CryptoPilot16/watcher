@@ -43,7 +43,7 @@ export default function AdminLoginPage() {
     <main className="flex min-h-dvh items-center justify-center px-4 py-6 sm:px-6">
       <section className="w-full max-w-sm overflow-hidden rounded-lg border border-[var(--watch-panel-border-strong)] bg-[linear-gradient(180deg,rgba(27,22,15,0.97),rgba(18,15,11,0.97))] shadow-[0_8px_32px_rgba(0,0,0,0.32)]">
         <div className="border-b border-[var(--watch-panel-border)] px-5 py-3 flex items-center gap-3">
-          <img src="/watch-logo-v4.svg" alt="" className="h-8 w-8 rounded" />
+          <img src="/watch-logo.png?v=20260518f" alt="" className="h-8 w-8 rounded" />
           <div>
             <div className="watch-display text-base font-semibold uppercase text-[var(--watch-accent-strong)]">
               Watcher

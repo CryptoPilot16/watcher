@@ -77,7 +77,7 @@ export default function LoginPage() {
           }}
         >
           <img
-            src="/watch-logo-v4.svg"
+            src="/watch-logo.png?v=20260518f"
             alt="WATCHER"
             className="h-8 w-8 rounded"
             style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0 }}

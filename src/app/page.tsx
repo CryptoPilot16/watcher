@@ -32,7 +32,7 @@ export default function HomePage() {
           }}
         >
           <img
-            src="/watch-logo-v4.svg"
+            src="/watch-logo.png?v=20260518f"
             alt="WATCHER"
             style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0 }}
           />
