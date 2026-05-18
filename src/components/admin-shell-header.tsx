@@ -29,11 +29,11 @@ export function AdminShellHeader({ activeTab }: AdminShellHeaderProps) {
       <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between sm:p-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/axiom" className="shrink-0">
-            <img src="/watch-logo-v4.svg" alt="ADMIN" className="h-9 w-9 rounded sm:h-12 sm:w-12" />
+            <img src="/watch-logo-v4.svg" alt="WATCHER" className="h-9 w-9 rounded sm:h-12 sm:w-12" />
           </Link>
           <div className="min-w-0">
             <div className="watch-display text-lg font-semibold uppercase text-[var(--watch-accent-strong)] sm:text-2xl">
-              Admin
+              Watcher
             </div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
               AXIOM Office

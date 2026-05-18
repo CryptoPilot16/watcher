@@ -1,6 +1,6 @@
 {
-  "name": "AXIOM Office",
-  "short_name": "AXIOM",
+  "name": "Watcher — AXIOM Office",
+  "short_name": "Watcher",
   "description": "AXIOM operations floor — 51 AI agents in a 10×5 team grid.",
   "start_url": "/axiom",
   "scope": "/axiom",

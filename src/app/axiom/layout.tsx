@@ -14,11 +14,11 @@ export const metadata: Metadata = {
     template: '%s · AXIOM',
   },
   description: 'AXIOM operations floor — 41 AI agents across 10 teams of 4.',
-  applicationName: 'AXIOM',
+  applicationName: 'Watcher',
   manifest: '/axiom.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'AXIOM',
+    title: 'Watcher',
     statusBarStyle: 'black-translucent',
   },
   formatDetection: {

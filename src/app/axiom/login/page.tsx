@@ -46,7 +46,7 @@ export default function AdminLoginPage() {
           <img src="/watch-logo-v4.svg" alt="" className="h-8 w-8 rounded" />
           <div>
             <div className="watch-display text-base font-semibold uppercase text-[var(--watch-accent-strong)]">
-              Admin
+              Watcher
             </div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
               AXIOM Office · operator gate
