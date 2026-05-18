@@ -3558,11 +3558,14 @@ type FaceWindowFrame = {
 };
 
 type FaceWindowDrag = {
+  kind: 'move' | 'resize';
   pointerId: number;
   startX: number;
   startY: number;
   baseX: number;
   baseY: number;
+  baseWidth?: number;
+  baseHeight?: number;
 };
 
 function topicAgentId(topic: TeamTopic) {
@@ -4277,6 +4280,19 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
       if (event.pointerId !== cardDrag.pointerId) return;
       setCardFrame((current) => {
         if (!current) return current;
+        if (cardDrag.kind === 'resize') {
+          const minWidth = window.innerWidth < 720 ? 280 : 320;
+          const minHeight = window.innerWidth < 720 ? 420 : 520;
+          const maxWidth = window.innerWidth - 16;
+          const maxHeight = window.innerHeight - 16;
+          const nextWidth = (cardDrag.baseWidth || current.width) + event.clientX - cardDrag.startX;
+          const nextHeight = (cardDrag.baseHeight || current.height) + event.clientY - cardDrag.startY;
+          return {
+            ...current,
+            width: Math.max(minWidth, Math.min(maxWidth, nextWidth)),
+            height: Math.max(minHeight, Math.min(maxHeight, nextHeight)),
+          };
+        }
         const nextX = cardDrag.baseX + event.clientX - cardDrag.startX;
         const nextY = cardDrag.baseY + event.clientY - cardDrag.startY;
         return {
@@ -4311,8 +4327,8 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         top: cardFrame.y,
         width: cardFrame.width,
         height: cardFrame.height,
-        minWidth: 300,
-        minHeight: 520,
+        minWidth: isMobile ? 280 : 320,
+        minHeight: isMobile ? 420 : 520,
         maxWidth: 'calc(100vw - 16px)',
         maxHeight: 'calc(100vh - 16px)',
         resize: 'both' as const,
@@ -4333,6 +4349,24 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
       startY: event.clientY,
       baseX: cardFrame.x,
       baseY: cardFrame.y,
+      kind: 'move',
+    });
+  }
+
+  function beginCardResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!faceOpen || !cardFrame) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setCardDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: cardFrame.x,
+      baseY: cardFrame.y,
+      baseWidth: cardFrame.width,
+      baseHeight: cardFrame.height,
+      kind: 'resize',
     });
   }
 
@@ -4373,7 +4407,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
           <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
-        {(
+        {!faceOpen && (
           <>
             <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
             <div className="mt-1 text-xs leading-6 text-white/90">{topicHeadline(topic)}</div>
@@ -4399,7 +4433,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             )}
           </>
         )}
-        {isHousekeepingTopic(topic) && (
+        {!faceOpen && isHousekeepingTopic(topic) && (
           <div className="mt-3 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => onDisciplineDemo('punch')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
@@ -4412,7 +4446,15 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
         )}
         <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-        <InstructInput topic={topic} groupId={groupId} />
+        {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
+        {faceOpen && (
+          <div
+            role="presentation"
+            aria-label="Resize agent window"
+            onPointerDown={beginCardResize}
+            className="absolute bottom-1 right-1 h-7 w-7 cursor-nwse-resize touch-none rounded-sm border-b border-r border-white/40 opacity-70"
+          />
+        )}
       </div>
     );
   }
@@ -4439,7 +4481,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           {topic.live.status}
         </div>
       </div>
-      {(
+      {!faceOpen && (
         <>
       <div className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
       <div className="mt-1 text-sm leading-6 text-white/90">{topicHeadline(topic)}</div>
@@ -4488,7 +4530,15 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         </>
       )}
       <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-      <InstructInput topic={topic} groupId={groupId} />
+      {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
+      {faceOpen && (
+        <div
+          role="presentation"
+          aria-label="Resize agent window"
+          onPointerDown={beginCardResize}
+          className="absolute bottom-1 right-1 h-7 w-7 cursor-nwse-resize touch-none rounded-sm border-b border-r border-white/40 opacity-70"
+        />
+      )}
     </div>
   );
 }
