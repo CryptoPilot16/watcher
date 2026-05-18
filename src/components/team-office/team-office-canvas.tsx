@@ -2538,10 +2538,18 @@ function RouteLine({ start, end, topic, reducedMotion }: {
 }) {
   const dot = useRef<THREE.Mesh>(null);
   const curve = useMemo(() => {
-    const mid = new THREE.Vector3((start[0] + end[0]) / 2, 0.22, (start[2] + end[2]) / 2);
+    const dx = end[0] - start[0];
+    const dz = end[2] - start[2];
+    const distance = Math.hypot(dx, dz);
+    const bend = Math.min(1.8, Math.max(0.45, distance * 0.18));
+    const mid = new THREE.Vector3(
+      (start[0] + end[0]) / 2 - dz * 0.08,
+      0.18 + bend * 0.08,
+      (start[2] + end[2]) / 2 + dx * 0.08,
+    );
     return new THREE.QuadraticBezierCurve3(new THREE.Vector3(...start), mid, new THREE.Vector3(...end));
   }, [start, end]);
-  const geometry = useMemo(() => new THREE.TubeGeometry(curve, 28, 0.025, 10, false), [curve]);
+  const geometry = useMemo(() => new THREE.TubeGeometry(curve, 42, 0.028, 10, false), [curve]);
   const glow = useMemo(() => new THREE.Color(statusColor(topic.live.status)), [topic.live.status]);
 
   useFrame(({ clock }) => {
@@ -2560,12 +2568,12 @@ function RouteLine({ start, end, topic, reducedMotion }: {
           emissive={glow}
           emissiveIntensity={topic.live.status === 'idle' ? 0.08 : 0.45}
           transparent
-          opacity={topic.live.status === 'missing' ? 0.08 : 0.28}
+          opacity={topic.live.status === 'missing' ? 0.08 : 0.52}
         />
       </mesh>
       {topic.live.status !== 'missing' && (
         <mesh ref={dot}>
-          <sphereGeometry args={[0.078, 14, 14]} />
+          <sphereGeometry args={[0.09, 14, 14]} />
           <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={1.3} />
         </mesh>
       )}
@@ -3237,6 +3245,15 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
   const activeDisciplineMode = manualDisciplineMode ?? autoDiscipline?.mode ?? null;
   const [disciplineStrikeCount, setDisciplineStrikeCount] = useState(0);
   const [disciplineFeedback, setDisciplineFeedback] = useState<(DisciplineFeedback & { victimId: string; key: string }) | null>(null);
+  const selectedRoute = useMemo(() => {
+    if (!selectedTopicId) return null;
+    const layout = deskLayouts.find((desk) => desk.topic.topicId === selectedTopicId);
+    if (!layout) return null;
+    const endAnchor = currentAgentAnchor(layout, layout.topic) || layout.focusPoint;
+    const start: [number, number, number] = layoutVariant === 'axiom' ? [0, 0.11, 4.6] : [0, 0.11, 4.45];
+    const end: [number, number, number] = [endAnchor[0], 0.11, endAnchor[2]];
+    return { start, end, topic: layout.topic };
+  }, [deskLayouts, layoutVariant, selectedTopicId]);
   // Per-victim dedupe + cooldown for housekeeping nags. Keyed by victim topicId
   // so we don't burst-fire on every state-poll while a slow agent (e.g. c3
   // codex /goal, multi-minute) hasn't produced a reply yet.
@@ -3340,6 +3357,15 @@ function OfficeRoom({ topics, groupId, demo = false, reducedMotion, hoveredTopic
           <OfficeAssetSlot slot="hubCore" manifest={manifest} position={[0, 0, 4.45]} fallback={<HubFallback sceneStyle={sceneStyle} />} />
           <FloatingNameTag name="PILOT" color="#7dffad" position={[0, 1.34, 4.45]} visible />
         </>
+      )}
+
+      {selectedRoute && (
+        <RouteLine
+          start={selectedRoute.start}
+          end={selectedRoute.end}
+          topic={selectedRoute.topic}
+          reducedMotion={reducedMotion}
+        />
       )}
 
       {deskLayouts.map((desk, index) => {
