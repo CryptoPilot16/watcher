@@ -4328,9 +4328,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   const color = statusColor(topic.live.status);
   const disciplinePunch = disciplineDemoMode === 'punch';
   const disciplineKick = disciplineDemoMode === 'kick';
-  const desktopCardClass = faceOpen
-    ? 'pointer-events-none absolute right-3 top-3 z-10 w-[460px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md'
-    : 'pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md';
+  const desktopCardClass = 'pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md';
 
   if (isMobile) {
     if (!expanded) {
@@ -4351,7 +4349,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
     }
 
     return (
-      <div className={`absolute inset-x-2 bottom-2 z-10 pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] text-white shadow-2xl backdrop-blur-md ${faceOpen ? 'max-h-[62vh] p-2' : 'p-3'}`}>
+      <div className="absolute inset-x-2 bottom-2 z-10 max-h-[62vh] pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] p-3 text-white shadow-2xl backdrop-blur-md">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0">
@@ -4362,7 +4360,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
           <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
-        {!faceOpen && (
+        {(
           <>
             <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
             <div className="mt-1 text-xs leading-6 text-white/90">{topicHeadline(topic)}</div>
@@ -4388,7 +4386,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             )}
           </>
         )}
-        {!faceOpen && isHousekeepingTopic(topic) && (
+        {isHousekeepingTopic(topic) && (
           <div className="mt-3 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => onDisciplineDemo('punch')}
               className={`pointer-events-auto w-full rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.18em] transition-colors ${disciplinePunch ? 'border-[rgba(248,113,113,0.5)] bg-[rgba(248,113,113,0.18)] text-[#f87171]' : 'border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] text-[#fbbf24] hover:bg-[rgba(251,191,36,0.2)]'}`}>
@@ -4401,7 +4399,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
         )}
         <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-        {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
+        <InstructInput topic={topic} groupId={groupId} />
       </div>
     );
   }
@@ -4420,7 +4418,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           {topic.live.status}
         </div>
       </div>
-      {!faceOpen && (
+      {(
         <>
       <div className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
       <div className="mt-1 text-sm leading-6 text-white/90">{topicHeadline(topic)}</div>
@@ -4469,7 +4467,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
         </>
       )}
       <AgentFacePanel topic={topic} onOpenChange={setFaceOpen} />
-      {!faceOpen && <InstructInput topic={topic} groupId={groupId} />}
+      <InstructInput topic={topic} groupId={groupId} />
     </div>
   );
 }
