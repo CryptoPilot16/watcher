@@ -3543,6 +3543,67 @@ type FaceTranscriptEntry = {
   final?: boolean;
 };
 
+type AgentFaceMeta = {
+  configured: boolean;
+  provider?: string | null;
+  preview_url?: string | null;
+  video_source?: string | null;
+};
+
+function topicAgentId(topic: TeamTopic) {
+  const rawAgentId = (topic.configured.agent || '').trim();
+  return rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
+}
+
+function AgentFaceBadge({ topic, color }: { topic: TeamTopic; color: string }) {
+  const agentId = topicAgentId(topic);
+  const [meta, setMeta] = useState<AgentFaceMeta | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMeta(null);
+    if (!agentId) return;
+
+    fetch('/api/avatar-shell/persona/' + encodeURIComponent(agentId), { cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'face lookup failed');
+        if (!cancelled) {
+          setMeta({
+            configured: Boolean(json.configured),
+            provider: json.provider || null,
+            preview_url: json.preview_url || null,
+            video_source: json.video_source || null,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMeta({ configured: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+
+  if (!meta?.configured || !meta.preview_url) return null;
+
+  return (
+    <div
+      className="shrink-0 rounded-md border bg-black/35 p-0.5 shadow-lg shadow-black/25"
+      style={{ borderColor: `${color}55` }}
+      title={meta.video_source ? `${meta.video_source} face` : 'agent face'}
+    >
+      <img
+        src={meta.preview_url}
+        alt=""
+        className="h-9 w-9 rounded object-cover"
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
 function faceResumeContext(savedTranscript: string | null) {
   if (!savedTranscript) return '';
   try {
@@ -3560,8 +3621,7 @@ function faceResumeContext(savedTranscript: string | null) {
 }
 
 function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChange?: (open: boolean) => void }) {
-  const rawAgentId = (topic.configured.agent || '').trim();
-  const agentId = rawAgentId.toLowerCase() === 'main' ? 'assistant' : rawAgentId;
+  const agentId = topicAgentId(topic);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [faceConfigured, setFaceConfigured] = useState<boolean | null>(agentId ? null : false);
@@ -4176,9 +4236,12 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
     return (
       <div className={`absolute inset-x-2 bottom-2 z-10 pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] text-white shadow-2xl backdrop-blur-md ${faceOpen ? 'max-h-[62vh] p-2' : 'p-3'}`}>
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
-            <div className="truncate text-sm font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
+          <div className="flex min-w-0 items-start gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
+              <div className="truncate text-sm font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
+            </div>
+            <AgentFaceBadge topic={topic} color={color} />
           </div>
           <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
@@ -4229,9 +4292,12 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   return (
     <div className={desktopCardClass}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
-          <div className="truncate text-base font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
+            <div className="truncate text-base font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
+          </div>
+          <AgentFaceBadge topic={topic} color={color} />
         </div>
         <div className="rounded px-2 py-1 text-[10px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>
           {topic.live.status}
