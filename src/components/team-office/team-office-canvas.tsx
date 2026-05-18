@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Billboard, ContactShadows, Float, OrbitControls, Outlines, RoundedBox, useAnimations, useGLTF } from '@react-three/drei';
 import { useLoader } from '@react-three/fiber';
@@ -3550,6 +3550,21 @@ type AgentFaceMeta = {
   video_source?: string | null;
 };
 
+type FaceWindowFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type FaceWindowDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  baseX: number;
+  baseY: number;
+};
+
 function topicAgentId(topic: TeamTopic) {
   const rawAgentId = (topic.configured.agent || '').trim();
   if (rawAgentId.toLowerCase() !== 'main') return rawAgentId;
@@ -3639,12 +3654,61 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const [faceConfigured, setFaceConfigured] = useState<boolean | null>(agentId ? null : false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [windowFrame, setWindowFrame] = useState<FaceWindowFrame | null>(null);
+  const [windowDrag, setWindowDrag] = useState<FaceWindowDrag | null>(null);
   const sessionStorageKey = agentId ? `watcher-face-session:${agentId}` : '';
   const transcriptStorageKey = agentId ? `watcher-face-transcript:${agentId}` : '';
 
   useEffect(() => {
     onOpenChange?.(open);
   }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    setWindowFrame((current) => {
+      if (current) return current;
+      const mobile = window.innerWidth < 720;
+      const width = Math.min(mobile ? window.innerWidth - 24 : 460, window.innerWidth - 24);
+      const height = Math.min(mobile ? window.innerHeight * 0.76 : 640, window.innerHeight - 48);
+      return {
+        x: mobile ? 12 : Math.max(12, window.innerWidth - width - 24),
+        y: mobile ? Math.max(12, window.innerHeight - height - 18) : 56,
+        width,
+        height,
+      };
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (!windowDrag || typeof window === 'undefined') return;
+
+    function onPointerMove(event: PointerEvent) {
+      if (event.pointerId !== windowDrag.pointerId) return;
+      setWindowFrame((current) => {
+        if (!current) return current;
+        const nextX = windowDrag.baseX + event.clientX - windowDrag.startX;
+        const nextY = windowDrag.baseY + event.clientY - windowDrag.startY;
+        return {
+          ...current,
+          x: Math.max(8, Math.min(window.innerWidth - 96, nextX)),
+          y: Math.max(8, Math.min(window.innerHeight - 64, nextY)),
+        };
+      });
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (event.pointerId === windowDrag.pointerId) setWindowDrag(null);
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [windowDrag]);
 
   useEffect(() => {
     if (!sessionStorageKey || typeof window === 'undefined') return;
@@ -3727,8 +3791,21 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
     }
   }
 
+  function beginWindowDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!windowFrame) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setWindowDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: windowFrame.x,
+      baseY: windowFrame.y,
+    });
+  }
+
   const panelClass = open
-    ? 'pointer-events-auto mt-2 rounded-lg border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1'
+    ? 'pointer-events-auto mt-2'
     : 'pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1';
   const faceHint = !agentId
     ? 'no agent bound'
@@ -3760,58 +3837,86 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
       )}
 
       {open && (
-        <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black/45">
-          <div className="absolute right-2 top-2 z-20 flex shrink-0 items-center gap-1.5">
-            {conn?.public_url && (
-              <a
-                href={conn.public_url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded border border-white/10 bg-black/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65 backdrop-blur hover:border-white/25 hover:text-white/90"
-              >
-                full
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={stopFace}
-              disabled={loading}
-              className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              min
-            </button>
-            {conn && (
+        <div
+          className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.88)] shadow-2xl shadow-black/45 backdrop-blur-md"
+          style={{
+            left: windowFrame?.x ?? 12,
+            top: windowFrame?.y ?? 56,
+            width: windowFrame?.width ?? 420,
+            height: windowFrame?.height ?? 620,
+            minWidth: 280,
+            minHeight: 420,
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'calc(100vh - 16px)',
+            resize: 'both',
+          }}
+        >
+          <div
+            role="presentation"
+            onPointerDown={beginWindowDrag}
+            className="flex cursor-move touch-none items-center justify-between gap-3 border-b border-white/10 bg-black/45 px-2 py-2"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-[9px] uppercase tracking-[0.16em] text-[rgb(216,186,117)]">face window</div>
+              <div className="truncate text-[10px] text-white/45">drag to move · corner to resize</div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {conn?.public_url && (
+                <a
+                  href={conn.public_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className="rounded border border-white/10 bg-black/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65 backdrop-blur hover:border-white/25 hover:text-white/90"
+                >
+                  full
+                </a>
+              )}
               <button
                 type="button"
-                onClick={endFace}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={stopFace}
                 disabled={loading}
-                className="rounded border border-red-300/30 bg-red-950/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-red-200/80 shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
               >
-                end
+                min
               </button>
+              {conn && (
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={endFace}
+                  disabled={loading}
+                  className="rounded border border-red-300/30 bg-red-950/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-red-200/80 shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  end
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden bg-black/45">
+            {error && <div className="p-3 text-[11px] leading-5 text-[#f87171]">{error}</div>}
+            {!error && !conn && (
+              <div className="flex h-full min-h-36 items-center justify-center text-[10px] uppercase tracking-[0.16em] text-white/40">
+                {loading ? 'starting avatar...' : 'avatar not connected'}
+              </div>
+            )}
+            {conn && (
+              <LiveKitRoom
+                serverUrl={conn.livekit_url}
+                token={conn.livekit_token}
+                connect
+                audio
+                video={false}
+                className="flex h-full min-h-0 flex-col"
+              >
+                <WatcherFaceStage />
+                <WatcherFaceTranscript agentId={agentId} />
+                <WatcherFaceTextInput />
+                <RoomAudioRenderer />
+              </LiveKitRoom>
             )}
           </div>
-          {error && <div className="p-3 text-[11px] leading-5 text-[#f87171]">{error}</div>}
-          {!error && !conn && (
-            <div className="flex h-36 items-center justify-center text-[10px] uppercase tracking-[0.16em] text-white/40">
-              {loading ? 'starting avatar...' : 'avatar not connected'}
-            </div>
-          )}
-          {conn && (
-            <LiveKitRoom
-              serverUrl={conn.livekit_url}
-              token={conn.livekit_token}
-              connect
-              audio
-              video={false}
-              className="block"
-            >
-              <WatcherFaceStage />
-              <WatcherFaceTranscript agentId={agentId} />
-              <WatcherFaceTextInput />
-              <RoomAudioRenderer />
-            </LiveKitRoom>
-          )}
         </div>
       )}
     </div>
@@ -3828,7 +3933,7 @@ function WatcherFaceStage() {
     videoTracks[0];
 
   return (
-    <div className="relative aspect-[4/5] min-h-[220px] max-h-[34vh] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)] sm:min-h-[340px] sm:max-h-[58vh]">
+    <div className="relative min-h-[220px] flex-1 overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(216,186,117,0.16),rgba(0,0,0,0.88)_62%)]">
       {avatarTrack ? (
         <VideoTrack trackRef={avatarTrack} className="h-full w-full object-cover" />
       ) : (
@@ -4253,7 +4358,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
               <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
               <div className="truncate text-sm font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
             </div>
-            <AgentFaceBadge topic={topic} color={color} />
+            {!faceOpen && <AgentFaceBadge topic={topic} color={color} />}
           </div>
           <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
@@ -4309,7 +4414,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
             <div className="truncate text-base font-semibold" style={{ color }}>{topicDisplayLabel(topic)}</div>
           </div>
-          <AgentFaceBadge topic={topic} color={color} />
+          {!faceOpen && <AgentFaceBadge topic={topic} color={color} />}
         </div>
         <div className="rounded px-2 py-1 text-[10px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>
           {topic.live.status}
