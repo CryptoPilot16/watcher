@@ -4396,6 +4396,29 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
     });
   }
 
+  function resizeFaceWindow(preset: 'smaller' | 'larger' | 'full') {
+    if (!faceOpen || typeof window === 'undefined') return;
+    setCardFrame((current) => {
+      if (!current) return current;
+      const maxWidth = window.innerWidth - 16;
+      const maxHeight = window.innerHeight - 16;
+      if (preset === 'full') {
+        return { x: 8, y: 8, width: maxWidth, height: maxHeight };
+      }
+      const scale = preset === 'larger' ? 1.14 : 0.88;
+      const minWidth = window.innerWidth < 720 ? 280 : 320;
+      const minHeight = window.innerWidth < 720 ? 420 : 520;
+      const nextWidth = Math.max(minWidth, Math.min(maxWidth, Math.round(current.width * scale)));
+      const nextHeight = Math.max(minHeight, Math.min(maxHeight, Math.round(current.height * scale)));
+      return {
+        x: Math.max(8, Math.min(window.innerWidth - nextWidth - 8, current.x + Math.round((current.width - nextWidth) / 2))),
+        y: Math.max(8, Math.min(window.innerHeight - nextHeight - 8, current.y + Math.round((current.height - nextHeight) / 2))),
+        width: nextWidth,
+        height: nextHeight,
+      };
+    });
+  }
+
   if (isMobile) {
     if (!expanded) {
       return (
@@ -4433,6 +4456,19 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
           <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
+        {faceOpen && (
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 p-1"
+          >
+            <span className="px-1 text-[8px] uppercase tracking-[0.16em] text-white/35">size</span>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => resizeFaceWindow('smaller')} className="min-h-[30px] min-w-[34px] rounded border border-white/10 px-2 text-[11px] text-white/70">-</button>
+              <button type="button" onClick={() => resizeFaceWindow('larger')} className="min-h-[30px] min-w-[34px] rounded border border-white/10 px-2 text-[11px] text-white/70">+</button>
+              <button type="button" onClick={() => resizeFaceWindow('full')} className="min-h-[30px] rounded border border-[rgba(216,186,117,0.34)] px-2 text-[9px] uppercase tracking-[0.12em] text-[rgb(216,186,117)]">full</button>
+            </div>
+          </div>
+        )}
         {!faceOpen && (
           <>
             <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/50">doing now</div>
