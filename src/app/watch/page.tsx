@@ -58,6 +58,12 @@ type PM2Process = {
 
 type SectionTab = 'status' | 'office' | 'team' | 'activity' | 'processes';
 
+type TeamFaceMeta = {
+  configured: boolean;
+  preview_url?: string | null;
+  video_source?: string | null;
+};
+
 const sectionTabs: { id: SectionTab; label: string; mobileLabel: string; hint: string }[] = [
   { id: 'status',    label: 'status',    mobileLabel: 'status', hint: 'mission control' },
   { id: 'office',    label: 'office',    mobileLabel: 'office', hint: '3d operator floor' },
@@ -113,6 +119,65 @@ function RunStatusBadge({ status }: { status: string }) {
   };
   const level = map[status] ?? 'warn';
   return <HealthBadge level={level} label={status} />;
+}
+
+function teamTopicAgentId(topic: TeamTopic) {
+  const rawAgentId = (topic.configured.agent || '').trim();
+  if (rawAgentId && rawAgentId.toLowerCase() !== 'main') return rawAgentId;
+
+  const labels = [
+    topic.configured.label,
+    topic.telegram.currentTopicName,
+    topic.telegram.lastSeenTopicName,
+  ];
+  const isAssistantLane = labels.some((label) => {
+    const normalized = String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return normalized === 'assistant';
+  });
+
+  return isAssistantLane ? 'assistant' : '';
+}
+
+function TeamFaceThumb({ topic }: { topic: TeamTopic }) {
+  const agentId = teamTopicAgentId(topic);
+  const [meta, setMeta] = useState<TeamFaceMeta | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMeta(null);
+    if (!agentId) return;
+
+    fetch('/api/avatar-shell/persona/' + encodeURIComponent(agentId), { cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'face lookup failed');
+        if (!cancelled) {
+          setMeta({
+            configured: Boolean(json.configured),
+            preview_url: json.preview_url || null,
+            video_source: json.video_source || null,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMeta({ configured: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+
+  if (!meta?.configured || !meta.preview_url) return null;
+
+  return (
+    <div
+      className="shrink-0 rounded-md border border-[var(--watch-panel-border)] bg-black/35 p-0.5 shadow-lg shadow-black/20"
+      title={meta.video_source ? `${meta.video_source} face` : 'agent face'}
+    >
+      <img src={meta.preview_url} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" />
+    </div>
+  );
 }
 
 function parsePm2(raw: string | undefined): PM2Process[] {
@@ -725,10 +790,13 @@ function TeamSection({ topology }: { topology: TeamTopology }) {
             {topics.map((topic) => (
               <div key={topic.topicId} className="rounded border border-[var(--watch-panel-border)] bg-[rgba(0,0,0,0.18)] p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{topicDisplayLabel(topic)}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
-                      {topic.telegram.currentTopicName || `topic ${topic.topicId}`} · {topic.configured.role.replace(/_/g, ' ')}
+                  <div className="flex min-w-0 items-start gap-2">
+                    <TeamFaceThumb topic={topic} />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-[var(--watch-text-bright)]">{topicDisplayLabel(topic)}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--watch-text-muted)]">
+                        {topic.telegram.currentTopicName || `topic ${topic.topicId}`} · {topic.configured.role.replace(/_/g, ' ')}
+                      </div>
                     </div>
                   </div>
                   <HealthBadge level={statusLevel(topic.live.status)} label={topic.live.status} />

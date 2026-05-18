@@ -3654,8 +3654,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   const [faceConfigured, setFaceConfigured] = useState<boolean | null>(agentId ? null : false);
   const [conn, setConn] = useState<AvatarShellConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [windowFrame, setWindowFrame] = useState<FaceWindowFrame | null>(null);
-  const [windowDrag, setWindowDrag] = useState<FaceWindowDrag | null>(null);
   const sessionStorageKey = agentId ? `watcher-face-session:${agentId}` : '';
   const transcriptStorageKey = agentId ? `watcher-face-transcript:${agentId}` : '';
 
@@ -3664,62 +3662,15 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (!open || typeof window === 'undefined') return;
-    setWindowFrame((current) => {
-      if (current) return current;
-      const mobile = window.innerWidth < 720;
-      const width = Math.min(mobile ? window.innerWidth - 24 : 460, window.innerWidth - 24);
-      const height = Math.min(mobile ? window.innerHeight * 0.76 : 640, window.innerHeight - 48);
-      return {
-        x: mobile ? 12 : Math.max(12, window.innerWidth - width - 24),
-        y: mobile ? Math.max(12, window.innerHeight - height - 18) : 56,
-        width,
-        height,
-      };
-    });
-  }, [open]);
-
-  useEffect(() => {
-    if (!windowDrag || typeof window === 'undefined') return;
-
-    function onPointerMove(event: PointerEvent) {
-      if (event.pointerId !== windowDrag.pointerId) return;
-      setWindowFrame((current) => {
-        if (!current) return current;
-        const nextX = windowDrag.baseX + event.clientX - windowDrag.startX;
-        const nextY = windowDrag.baseY + event.clientY - windowDrag.startY;
-        return {
-          ...current,
-          x: Math.max(8, Math.min(window.innerWidth - 96, nextX)),
-          y: Math.max(8, Math.min(window.innerHeight - 64, nextY)),
-        };
-      });
-    }
-
-    function onPointerUp(event: PointerEvent) {
-      if (event.pointerId === windowDrag.pointerId) setWindowDrag(null);
-    }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
-    };
-  }, [windowDrag]);
-
-  useEffect(() => {
-    if (!sessionStorageKey || typeof window === 'undefined') return;
-    window.localStorage.removeItem(sessionStorageKey);
     setConn(null);
-  }, [sessionStorageKey]);
-
-  useEffect(() => {
     if (!sessionStorageKey || typeof window === 'undefined') return;
-    window.localStorage.removeItem(sessionStorageKey);
-  }, [conn, sessionStorageKey]);
+    try {
+      const saved = window.sessionStorage.getItem(sessionStorageKey);
+      if (saved) setConn(JSON.parse(saved));
+    } catch {
+      window.sessionStorage.removeItem(sessionStorageKey);
+    }
+  }, [sessionStorageKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3749,9 +3700,17 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   async function startFace() {
     if (!agentId || loading || !faceConfigured) return;
     setOpen(true);
+    if (conn) return;
     setLoading(true);
     setError(null);
     try {
+      if (sessionStorageKey && typeof window !== 'undefined') {
+        const saved = window.sessionStorage.getItem(sessionStorageKey);
+        if (saved) {
+          setConn(JSON.parse(saved));
+          return;
+        }
+      }
       const resumeContext = transcriptStorageKey && typeof window !== 'undefined'
         ? faceResumeContext(window.localStorage.getItem(transcriptStorageKey))
         : '';
@@ -3763,6 +3722,9 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || json.detail || 'HTTP ' + res.status);
       setConn(json);
+      if (sessionStorageKey && typeof window !== 'undefined') {
+        window.sessionStorage.setItem(sessionStorageKey, JSON.stringify(json));
+      }
     } catch (err: any) {
       setError(String(err?.message || err || 'face session failed'));
       setConn(null);
@@ -3772,13 +3734,8 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
   }
 
   function stopFace() {
-    const sessionId = conn?.session_id;
     setOpen(false);
-    setConn(null);
     setError(null);
-    if (sessionId) {
-      fetch('/api/avatar-shell/session/' + encodeURIComponent(sessionId) + '/end', { method: 'POST' }).catch(() => {});
-    }
   }
 
   function endFace() {
@@ -3786,26 +3743,16 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
     setOpen(false);
     setConn(null);
     setError(null);
+    if (sessionStorageKey && typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(sessionStorageKey);
+    }
     if (sessionId) {
       fetch('/api/avatar-shell/session/' + encodeURIComponent(sessionId) + '/end', { method: 'POST' }).catch(() => {});
     }
   }
 
-  function beginWindowDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!windowFrame) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setWindowDrag({
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      baseX: windowFrame.x,
-      baseY: windowFrame.y,
-    });
-  }
-
   const panelClass = open
-    ? 'pointer-events-auto mt-2'
+    ? 'pointer-events-auto mt-2 rounded-lg border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.72)] p-1'
     : 'pointer-events-auto mt-3 rounded-lg border border-[rgba(216,186,117,0.22)] bg-[rgba(15,13,9,0.58)] p-1';
   const faceHint = !agentId
     ? 'no agent bound'
@@ -3837,28 +3784,11 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
       )}
 
       {open && (
-        <div
-          className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-[rgba(216,186,117,0.28)] bg-[rgba(15,13,9,0.88)] shadow-2xl shadow-black/45 backdrop-blur-md"
-          style={{
-            left: windowFrame?.x ?? 12,
-            top: windowFrame?.y ?? 56,
-            width: windowFrame?.width ?? 420,
-            height: windowFrame?.height ?? 620,
-            minWidth: 280,
-            minHeight: 420,
-            maxWidth: 'calc(100vw - 16px)',
-            maxHeight: 'calc(100vh - 16px)',
-            resize: 'both',
-          }}
-        >
-          <div
-            role="presentation"
-            onPointerDown={beginWindowDrag}
-            className="flex cursor-move touch-none items-center justify-between gap-3 border-b border-white/10 bg-black/45 px-2 py-2"
-          >
+        <div className="relative flex min-h-0 flex-col overflow-hidden rounded-lg border border-white/10 bg-black/45">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/35 px-2 py-2">
             <div className="min-w-0">
-              <div className="truncate text-[9px] uppercase tracking-[0.16em] text-[rgb(216,186,117)]">face window</div>
-              <div className="truncate text-[10px] text-white/45">drag to move · corner to resize</div>
+              <div className="truncate text-[9px] uppercase tracking-[0.16em] text-[rgb(216,186,117)]">face</div>
+              <div className="truncate text-[10px] text-white/45">brief voice · no long code readouts</div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               {conn?.public_url && (
@@ -3866,7 +3796,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
                   href={conn.public_url}
                   target="_blank"
                   rel="noreferrer"
-                  onPointerDown={(event) => event.stopPropagation()}
                   className="rounded border border-white/10 bg-black/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65 backdrop-blur hover:border-white/25 hover:text-white/90"
                 >
                   full
@@ -3874,7 +3803,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               )}
               <button
                 type="button"
-                onPointerDown={(event) => event.stopPropagation()}
                 onClick={stopFace}
                 disabled={loading}
                 className="rounded border border-[rgba(216,186,117,0.38)] bg-[rgba(18,14,9,0.82)] px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-[rgb(216,186,117)] shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
@@ -3884,7 +3812,6 @@ function AgentFacePanel({ topic, onOpenChange }: { topic: TeamTopic; onOpenChang
               {conn && (
                 <button
                   type="button"
-                  onPointerDown={(event) => event.stopPropagation()}
                   onClick={endFace}
                   disabled={loading}
                   className="rounded border border-red-300/30 bg-red-950/55 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-red-200/80 shadow-lg shadow-black/25 backdrop-blur disabled:cursor-not-allowed disabled:opacity-40"
@@ -4319,16 +4246,95 @@ function InstructInput({ topic, groupId }: { topic: TeamTopic; groupId: string }
 
 function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplineDemoMode, onDisciplineDemo }: { topic: TeamTopic | null; groupId: string; isMobile: boolean; expanded: boolean; onToggle: () => void; disciplineDemoMode: DisciplineDemoMode; onDisciplineDemo: (mode: Exclude<DisciplineDemoMode, 'off'>) => void }) {
   const [faceOpen, setFaceOpen] = useState(false);
+  const [cardFrame, setCardFrame] = useState<FaceWindowFrame | null>(null);
+  const [cardDrag, setCardDrag] = useState<FaceWindowDrag | null>(null);
 
   useEffect(() => {
     setFaceOpen(false);
+    setCardFrame(null);
   }, [topic?.topicId]);
+
+  useEffect(() => {
+    if (!faceOpen || typeof window === 'undefined') return;
+    setCardFrame((current) => {
+      if (current) return current;
+      const mobile = window.innerWidth < 720;
+      const width = Math.min(mobile ? window.innerWidth - 16 : 460, window.innerWidth - 16);
+      const height = Math.min(mobile ? window.innerHeight * 0.82 : 720, window.innerHeight - 24);
+      return {
+        x: mobile ? 8 : Math.max(8, window.innerWidth - width - 18),
+        y: mobile ? Math.max(8, window.innerHeight - height - 10) : 14,
+        width,
+        height,
+      };
+    });
+  }, [faceOpen]);
+
+  useEffect(() => {
+    if (!cardDrag || typeof window === 'undefined') return;
+
+    function onPointerMove(event: PointerEvent) {
+      if (event.pointerId !== cardDrag.pointerId) return;
+      setCardFrame((current) => {
+        if (!current) return current;
+        const nextX = cardDrag.baseX + event.clientX - cardDrag.startX;
+        const nextY = cardDrag.baseY + event.clientY - cardDrag.startY;
+        return {
+          ...current,
+          x: Math.max(8, Math.min(window.innerWidth - 96, nextX)),
+          y: Math.max(8, Math.min(window.innerHeight - 64, nextY)),
+        };
+      });
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (event.pointerId === cardDrag.pointerId) setCardDrag(null);
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [cardDrag]);
 
   if (!topic) return null;
   const color = statusColor(topic.live.status);
   const disciplinePunch = disciplineDemoMode === 'punch';
   const disciplineKick = disciplineDemoMode === 'kick';
-  const desktopCardClass = 'pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md';
+  const cardStyle = faceOpen && cardFrame
+    ? {
+        left: cardFrame.x,
+        top: cardFrame.y,
+        width: cardFrame.width,
+        height: cardFrame.height,
+        minWidth: 300,
+        minHeight: 520,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'calc(100vh - 16px)',
+        resize: 'both' as const,
+      }
+    : undefined;
+  const faceCardClass = 'pointer-events-auto fixed z-50 overflow-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.90)] p-3 text-white shadow-2xl shadow-black/45 backdrop-blur-md';
+  const desktopCardClass = faceOpen
+    ? faceCardClass
+    : 'pointer-events-none absolute right-3 top-3 z-10 w-[380px] max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.84)] p-3 text-white shadow-2xl backdrop-blur-md';
+
+  function beginCardDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!faceOpen || !cardFrame) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setCardDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: cardFrame.x,
+      baseY: cardFrame.y,
+    });
+  }
 
   if (isMobile) {
     if (!expanded) {
@@ -4349,8 +4355,15 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
     }
 
     return (
-      <div className="absolute inset-x-2 bottom-2 z-10 max-h-[62vh] pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] p-3 text-white shadow-2xl backdrop-blur-md">
-        <div className="flex items-start justify-between gap-3">
+      <div
+        className={faceOpen ? faceCardClass : 'absolute inset-x-2 bottom-2 z-10 max-h-[62vh] pointer-events-auto overflow-y-auto rounded-xl border border-white/10 bg-[rgba(10,10,14,0.86)] p-3 text-white shadow-2xl backdrop-blur-md'}
+        style={faceOpen ? cardStyle : undefined}
+      >
+        <div
+          role="presentation"
+          onPointerDown={faceOpen ? beginCardDrag : undefined}
+          className={'flex items-start justify-between gap-3 ' + (faceOpen ? 'cursor-move touch-none' : '')}
+        >
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0">
               <div className="truncate text-[10px] uppercase tracking-[0.18em] text-white/55">agent</div>
@@ -4358,7 +4371,7 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
             </div>
             {!faceOpen && <AgentFaceBadge topic={topic} color={color} />}
           </div>
-          <button type="button" onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
+          <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={onToggle} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-white/70">hide</button>
         </div>
         {(
           <>
@@ -4405,8 +4418,12 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
   }
 
   return (
-    <div className={desktopCardClass}>
-      <div className="flex items-start justify-between gap-3">
+    <div className={desktopCardClass} style={faceOpen ? cardStyle : undefined}>
+      <div
+        role="presentation"
+        onPointerDown={faceOpen ? beginCardDrag : undefined}
+        className={'flex items-start justify-between gap-3 ' + (faceOpen ? 'cursor-move touch-none' : '')}
+      >
         <div className="flex min-w-0 items-start gap-2">
           <div className="min-w-0">
             <div className="truncate text-[11px] uppercase tracking-[0.18em] text-white/60">agent</div>
@@ -4414,7 +4431,11 @@ function TopicInfoCard({ topic, groupId, isMobile, expanded, onToggle, disciplin
           </div>
           {!faceOpen && <AgentFaceBadge topic={topic} color={color} />}
         </div>
-        <div className="rounded px-2 py-1 text-[10px] uppercase tracking-[0.14em]" style={{ background: `${color}22`, color }}>
+        <div
+          onPointerDown={(event) => event.stopPropagation()}
+          className="rounded px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
+          style={{ background: color + '22', color }}
+        >
           {topic.live.status}
         </div>
       </div>
