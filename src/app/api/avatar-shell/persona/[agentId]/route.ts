@@ -7,7 +7,7 @@ const AVATAR_API_URL = process.env.WATCH_AVATAR_SHELL_API_URL || 'http://127.0.0
 const AVATAR_PUBLIC_URL = process.env.WATCH_AVATAR_SHELL_PUBLIC_URL || 'https://agent.clawnux.com';
 const AVATAR_USERNAME = process.env.WATCH_AVATAR_SHELL_USERNAME || '';
 const AVATAR_PASSWORD = process.env.WATCH_AVATAR_SHELL_PASSWORD || '';
-const FACE_ASSET_VERSION = '20260518c';
+const FACE_ASSET_VERSION = '20260519a';
 
 function joinUrl(base: string, path: string) {
   return `${base.replace(/\/$/, '')}${path}`;
@@ -18,18 +18,35 @@ function faceAsset(path: string) {
 }
 
 const TAVUS_FACE_PREVIEWS: Record<string, string> = {
+  r913e83e3f0c: faceAsset('/agent-faces/echoes-gustavo.jpg'),
   rcc28da86847: faceAsset('/agent-faces/hermes.jpg'),
   rf4e9d9790f0: faceAsset('/agent-faces/snapmolt.jpg'),
 };
 
 const SIMLI_FACE_PREVIEWS: Record<string, string> = {
   '5fc23ea5-8175-4a82-aaaf-cdd8c88543dc': faceAsset('/agent-faces/simli-snapmolt.jpg'),
-  '6926a39d-638b-49c5-9328-79efa034e9a4': faceAsset('/agent-faces/housekeeping.jpg'),
+  '6926a39d-638b-49c5-9328-79efa034e9a4': faceAsset('/agent-faces/echoes-gustavo.jpg'),
   f0ba4efe794645de9955c04a04c367b9: faceAsset('/agent-faces/simli-hermes.jpg'),
   'f0ba4efe-7946-45de-9955-c04a04c367b9': faceAsset('/agent-faces/simli-hermes.jpg'),
 };
 
-function previewForFace(face: any) {
+const AGENT_FACE_PREVIEWS: Record<string, string> = {
+  assistant: faceAsset('/agent-faces/simli-snapmolt.jpg'),
+  code1: faceAsset('/agent-faces/hermes.jpg'),
+  coder1: faceAsset('/agent-faces/hermes.jpg'),
+  echoes: faceAsset('/agent-faces/echoes-gustavo.jpg'),
+  'echoes-gustavo': faceAsset('/agent-faces/echoes-gustavo.jpg'),
+  hermes: faceAsset('/agent-faces/simli-hermes.jpg'),
+  housekeeping: faceAsset('/agent-faces/housekeeping.jpg'),
+  snapmolt: faceAsset('/agent-faces/snapmolt.jpg'),
+};
+
+function previewForFace(agentId: string, face: any) {
+  const normalizedAgentId = String(agentId || '').trim().toLowerCase();
+  if (normalizedAgentId && AGENT_FACE_PREVIEWS[normalizedAgentId]) {
+    return { preview_url: AGENT_FACE_PREVIEWS[normalizedAgentId], video_source: 'Agent portrait' };
+  }
+
   const provider = String(face?.provider || '').trim().toLowerCase();
   const faceId = String(face?.face_id || '').trim();
   const replicaId = String(face?.tavus_replica_id || '').trim();
@@ -94,7 +111,7 @@ export async function GET(
 
     const face = data?.payload?.face || {};
     const configured = Boolean(String(face?.face_id || face?.tavus_replica_id || '').trim());
-    const preview = previewForFace(face);
+    const preview = previewForFace(agentId, face);
     return NextResponse.json({
       ok: true,
       configured,

@@ -16,6 +16,8 @@ It gives you one place to read the active session, see lane state, inspect recen
 
 The dashboard logo and app icons come from `public/watch-logo.png` and the generated favicon / manifest assets. When swapping the artwork, bump the versioned asset URLs in the app shell so browsers do not keep serving a stale icon.
 
+Agent face thumbnails shown in Watcher come from the Avatar Shell public assets at `/agent-faces/*.jpg`, resolved in `src/app/api/avatar-shell/persona/[agentId]/route.ts`. Prefer agent-specific portrait mapping before raw Simli/Tavus face IDs because multiple live personas can share a provider face while still needing different dashboard portraits.
+
 ## Quick setup
 
 ```bash
