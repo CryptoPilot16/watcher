@@ -25,7 +25,7 @@ const TAVUS_FACE_PREVIEWS: Record<string, string> = {
 
 const SIMLI_FACE_PREVIEWS: Record<string, string> = {
   '5fc23ea5-8175-4a82-aaaf-cdd8c88543dc': faceAsset('/agent-faces/simli-snapmolt.jpg'),
-  '6926a39d-638b-49c5-9328-79efa034e9a4': faceAsset('/agent-faces/echoes-gustavo.jpg'),
+  '6926a39d-638b-49c5-9328-79efa034e9a4': faceAsset('/agent-faces/housekeeping.jpg'),
   f0ba4efe794645de9955c04a04c367b9: faceAsset('/agent-faces/simli-hermes.jpg'),
   'f0ba4efe-7946-45de-9955-c04a04c367b9': faceAsset('/agent-faces/simli-hermes.jpg'),
 };
